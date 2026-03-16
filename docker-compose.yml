@@ -1,0 +1,18 @@
+services:
+  oxigraph:
+    image: oxigraph/oxigraph:latest
+    container_name: oxigraph_db
+    ports:
+      - "7878:7878"
+      - "7879:7879"
+    volumes:
+      - ./data:/data:z
+    environment:
+      - OXIGRAPH_DB=/data/oxigraph.db
+      - RUST_LOG=info
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7878/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
