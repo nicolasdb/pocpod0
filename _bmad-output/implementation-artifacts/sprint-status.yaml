@@ -1,0 +1,243 @@
+---
+project_name: pocpod0
+sprint_generated: 2026-03-18
+tracking_system: file-system
+project_key: NOKEY
+communication_language: English
+
+# Sprint Status Tracking
+development_status:
+  # Epic 1: Pod Sovereignty & Access Control
+  epic-1: backlog
+  story-1-1-project-scaffold-service-orchestration: backlog
+  story-1-2-nginx-content-negotiation-spike: backlog
+  story-1-3-pod-provisioning-acl-configuration: backlog
+  story-1-4-acl-grant-revocation-audit: backlog
+  story-1-5-troll-acl-enforcement-validation: backlog
+  epic-1-retrospective: optional
+
+  # Epic 2: Semantic Data Intelligence
+  epic-2: backlog
+  story-2-1-oslo-vocabulary-schema-contract: backlog
+  story-2-2-xapi-oslo-rdf-ingestion-pipeline: backlog
+  story-2-3-oxigraph-setup-rdf-storage-with-provenance: backlog
+  story-2-4-round-trip-xapi-recovery-verification: backlog
+  story-2-5-qdrant-setup-vector-embeddings: backlog
+  story-2-6-bidirectional-traceability-embedding-triple-pod: backlog
+  story-2-7-troll-sparql-injection-validation: backlog
+  story-2-8-troll-vector-privacy-validation: backlog
+  epic-2-retrospective: optional
+
+  # Epic 3: Cross-Context Learning Insights
+  epic-3: backlog
+  story-3-1-shared-sparql-skill-foundation: backlog
+  story-3-2-shared-qdrant-skill-foundation: backlog
+  story-3-3-openClaw-agent-infrastructure: backlog
+  story-3-4-claire-cross-context-insight-discovery: backlog
+  story-3-5-fatima-unified-parental-view: backlog
+  story-3-6-isabelle-evidence-based-policy: backlog
+  story-3-7-graph-only-vs-hybrid-comparison: backlog
+  story-3-8-troll-cross-inference-validation: backlog
+  epic-3-retrospective: optional
+
+  # Epic 4: Student Transfer & Data Portability
+  epic-4: backlog
+  story-4-1-marc-seamless-student-transfer: backlog
+  story-4-2-cross-community-data-handling: backlog
+  epic-4-retrospective: optional
+
+  # Epic 5: Data Sovereignty Lifecycle
+  epic-5: backlog
+  story-5-1-ayoub-governance-transition: backlog
+  story-5-2-deletion-cascade-propagation: backlog
+  story-5-3-troll-deletion-timing-validation: backlog
+  epic-5-retrospective: optional
+
+  # Epic 6: Adversarial Trust Report & Mission Control
+  epic-6: backlog
+  story-6-1-troll-comprehensive-run-and-report: backlog
+  story-6-2-mission-control-dashboard-implementation: backlog
+  story-6-3-funder-intervention-points: backlog
+  epic-6-retrospective: optional
+
+# Priority & Phasing
+priority_matrix:
+  must-ship:
+    - epic-1: "Pod Sovereignty & Access Control"
+    - epic-4: "Student Transfer (Marc journey)"
+    - epic-5: "Data Sovereignty Lifecycle (Ayoub journey)"
+    - story-3-4-claire-cross-context-insight-discovery: "Claire journey (must-ship from Epic 3)"
+  target:
+    - epic-3: "Cross-Context Learning Insights (with fallback: Claire only, Fatima and Isabelle deferred)"
+    - story-3-5-fatima-unified-parental-view: "Fatima journey (target if resources allow)"
+    - story-3-6-isabelle-evidence-based-policy: "Isabelle journey (target if resources allow)"
+  vision:
+    - epic-6: "Adversarial Trust Report (deferred if timeline tight)"
+
+# Epics by Phase (from PRD)
+phases:
+  phase-1-infrastructure:
+    label: "Infrastructure & Pod Setup"
+    epics: [epic-1]
+    duration_estimate: "1-2 weeks"
+    critical_path: story-1-2-nginx-content-negotiation-spike
+    critical_path_note: "3-day timebox; if it fails, fallback to direct CSS access"
+    risk_level: high
+
+  phase-2-data-intelligence:
+    label: "Semantic Data Intelligence"
+    epics: [epic-2]
+    duration_estimate: "2-3 weeks"
+    critical_path: story-2-2-xapi-oslo-rdf-ingestion-pipeline
+    critical_path_note: "OSLO vocabulary schema contract is the Phase 2→3 bridge"
+    risk_level: medium
+
+  phase-3-agents-scenarios:
+    label: "Cross-Context Agents & Scenarios"
+    epics: [epic-3, epic-4, epic-5]
+    duration_estimate: "3-4 weeks"
+    must_ship: [epic-4, epic-5, "story-3-4 (Claire)"]
+    target: ["story-3-5 (Fatima)", "story-3-6 (Isabelle)"]
+    fallback_plan: "If Phase 3 running late: implement Claire + Marc + Ayoub first, Isabelle and Fatima added in priority order if time permits"
+    risk_level: medium
+
+  phase-4-adversarial-testing:
+    label: "Adversarial Testing & Mission Control"
+    epics: [epic-6]
+    duration_estimate: "1-2 weeks"
+    critical_path: story-6-1-troll-comprehensive-run-and-report
+    risk_level: low
+
+# Sprint Backlog Ordering (Sequence by Critical Path)
+sprint_backlog_order:
+  1:
+    story: story-1-1-project-scaffold-service-orchestration
+    epic: epic-1
+    priority: must-ship
+    rationale: "Foundation: without this, no environment to work in"
+
+  2:
+    story: story-1-2-nginx-content-negotiation-spike
+    epic: epic-1
+    priority: must-ship
+    rationale: "Critical dependency with 3-day timebox; must resolve early"
+    fallback: "If spike fails by day 3, proceed with direct CSS access (FR7 deferred)"
+
+  3:
+    story: story-1-3-pod-provisioning-acl-configuration
+    epic: epic-1
+    priority: must-ship
+    rationale: "Core capability: pods must exist before any data work"
+
+  4:
+    story: story-1-4-acl-grant-revocation-audit
+    epic: epic-1
+    priority: must-ship
+    rationale: "Enables dynamic access control for transfer and role-based scenarios"
+
+  5:
+    story: story-2-1-oslo-vocabulary-schema-contract
+    epic: epic-2
+    priority: must-ship
+    rationale: "Phase 2→3 bridge: must be resolved before data pipeline can be tested"
+
+  6:
+    story: story-2-2-xapi-oslo-rdf-ingestion-pipeline
+    epic: epic-2
+    priority: must-ship
+    rationale: "Core data pipeline: enables testing of three-layer architecture"
+
+  7:
+    story: story-2-3-oxigraph-setup-rdf-storage-with-provenance
+    epic: epic-2
+    priority: must-ship
+    rationale: "Data layer 1: stores RDF triples with provenance"
+
+  8:
+    story: story-2-5-qdrant-setup-vector-embeddings
+    epic: epic-2
+    priority: must-ship
+    rationale: "Data layer 3: enables semantic search and hybrid queries"
+
+  9:
+    story: story-3-1-shared-sparql-skill-foundation
+    epic: epic-3
+    priority: must-ship
+    rationale: "Foundation for all cross-context queries"
+
+  10:
+    story: story-3-3-openClaw-agent-infrastructure
+    epic: epic-3
+    priority: must-ship
+    rationale: "Agent platform: enables all role scenarios"
+
+  11:
+    story: story-3-4-claire-cross-context-insight-discovery
+    epic: epic-3
+    priority: must-ship
+    rationale: "Must-ship journey: emotional core and hybrid query demo"
+
+  12:
+    story: story-4-1-marc-seamless-student-transfer
+    epic: epic-4
+    priority: must-ship
+    rationale: "Must-ship journey: operational proof"
+
+  13:
+    story: story-5-1-ayoub-governance-transition
+    epic: epic-5
+    priority: must-ship
+    rationale: "Must-ship journey: principled architecture + honest failure"
+
+  14:
+    story: story-3-5-fatima-unified-parental-view
+    epic: epic-3
+    priority: target
+    rationale: "Target journey: add if Phase 3 has capacity"
+
+  15:
+    story: story-3-6-isabelle-evidence-based-policy
+    epic: epic-3
+    priority: target
+    rationale: "Target journey: policy-level demo; add if resources permit"
+
+  16:
+    story: story-1-5-troll-acl-enforcement-validation
+    epic: epic-1
+    priority: must-ship
+    rationale: "Security validation: tests foundational access control"
+    fallback: "Can run after story-1-4"
+
+  17:
+    story: story-5-2-deletion-cascade-propagation
+    epic: epic-5
+    priority: must-ship
+    rationale: "Data lifecycle: tests right-to-erasure across all layers"
+
+  18:
+    story: story-6-1-troll-comprehensive-run-and-report
+    epic: epic-6
+    priority: must-ship
+    rationale: "Phase 4: comprehensive adversarial testing and reporting"
+
+  19:
+    story: story-6-2-mission-control-dashboard-implementation
+    epic: epic-6
+    priority: target
+    rationale: "Phase 4: dashboard designed after Phase 1-3 provide component requirements"
+
+  20:
+    story: story-6-3-funder-intervention-points
+    epic: epic-6
+    priority: target
+    rationale: "Phase 4: enables funder interaction with demo"
+
+# Sprint Metadata
+notes:
+  solo_dev_model: "1 human (Nicolas) + Claude Code AI pair programmer. Phases do NOT interleave; one must complete before next begins."
+  timebox_guidance: "Phase 1 hard timebox; invest most time in Phase 2 (intellectual core); Phase 3 implements quality data with fallback to 3 journeys; Phase 4 completes with troll run and dashboard."
+  context_switching_cost: "Budget 1 ramp-up day per phase transition (different tech stacks)."
+  dependencies: "Nginx spike (story-1-2) is critical path with 3-day timebox and explicit fallback plan."
+
+# Ready to implement: call 'bmad-create-story' with story ID from sprint_backlog_order to begin work
+
