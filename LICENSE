@@ -1,0 +1,19 @@
+# License
+
+## PLACEHOLDER - LEGAL REVIEW REQUIRED
+
+This project uses the OSLO vocabulary and related schemas which are governed by the ISA Open Metadata Licence v1.1.
+
+This project's license needs to be reviewed and finalized to ensure compatibility with:
+1. ISA Open Metadata Licence v1.1 (OSLO vocabulary)
+2. Community Solid Server (MIT License)
+3. Project requirements and organizational policies
+
+**STATUS**: Awaiting legal review before finalizing license terms.
+
+## Temporary License
+
+Until legal review is complete, this code is provided as-is for development and evaluation purposes only.
+
+For more information on ISA Open Metadata Licence v1.1, see: https://semiceu.github.io/OSLO/
+For Community Solid Server licensing, see: https://github.com/CommunitySolidServer/CommunitySolidServer

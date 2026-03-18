@@ -1,0 +1,26 @@
+# Qdrant v1.17.0 Configuration
+#
+# This is a placeholder for collection and query configuration.
+# Runtime configuration is managed via the Qdrant REST API.
+#
+# Reference: https://qdrant.tech/documentation/
+
+# Storage path (set via Docker volume mount to /qdrant/storage)
+# storage:
+#   path: /qdrant/storage
+
+# API configuration
+# api:
+#   http:
+#     port: 6333
+#   grpc:
+#     port: 6334
+
+# Collections will be created dynamically via API calls
+# Example collection configuration:
+#
+# collections:
+#   embeddings:
+#     vectors:
+#       size: 1536
+#       distance: Cosine

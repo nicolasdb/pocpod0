@@ -1,0 +1,17 @@
+# Oxigraph 0.5.6 Configuration
+#
+# This is a placeholder for future configuration needs.
+# Currently, Oxigraph is started via docker-compose command-line arguments:
+#   serve --location /data --bind 0.0.0.0:7878
+#
+# Configuration via this file can be added when needed.
+# Reference: https://oxigraph.org/
+
+# Data store location (currently set via --location flag)
+# data_store = "/data"
+
+# Server binding address (currently set via --bind flag)
+# bind = "0.0.0.0:7878"
+
+# Query timeout in milliseconds (optional)
+# query_timeout_ms = 30000

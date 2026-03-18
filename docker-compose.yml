@@ -1,18 +1,75 @@
 services:
-  oxigraph:
-    image: oxigraph/oxigraph:latest
-    container_name: oxigraph_db
+  community-solid-server:
+    image: solidproject/community-server:7
+    container_name: community-solid-server
     ports:
-      - "7878:7878"
-      - "7879:7879"
+      - "${CSS_PORT:-3000}:3000"
     volumes:
-      - ./data:/data:z
-    environment:
-      - OXIGRAPH_DB=/data/oxigraph.db
-      - RUST_LOG=info
-    restart: unless-stopped
+      - css-data:/data
+    command:
+      - "-p"
+      - "3000"
+      - "-f"
+      - "/data"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:7878/health"]
-      interval: 30s
+      test: ["CMD-SHELL", "node -e \"const n=require('net');const c=n.createConnection(3000,'localhost');c.on('connect',()=>{c.end();process.exit(0)});c.on('error',()=>process.exit(1))\""]
+      interval: 10s
       timeout: 10s
-      retries: 3
+      retries: 10
+      start_period: 30s
+
+  oxigraph:
+    image: ghcr.io/oxigraph/oxigraph:0.5.6
+    container_name: oxigraph
+    ports:
+      - "${OXIGRAPH_PORT:-7878}:7878"
+    volumes:
+      - oxigraph-data:/data
+    command: serve --location /data --bind 0.0.0.0:7878
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:7878/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  qdrant:
+    image: qdrant/qdrant:v1.17.0
+    container_name: qdrant
+    ports:
+      - "${QDRANT_REST_PORT:-6333}:6333"
+      - "${QDRANT_GRPC_PORT:-6334}:6334"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:6333/readyz"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  nginx:
+    image: nginx:1.28.2-alpine
+    container_name: nginx
+    ports:
+      - "${NGINX_HTTP_PORT:-8080}:80"
+      - "${NGINX_HTTPS_PORT:-8443}:443"
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro${VOLUME_FLAGS:-}
+    depends_on:
+      community-solid-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:80/nginx-health"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+volumes:
+  css-data:
+    driver: local
+  oxigraph-data:
+    driver: local
+  qdrant-data:
+    driver: local

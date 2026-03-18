@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pocpod0-pipeline"
+version = "0.1.0"
+description = "Data ingestion and processing pipeline for pocpod0"
+requires-python = ">=3.12"
+license = {text = "See LICENSE"}
+authors = [
+    {name = "Nicolas", email = "nicolas@example.com"}
+]
+
+dependencies = [
+    # Core dependencies (to be filled in by relevant stories)
+    # Example: rdflib>=7.0.0
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+
+[tool.setuptools]
+packages = ["pocpod0_pipeline"]
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+addopts = "-v --tb=short"

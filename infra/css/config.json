@@ -1,0 +1,14 @@
+# CSS 7 Configuration
+#
+# This file is a placeholder for future custom configuration needs.
+#
+# By default, CSS 7 is started with:
+#   - Port: 3000 (via -p flag)
+#   - Root folder: /data (via -f flag for filesystem-based storage)
+#   - Base URL: http://localhost:3000
+#
+# To customize CSS 7 further, pass additional configuration via:
+#   1. Command-line arguments (see docker-compose.yml)
+#   2. A JSON-LD configuration file (use -c flag with path to config)
+#
+# Reference: https://github.com/CommunitySolidServer/CommunitySolidServer
