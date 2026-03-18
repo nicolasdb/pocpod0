@@ -1,0 +1,200 @@
+# Story 1.2: Nginx Content Negotiation Spike
+
+Status: ready-for-dev
+
+## Story
+
+As a **developer**,
+I want Nginx to reverse-proxy CSS with Linked Data content negotiation (Turtle, JSON-LD),
+so that Pod resources are served with appropriate RDF serialization formats.
+
+## Acceptance Criteria
+
+**AC-1: Turtle content negotiation**
+Given CSS is running behind Nginx
+When a client requests a Pod resource with `Accept: text/turtle`
+Then the response is served as Turtle (`.ttl`)
+
+**AC-2: JSON-LD content negotiation**
+Given CSS is running behind Nginx
+When a client requests a Pod resource with `Accept: application/ld+json`
+Then the response is served as JSON-LD
+
+**AC-3: Timebox enforcement with fallback**
+Given the spike exceeds 3 calendar days without working content negotiation
+When the timebox expires
+Then Nginx is removed from the request path and agents access CSS directly on port 3000
+And the decision is documented in the Architecture doc
+
+**AC-4: Decision recording**
+Given content negotiation works (spike succeeds) or fallback is applied (spike fails)
+When the story is complete
+Then a clear verdict (pass/fallback) is recorded and the rest of the epics proceed on the chosen path
+
+## Tasks / Subtasks
+
+### Task 1: Set up spike tracking (AC-3, AC-4)
+- [ ] Record spike start date (the date you begin this story)
+- [ ] Set a hard deadline: start date + 3 calendar days
+- [ ] Create a decision log file at `infra/nginx/SPIKE-DECISION.md` that will hold the verdict
+
+### Task 2: Understand CSS 7 content negotiation behavior (AC-1, AC-2)
+- [ ] Create a test Pod resource in CSS (a simple Turtle file) using the CSS HTTP API
+- [ ] Test CSS directly (port 3000) with `Accept: text/turtle` header — document response content-type
+- [ ] Test CSS directly (port 3000) with `Accept: application/ld+json` header — document response content-type
+- [ ] Test CSS directly with no Accept header — document default behavior
+- [ ] Document whether CSS 7 handles content negotiation natively or needs Nginx to intervene
+
+### Task 3: Configure Nginx content negotiation (AC-1, AC-2)
+- [ ] Update `infra/nginx/nginx.conf` to handle content negotiation:
+  - Pass the `Accept` header from client to CSS upstream
+  - Verify CSS returns the correct `Content-Type` based on `Accept` header
+  - If CSS does NOT do content negotiation natively, configure Nginx to:
+    - Inspect the `Accept` header
+    - Map `text/turtle` requests appropriately
+    - Map `application/ld+json` requests appropriately
+    - Set correct `Content-Type` response headers
+  - Preserve all LDP headers that CSS returns (these are required by Solid spec)
+  - Handle `Accept: */*` with a sensible default (Turtle)
+- [ ] Ensure Nginx does NOT strip or modify Solid-specific response headers (e.g., `Link`, `WAC-Allow`, `Accept-Patch`, `Accept-Post`)
+
+### Task 4: Test content negotiation end-to-end (AC-1, AC-2)
+- [ ] Test via Nginx (port 80):
+  ```bash
+  # Turtle request
+  curl -H "Accept: text/turtle" http://localhost/test-resource
+  # Verify Content-Type: text/turtle in response
+
+  # JSON-LD request
+  curl -H "Accept: application/ld+json" http://localhost/test-resource
+  # Verify Content-Type: application/ld+json in response
+
+  # No Accept header
+  curl http://localhost/test-resource
+  # Document default behavior
+  ```
+- [ ] Verify the response body is valid Turtle (for turtle requests) and valid JSON-LD (for JSON-LD requests)
+- [ ] Verify LDP headers are preserved through Nginx proxy
+- [ ] Use `distrobox-host-exec` for curl commands if running inside distrobox
+
+### Task 5: Handle spike success path (AC-1, AC-2, AC-4)
+- [ ] If content negotiation works through Nginx:
+  - Document the working configuration in `infra/nginx/SPIKE-DECISION.md`
+  - Record verdict: **PASS**
+  - Commit the working `nginx.conf`
+  - Ensure the Nginx service stays in `docker-compose.yml`
+  - Verify Nginx health check still passes
+
+### Task 6: Handle spike failure / timebox expiry path (AC-3, AC-4)
+- [ ] If 3 calendar days elapse without working content negotiation:
+  - Record verdict: **FALLBACK** in `infra/nginx/SPIKE-DECISION.md`
+  - Document what was tried and why it failed
+  - Modify `docker-compose.yml`:
+    - Either remove the Nginx service entirely, OR
+    - Keep Nginx as a simple passthrough proxy (no content negotiation logic)
+  - Expose CSS port 3000 directly to the host (update port mapping)
+  - Update `.env.example` to reflect that agents hit CSS directly
+  - Update `CSS_BASE_URL` default to `http://localhost:3000`
+  - Add a note to the architecture doc: `_bmad-output/planning-artifacts/architecture.md` in the INFRA-4 section recording the fallback decision
+
+### Task 7: Update downstream configuration (AC-4)
+- [ ] Regardless of pass/fallback, update the following to reflect the chosen path:
+  - `CSS_BASE_URL` in `.env.example` (either `http://localhost` for Nginx path, or `http://localhost:3000` for direct CSS path)
+  - Document the chosen path clearly so Story 1.3 (Pod Provisioning) knows which URL to use
+  - Verify `docker-compose up` still brings all services up healthy after any changes
+
+## Dev Notes
+
+### CRITICAL: 3-Day Hard Timebox
+
+This is a timeboxed spike. The timebox is 3 **calendar days** from the moment you start this story. This is NON-NEGOTIABLE per Architecture decision INFRA-4 and PRD critical path guidance.
+
+**Day 1:** Understand CSS 7 content negotiation behavior. Test CSS directly. Configure Nginx.
+**Day 2:** Debug and iterate on Nginx config. End-to-end testing.
+**Day 3:** Final testing or decision to fallback. Record verdict.
+
+If you are at end of Day 3 and content negotiation does not work reliably, STOP and apply the fallback. Do not extend the timebox.
+
+### Content Negotiation Details
+
+The Solid specification relies on HTTP content negotiation (RFC 7231). Key MIME types:
+
+| Accept Header | Expected Response | Format |
+|---------------|-------------------|--------|
+| `text/turtle` | Turtle serialization | `.ttl` |
+| `application/ld+json` | JSON-LD serialization | `.jsonld` |
+| `application/n-triples` | N-Triples (optional) | `.nt` |
+| `*/*` or none | Default (likely Turtle) | varies |
+
+CSS 7 may handle content negotiation natively through its internal modules. The spike's first task is to determine whether Nginx needs to intervene at all, or simply pass headers through.
+
+### CSS and Nginx Port Mapping
+
+- **Spike success path:** Nginx on port 80/443 proxies to CSS on port 3000 (internal Docker network). Agents and external clients hit Nginx.
+- **Fallback path:** Nginx removed or passthrough. CSS exposed on port 3000 directly. Agents hit CSS directly.
+
+### Nginx Configuration Location
+
+- Config file: `infra/nginx/nginx.conf`
+- Mounted read-only into the Nginx container: `./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro${VOLUME_FLAGS:-}`
+
+### Key Nginx Directives for Content Negotiation
+
+If Nginx needs to actively handle content negotiation (i.e., CSS does not do it natively), relevant Nginx directives:
+- `proxy_set_header Accept $http_accept;` — pass through Accept header
+- `proxy_pass_header` — pass through CSS response headers
+- `map $http_accept $content_type` — map Accept header to content type (if needed)
+- `add_header Vary Accept;` — indicate response varies by Accept header
+
+### Solid-Specific Headers to Preserve
+
+Nginx MUST NOT strip these headers from CSS responses:
+- `Link` (contains LDP type information)
+- `WAC-Allow` (WebACL authorization info)
+- `Accept-Patch` (supported patch formats)
+- `Accept-Post` (supported post formats)
+- `Accept-Put` (supported put formats)
+- `Allow` (allowed HTTP methods)
+- `ETag` (resource versioning)
+- `MS-Author-Via` (authoring protocol)
+
+### Distrobox Isolation Note
+
+When testing with curl or docker commands from inside a distrobox:
+```bash
+# Access containers on the host
+distrobox-host-exec podman compose up
+distrobox-host-exec curl -H "Accept: text/turtle" http://localhost/test-resource
+```
+
+### Fallback Impact on Other Stories
+
+If fallback is applied:
+- **Story 1.3 (Pod Provisioning):** Will provision pods via CSS directly on port 3000 instead of through Nginx
+- **Story 1.4 (ACL Grant/Revocation):** Unaffected — ACLs are a CSS feature
+- **Epic 2+ (Pipeline, Agents):** Will use `CSS_BASE_URL=http://localhost:3000` instead of `http://localhost`
+- **FR7 (content negotiation):** Deferred to CSS native behavior — CSS 7 likely handles this
+
+### Project Structure Notes
+
+Files modified or created in this story:
+- `infra/nginx/nginx.conf` — updated with content negotiation config (or simplified on fallback)
+- `infra/nginx/SPIKE-DECISION.md` — new file documenting the spike verdict
+- `docker-compose.yml` — potentially modified if fallback applied
+- `.env.example` — potentially updated with new `CSS_BASE_URL` default
+
+### References
+
+- Architecture doc: `_bmad-output/planning-artifacts/architecture.md` (section: INFRA-4 Nginx Content Negotiation with Timebox)
+- PRD: `_bmad-output/planning-artifacts/prd.md` (section: Critical Path & Risks — "First risk to spike")
+- Epics doc: `_bmad-output/planning-artifacts/epics.md` (Story 1.2 acceptance criteria)
+- Sprint status: `_bmad-output/implementation-artifacts/sprint-status.yaml` (key: `story-1-2-nginx-content-negotiation-spike`)
+- CSS 7 documentation: https://communitysolidserver.github.io/CommunitySolidServer/
+- Solid content negotiation: https://solidproject.org/TR/protocol#reading-resources
+
+## Dev Agent Record
+
+### Agent Model Used
+### Debug Log References
+### Completion Notes List
+### File List

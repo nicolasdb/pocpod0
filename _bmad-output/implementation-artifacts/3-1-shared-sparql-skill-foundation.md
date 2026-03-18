@@ -1,0 +1,264 @@
+# Story 3.1: [foundation] OpenClaw Agent Runtime & Shared SPARQL Skill
+
+Status: ready-for-dev
+
+## Story
+
+As a **developer**,
+I want the OpenClaw agent runtime configured with a shared SPARQL skill that validates ACLs and executes parameterized queries,
+so that all role agents have a secure, reusable foundation for querying the graph layer.
+
+## Acceptance Criteria
+
+**AC1: OpenClaw runtime configured with OpenRouter**
+Given OpenClaw is installed with `openclaw.config.yaml` pointing to OpenRouter API (minimax/minimax-m2.5)
+When the agent runtime starts
+Then the OpenRouter connection is verified and the runtime is ready to spawn agents
+
+**AC2: SPARQL skill executes parameterized queries with ACL enforcement**
+Given the shared SPARQL skill (`agents/skills/sparql-query/`)
+When an agent calls the skill with a query request and role identity
+Then the skill validates the agent's role against Pod ACLs before executing
+And selects the appropriate parameterized `.rq` template
+And executes the query against Oxigraph
+And returns results with provenance metadata (`prov:wasDerivedFrom` URIs)
+
+**AC3: Access denied on insufficient ACLs**
+Given an agent with insufficient ACL permissions
+When it calls the SPARQL skill for a resource it cannot access
+Then the skill denies the query and returns an access-denied response
+And the denial is logged in structured JSON format (NFR9)
+
+**AC4: Query logging on every execution**
+Given any SPARQL skill execution
+When the query completes (success or denial)
+Then a log entry is emitted with timestamp, requesting agent, latency, and result count (NFR9)
+
+## Tasks / Subtasks
+
+### Task 1: Install and configure OpenClaw runtime (AC1)
+- [ ] Install OpenClaw (Node.js-based agent runtime) in the project
+- [ ] Create `agents/openclaw.config.yaml` with OpenRouter API configuration
+  - Model: `minimax/minimax-m2.5` (NFR20)
+  - API endpoint: OpenRouter API
+  - API key: reference `OPENROUTER_API_KEY` from `.env`
+- [ ] Verify the runtime can start and connect to OpenRouter
+- [ ] Confirm the runtime can discover and load skills from `agents/skills/`
+- [ ] Document any OpenClaw-specific setup steps
+
+### Task 2: Create SPARQL skill directory structure (AC2)
+- [ ] Create `agents/skills/sparql-query/skill.yaml` — Skill definition file
+- [ ] Create `agents/skills/sparql-query/handler.py` — Main skill handler
+- [ ] Create `agents/skills/sparql-query/templates/` directory for .rq files
+
+### Task 3: Implement SPARQL query templates (AC2)
+- [ ] Create `agents/skills/sparql-query/templates/student-progress.rq`
+  - Query: student learning progress across contexts, scoped by student Pod URI
+  - Parameters: `$studentPodUri`, `$learningContext` (optional)
+  - Must include `prov:wasDerivedFrom` in SELECT for provenance
+- [ ] Create `agents/skills/sparql-query/templates/cross-context-query.rq`
+  - Query: cross-institutional data for a given subject/topic across authorized pods
+  - Parameters: `$subject`, `$authorizedPodUris` (list)
+  - Must include provenance metadata in results
+- [ ] Create `agents/skills/sparql-query/templates/aggregate-anonymized.rq`
+  - Query: aggregate statistics without individual identification
+  - Parameters: `$programUri`, `$communityScope`
+  - Results must be aggregate counts/averages, never individual records
+- [ ] Create `agents/skills/sparql-query/templates/parental-view.rq`
+  - Query: unified view of children's progress for a parent
+  - Parameters: `$childPodUris` (list), `$parentRole`
+  - Must include provenance per child
+- [ ] Create `agents/skills/sparql-query/templates/transfer-profile.rq`
+  - Query: complete learning profile for a student transfer scenario
+  - Parameters: `$studentPodUri`
+  - Must include full history with provenance
+
+### Task 4: Implement ACL validation in handler (AC2, AC3)
+- [ ] In `handler.py`, implement ACL check function:
+  1. Receive agent role identity and target Pod resource URIs from skill invocation
+  2. Query CSS Pod ACL resources to determine if role has access
+  3. If access denied: return structured access-denied response, log denial
+  4. If access granted: proceed to template selection and execution
+- [ ] ACL check must happen BEFORE any SPARQL query is executed (SEC-2)
+- [ ] Access-denied response format: `{ "status": "denied", "reason": "...", "agent": "...", "requested_resources": [...] }`
+
+### Task 5: Implement template parameterization engine (AC2)
+- [ ] In `handler.py`, implement template loader:
+  1. Read `.rq` file from `templates/` directory
+  2. Replace `$parameter` placeholders with provided values
+  3. NEVER use string concatenation for query construction (SEC-3)
+  4. Validate all parameters are provided before execution
+  5. Validate parameter values against injection patterns (no SPARQL keywords in parameter values)
+- [ ] Template selection logic: skill determines which `.rq` template based on the query type requested by the agent
+
+### Task 6: Implement Oxigraph query execution (AC2)
+- [ ] In `handler.py`, implement SPARQL execution:
+  1. Send parameterized query via HTTP POST to Oxigraph at port 7878
+  2. Oxigraph SPARQL endpoint: `http://oxigraph:7878/query` (Docker network hostname)
+  3. Content-Type for request: `application/sparql-query`
+  4. Accept header: `application/sparql-results+json`
+  5. Parse JSON results
+  6. Extract `prov:wasDerivedFrom` URIs from results for provenance metadata
+  7. Return results with provenance to the calling agent
+
+### Task 7: Implement structured JSON logging (AC3, AC4)
+- [ ] Every skill invocation logs a structured JSON entry to stdout:
+  ```json
+  {
+    "timestamp": "ISO-8601",
+    "service": "sparql-query-skill",
+    "level": "INFO",
+    "event": "sparql.query.executed",
+    "agent": "claire-teacher",
+    "duration_ms": 123,
+    "details": {
+      "template": "student-progress.rq",
+      "result_count": 42,
+      "acl_check": "passed",
+      "oxigraph_latency_ms": 98
+    }
+  }
+  ```
+- [ ] Access denied events use `"event": "sparql.query.denied"` with `"level": "WARN"`
+- [ ] Error events use `"event": "sparql.query.error"` with `"level": "ERROR"`
+- [ ] Log to stdout so docker-compose captures it (feeds dashboard in Phase 4)
+
+### Task 8: Create skill.yaml definition (AC1, AC2)
+- [ ] Define `agents/skills/sparql-query/skill.yaml` with:
+  - Skill name: `sparql-query`
+  - Description: Shared SPARQL skill for ACL-validated graph queries
+  - Input schema: query type, parameters, agent role identity
+  - Output schema: results with provenance metadata, or access-denied response
+  - Dependencies: Oxigraph endpoint, CSS Pod ACLs
+
+### Task 9: Integration verification (AC1, AC2, AC3, AC4)
+- [ ] Verify an agent can call the SPARQL skill and receive results with provenance
+- [ ] Verify ACL denial works correctly for unauthorized access
+- [ ] Verify all 5 `.rq` templates execute correctly against Oxigraph with test data
+- [ ] Verify structured logging output for success, denial, and error cases
+- [ ] Verify the skill works from within distrobox (use `distrobox-host-exec` for podman container access)
+
+## Dev Notes
+
+### Architecture Decisions Referenced
+
+- **SEC-2:** ACL enforcement at query level — this skill IS the query-level enforcement. Pod-level enforcement is CSS native WebACL (Epic 1). This skill adds the second layer of defense-in-depth.
+- **SEC-3:** Parameterized `.rq` templates, NEVER string concatenation. The troll agent (Story 3.x/Phase 4) will test injection through this skill interface.
+- **API-1:** No REST API wrapper. The skill communicates directly with Oxigraph via its native SPARQL HTTP endpoint.
+- **API-2:** Two separate skills (SPARQL and Qdrant) keep concerns clean. This story implements the SPARQL skill only.
+- **NFR20:** Agent LLM model is `minimax/minimax-m2.5` via OpenRouter API.
+
+### OpenClaw Runtime Details
+
+- OpenClaw is a **Node.js-based** self-contained agent runtime
+- Global config: `agents/openclaw.config.yaml`
+- Agent configs: `agents/{agent-name}/agent.yaml` (created in later stories)
+- Skills shared across agents: `agents/skills/{skill-name}/`
+- The skill handler is Python (`handler.py`) — OpenClaw supports Python skill handlers
+- OpenRouter API key comes from `OPENROUTER_API_KEY` in `.env` at project root
+
+### Oxigraph Connection Details
+
+- Docker service name: `oxigraph`
+- SPARQL query endpoint: `http://oxigraph:7878/query` (HTTP POST)
+- SPARQL update endpoint: `http://oxigraph:7878/update` (HTTP POST, not needed for this skill)
+- Image: `oxigraph/oxigraph:0.5.6`
+- Port: 7878
+
+### CSS (Solid Server) Connection Details
+
+- Docker service name: `community-solid-server`
+- Port: 3000
+- ACL resources: `.acl` files per Solid spec on each Pod resource
+- Image: `communitysolidserver/community-solid-server:7`
+
+### SPARQL Template Pattern
+
+Templates use `$parameter` placeholders. Example pattern for `student-progress.rq`:
+
+```sparql
+PREFIX oslo-educ: <https://data.vlaanderen.be/ns/onderwijs#>
+PREFIX oslo-person: <https://data.vlaanderen.be/ns/persoon#>
+PREFIX prov: <http://www.w3.org/ns/prov#>
+PREFIX pocpod0: <http://pocpod0.local/vocab#>
+
+SELECT ?activity ?result ?context ?provenanceUri
+WHERE {
+  ?activity oslo-educ:heeftDeelnemer ?student .
+  ?student pocpod0:podUri $studentPodUri .
+  ?activity oslo-educ:heeftResultaat ?result .
+  ?activity prov:wasDerivedFrom ?provenanceUri .
+  OPTIONAL { ?activity oslo-educ:context ?context }
+}
+```
+
+The handler reads the `.rq` file, replaces `$studentPodUri` with the actual value (properly escaped as an IRI), and sends the resulting query to Oxigraph.
+
+### Naming Conventions
+
+- Skill directory: `sparql-query` (lowercase hyphen)
+- Agent IDs: `claire-teacher`, `marc-admin`, `isabelle-policy`, `fatima-parent`, `ayoub-student`, `troll-adversary`
+- Python files: `handler.py` (snake_case)
+- Python functions: `snake_case`
+- Python classes: `PascalCase`
+- SPARQL variables: `?camelCase` (e.g., `?studentName`, `?learningContext`)
+- Template files: `{query-name}.rq` (lowercase hyphen)
+
+### Skill Flow (Complete)
+
+1. Agent calls skill with: `{ query_type: "student-progress", parameters: { studentPodUri: "..." }, agent_role: "claire-teacher" }`
+2. Skill extracts `agent_role` and target Pod URIs from parameters
+3. Skill checks CSS Pod ACLs: does `claire-teacher` role have read access to the target pods?
+4. If NO: return `{ status: "denied", ... }`, log denial, done
+5. If YES: select `.rq` template based on `query_type`
+6. Parameterize template: replace `$studentPodUri` etc. with actual values
+7. Execute parameterized SPARQL query against `http://oxigraph:7878/query` via HTTP POST
+8. Parse results, extract `prov:wasDerivedFrom` URIs
+9. Return: `{ status: "success", results: [...], provenance: [...] }`
+10. Log execution with timing
+
+### Project Structure Notes
+
+Directories/files to create:
+
+```
+agents/
+├── openclaw.config.yaml              # NEW - OpenClaw global config
+└── skills/
+    └── sparql-query/                  # NEW - Shared SPARQL skill
+        ├── skill.yaml                 # NEW - Skill definition
+        ├── handler.py                 # NEW - SPARQL execution + ACL check
+        └── templates/                 # NEW - Parameterized .rq files
+            ├── student-progress.rq    # NEW - Claire's cross-context query
+            ├── cross-context-query.rq # NEW - Generic cross-context
+            ├── aggregate-anonymized.rq # NEW - Isabelle's policy queries
+            ├── parental-view.rq       # NEW - Fatima's unified view
+            └── transfer-profile.rq    # NEW - Marc's transfer scenario
+```
+
+### Dependencies
+
+- **Depends on Epic 1:** Pods must exist with ACLs configured (Story 1.1, 1.4)
+- **Depends on Epic 2:** Data must be loaded in Oxigraph with OSLO mappings and provenance (Stories 2.1, 2.2, 2.3)
+- **Blocks Story 3.2:** Qdrant skill depends on SPARQL skill existing for hybrid query composition
+- **Blocks Stories 3.3-3.7:** All role agent journey stories depend on this skill
+
+### Isolation Notes
+
+- Use `distrobox-host-exec` for accessing podman containers from within the distrobox environment
+- Example: `distrobox-host-exec podman exec oxigraph ...`
+
+### References
+
+- Architecture: `_bmad-output/planning-artifacts/architecture.md` (SEC-2, SEC-3, API-1, API-2, INFRA-1)
+- PRD: `_bmad-output/planning-artifacts/prd.md` (FR14, FR36, NFR Performance, NFR Security, NFR Observability)
+- Epics: `_bmad-output/planning-artifacts/epics.md` (Story 3.1 acceptance criteria)
+- OSLO vocabulary schema: `data/schemas/` (created in Story 2.1)
+- Project structure: Architecture doc, "Complete Project Directory Structure" section
+
+## Dev Agent Record
+
+### Agent Model Used
+### Debug Log References
+### Completion Notes List
+### File List
