@@ -215,10 +215,13 @@ mkdir -p pocpod0/{infra,pipeline,agents,dashboard,scripts,data/{synthetic,schema
 - Variables: `OPENROUTER_API_KEY`, `VOLUME_FLAGS` (`:Z` or empty), `CSS_BASE_URL`, ports
 - **Rationale:** Minimal config surface. One secret (OpenRouter key), one host-specific flag (SELinux).
 
-**Decision INFRA-4: Nginx Content Negotiation (with Timebox)**
+**Decision INFRA-4: Nginx Content Negotiation — SPIKE PASSED (Day 1)**
 - Nginx reverse proxy fronts CSS for Linked Data content negotiation (Turtle, JSON-LD)
-- **Critical spike:** First task in Phase 1. If content negotiation via Nginx exceeds 3 days, skip Nginx for PoC and have agents hit CSS directly.
-- Fallback: agents use CSS's native content negotiation (no Nginx)
+- **Spike verdict:** PASS — completed 2026-03-18 (Day 1 of 3-day timebox)
+- **Key finding:** CSS 7 handles HTTP content negotiation natively via `AcceptPreferenceParser` (RFC 7231). Nginx requires only two changes: `proxy_set_header Accept $http_accept;` to pass the Accept header, and explicit `proxy_pass_header` directives for Solid-specific response headers.
+- **Known limitation:** CSS returns `Link` headers with internal Docker network URLs (`localhost:3000`). Agents must treat these as discovery metadata only, not as dereferenceable URLs — use `CSS_BASE_URL` (port 8080) for all actual requests.
+- **Integration test:** `tests/integration/test-nginx-content-negotiation.sh` — run after `docker-compose up` to verify.
+- Fallback path (not taken): agents hit CSS directly on port 3000
 - **Rationale:** PRD identifies this as the first critical risk. The timebox prevents infrastructure plumbing from consuming PoC time.
 
 **Decision INFRA-5: Dashboard — Python + HTMX (Lightweight)**

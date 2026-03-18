@@ -1,6 +1,6 @@
 # Story 1.2: Nginx Content Negotiation Spike
 
-Status: review
+Status: done
 
 ## Story
 
