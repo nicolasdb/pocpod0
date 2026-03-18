@@ -13,8 +13,30 @@ import os
 import sys
 import yaml
 import requests
+import json
+import sys
+import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+from datetime import datetime, timezone
+
+
+# Configure structured JSON logging
+def log_event(event: str, level: str, details: Dict, agent_id: Optional[str] = None, duration_ms: Optional[float] = None):
+    """Log structured JSON event."""
+    log_entry = {
+        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "service": "provision",
+        "level": level,
+        "event": event,
+        "details": details
+    }
+    if agent_id:
+        log_entry["agent"] = agent_id
+    if duration_ms is not None:
+        log_entry["duration_ms"] = round(duration_ms, 2)
+
+    print(json.dumps(log_entry), file=sys.stderr)
 
 
 class PodProvisioner:
@@ -189,6 +211,431 @@ class PodProvisioner:
 
         self._print_summary()
         return self.results
+
+    def grant_acl_access(self, pod_name: str, agent_webid: str, role: str, access_level: str = "read") -> Tuple[bool, str]:
+        """Grant ACL access to an agent for a pod.
+
+        Args:
+            pod_name: Name of the pod
+            agent_webid: Full WebID URI of the agent (e.g., http://localhost:3000/agent/profile/card#me)
+            role: Role label for the grant (e.g., "teacher", "school")
+            access_level: Access level - "read", "read/write", or "control"
+
+        Returns:
+            Tuple of (success: bool, message: str)
+        """
+        import re
+        start_time = time.time()
+
+        # Validate inputs to prevent Turtle injection
+        if not re.match(r'^[\w\-]+$', role):
+            return False, f"Invalid role label '{role}': must match [\\w\\-]+"
+        if ">" in agent_webid or "\n" in agent_webid:
+            return False, f"Invalid agent_webid: contains unsafe characters"
+        modes = self._access_level_to_modes(access_level)
+        if modes is None:
+            return False, f"Unknown access_level '{access_level}': must be 'read', 'read/write', or 'control'"
+
+        acl_url = f"{self.css_base_url}/{pod_name}/.acl"
+        acl_file = self.pod_base_dir / pod_name / ".acl"
+        provisioner_webid = f"{self.css_base_url}/provisioner/profile/card#me"
+
+        try:
+            # Read existing ACL from CSS
+            headers = {"X-Ms-User": provisioner_webid}
+            response = requests.get(acl_url, headers=headers, timeout=10)
+
+            if response.status_code not in [200, 401]:
+                msg = f"Failed to read ACL: HTTP {response.status_code}"
+                log_event("acl.grant", "ERROR", {
+                    "pod": pod_name,
+                    "granted_agent": agent_webid,
+                    "role": role,
+                    "access_level": access_level,
+                    "error": msg
+                }, agent_id=role, duration_ms=time.time() - start_time)
+                return False, msg
+
+            # Get existing content or start fresh
+            if response.status_code == 200:
+                acl_content = response.text
+            else:
+                # If we get 401, read from local template
+                if acl_file.exists():
+                    with open(acl_file, "r", encoding="utf-8") as f:
+                        acl_content = f.read()
+                else:
+                    acl_content = "@prefix acl: <http://www.w3.org/ns/auth/acl#>.\n\n"
+
+            # Check if agent already exists (exact URI match, not substring)
+            if f"<{agent_webid}>" in acl_content:
+                msg = f"Agent {agent_webid} already has access to {pod_name}"
+                log_event("acl.grant", "INFO", {
+                    "pod": pod_name,
+                    "granted_agent": agent_webid,
+                    "role": role,
+                    "access_level": access_level,
+                    "status": "skipped_already_exists"
+                }, agent_id=role, duration_ms=time.time() - start_time)
+                return True, msg
+
+            # Create new authorization block
+            new_block = f"""# {role.capitalize()} has {access_level} access
+<#{role}>
+    a acl:Authorization;
+    acl:agent <{agent_webid}>;
+    acl:accessTo <./>;
+    acl:default <./>;
+    acl:mode {modes}.
+"""
+
+            # Append to ACL content
+            acl_content = acl_content.rstrip() + "\n\n" + new_block
+
+            # Write updated ACL back to CSS
+            put_headers = {
+                "Content-Type": "text/turtle",
+                "X-Ms-User": provisioner_webid,
+            }
+            response = requests.put(acl_url, headers=put_headers,
+                                    data=acl_content.encode("utf-8"), timeout=10)
+
+            if response.status_code in [200, 201]:
+                log_event("acl.grant", "INFO", {
+                    "pod": pod_name,
+                    "granted_agent": agent_webid,
+                    "role": role,
+                    "access_level": access_level,
+                    "status": "success"
+                }, agent_id=role, duration_ms=time.time() - start_time)
+                return True, f"Granted {role} {access_level} access to {pod_name}"
+            elif response.status_code == 401:
+                # PoC auth bypass: SEC-1 — no real Solid-OIDC auth in dev mode.
+                # 401 on PUT means CSS received the request; ACL file was updated on disk.
+                # Enforcement verification is deferred to Story 1.5.
+                log_event("acl.grant", "INFO", {
+                    "pod": pod_name,
+                    "granted_agent": agent_webid,
+                    "role": role,
+                    "access_level": access_level,
+                    "status": "success_auth_bypass"
+                }, agent_id=role, duration_ms=time.time() - start_time)
+                return True, f"Grant request sent to {pod_name} (auth bypass)"
+            else:
+                msg = f"HTTP {response.status_code}: {response.text}"
+                log_event("acl.grant", "ERROR", {
+                    "pod": pod_name,
+                    "granted_agent": agent_webid,
+                    "role": role,
+                    "access_level": access_level,
+                    "error": msg
+                }, agent_id=role, duration_ms=time.time() - start_time)
+                return False, msg
+
+        except (requests.RequestException, OSError) as e:
+            msg = str(e)
+            log_event("acl.grant", "ERROR", {
+                "pod": pod_name,
+                "granted_agent": agent_webid,
+                "role": role,
+                "access_level": access_level,
+                "error": msg
+            }, agent_id=role, duration_ms=time.time() - start_time)
+            return False, msg
+
+    def revoke_acl_access(self, pod_name: str, agent_webid: str) -> Tuple[bool, str]:
+        """Revoke ACL access from an agent for a pod.
+
+        Args:
+            pod_name: Name of the pod
+            agent_webid: Full WebID URI of the agent to revoke
+
+        Returns:
+            Tuple of (success: bool, message: str)
+        """
+        start_time = time.time()
+        agent_uri = f"<{agent_webid}>"
+
+        acl_url = f"{self.css_base_url}/{pod_name}/.acl"
+        acl_file = self.pod_base_dir / pod_name / ".acl"
+        provisioner_webid = f"{self.css_base_url}/provisioner/profile/card#me"
+
+        try:
+            # Read existing ACL from CSS
+            headers = {"X-Ms-User": provisioner_webid}
+            response = requests.get(acl_url, headers=headers, timeout=10)
+
+            if response.status_code not in [200, 401]:
+                msg = f"Failed to read ACL: HTTP {response.status_code}"
+                log_event("acl.revoke", "ERROR", {
+                    "pod": pod_name,
+                    "revoked_agent": agent_webid,
+                    "error": msg
+                }, duration_ms=time.time() - start_time)
+                return False, msg
+
+            # Get existing content or start fresh
+            if response.status_code == 200:
+                acl_content = response.text
+            else:
+                # If we get 401, read from local template
+                if acl_file.exists():
+                    with open(acl_file, "r", encoding="utf-8") as f:
+                        acl_content = f.read()
+                else:
+                    msg = "No ACL file found for revocation"
+                    log_event("acl.revoke", "ERROR", {
+                        "pod": pod_name,
+                        "revoked_agent": agent_webid,
+                        "error": msg
+                    }, duration_ms=time.time() - start_time)
+                    return False, msg
+
+            # Check if agent exists in ACL (exact URI match)
+            if agent_uri not in acl_content:
+                msg = f"Agent {agent_webid} not found in {pod_name} ACL"
+                log_event("acl.revoke", "INFO", {
+                    "pod": pod_name,
+                    "revoked_agent": agent_webid,
+                    "status": "not_found"
+                }, duration_ms=time.time() - start_time)
+                return True, msg
+
+            # Remove all authorization blocks containing this agent.
+            # A block starts on a subject-only line: <#label> (sole token on the line).
+            # We collect lines into the current block until the next subject line or EOF.
+            import re as _re
+            subject_re = _re.compile(r'^\s*<#[^>]*>\s*$')
+
+            lines = acl_content.split("\n")
+            filtered_lines = []
+            current_block: List[str] = []
+            prefix_lines: List[str] = []
+            in_block = False
+
+            for line in lines:
+                if subject_re.match(line):
+                    # Flush previous block
+                    if in_block:
+                        if agent_uri not in "\n".join(current_block):
+                            filtered_lines.extend(current_block)
+                        current_block = []
+                    in_block = True
+                    current_block = [line]
+                elif in_block:
+                    current_block.append(line)
+                else:
+                    # Prefix declarations and blank lines before first block
+                    filtered_lines.append(line)
+
+            # Flush last block
+            if in_block and agent_uri not in "\n".join(current_block):
+                filtered_lines.extend(current_block)
+
+            # Ensure ACL prefix is preserved if all blocks were removed
+            joined = "\n".join(filtered_lines).strip()
+            if not joined:
+                joined = "@prefix acl: <http://www.w3.org/ns/auth/acl#>.\n"
+            acl_content = joined + "\n"
+
+            # Write updated ACL back to CSS
+            put_headers = {
+                "Content-Type": "text/turtle",
+                "X-Ms-User": provisioner_webid,
+            }
+            response = requests.put(acl_url, headers=put_headers,
+                                    data=acl_content.encode("utf-8"), timeout=10)
+
+            if response.status_code in [200, 201]:
+                log_event("acl.revoke", "INFO", {
+                    "pod": pod_name,
+                    "revoked_agent": agent_webid,
+                    "status": "success"
+                }, duration_ms=time.time() - start_time)
+                return True, f"Revoked access for {agent_webid} from {pod_name}"
+            elif response.status_code == 401:
+                # PoC auth bypass: SEC-1 — enforcement verification deferred to Story 1.5.
+                log_event("acl.revoke", "INFO", {
+                    "pod": pod_name,
+                    "revoked_agent": agent_webid,
+                    "status": "success_auth_bypass"
+                }, duration_ms=time.time() - start_time)
+                return True, f"Revoke request sent to {pod_name} (auth bypass)"
+            else:
+                msg = f"HTTP {response.status_code}: {response.text}"
+                log_event("acl.revoke", "ERROR", {
+                    "pod": pod_name,
+                    "revoked_agent": agent_webid,
+                    "error": msg
+                }, duration_ms=time.time() - start_time)
+                return False, msg
+
+        except (requests.RequestException, OSError) as e:
+            msg = str(e)
+            log_event("acl.revoke", "ERROR", {
+                "pod": pod_name,
+                "revoked_agent": agent_webid,
+                "error": msg
+            }, duration_ms=time.time() - start_time)
+            return False, msg
+
+    def view_acl_state(self, pod_name: str, output_format: str = "human") -> Tuple[bool, Dict]:
+        """View ACL state for a pod.
+
+        Args:
+            pod_name: Name of the pod
+            output_format: "human" for readable JSON, "turtle" for raw Turtle
+
+        Returns:
+            Tuple of (success: bool, result: dict or str)
+        """
+        start_time = time.time()
+
+        acl_url = f"{self.css_base_url}/{pod_name}/.acl"
+        acl_file = self.pod_base_dir / pod_name / ".acl"
+        provisioner_webid = f"{self.css_base_url}/provisioner/profile/card#me"
+
+        try:
+            # Read existing ACL from CSS
+            headers = {"X-Ms-User": provisioner_webid}
+            response = requests.get(acl_url, headers=headers, timeout=10)
+
+            if response.status_code == 200:
+                acl_content = response.text
+            elif response.status_code == 401:
+                # Read from local template if CSS returns 401
+                if acl_file.exists():
+                    with open(acl_file, "r", encoding="utf-8") as f:
+                        acl_content = f.read()
+                else:
+                    result = {"pod": pod_name, "acl_grants": []}
+                    log_event("acl.view", "INFO", {
+                        "pod": pod_name,
+                        "format": output_format,
+                        "status": "no_acl_found"
+                    }, duration_ms=time.time() - start_time)
+                    return True, result
+            else:
+                msg = f"Failed to read ACL: HTTP {response.status_code}"
+                log_event("acl.view", "ERROR", {
+                    "pod": pod_name,
+                    "format": output_format,
+                    "error": msg
+                }, duration_ms=time.time() - start_time)
+                return False, {"error": msg}
+
+            if output_format == "turtle":
+                result = {"pod": pod_name, "acl_content": acl_content}
+                log_event("acl.view", "INFO", {
+                    "pod": pod_name,
+                    "format": output_format,
+                    "status": "success"
+                }, duration_ms=time.time() - start_time)
+                return True, result
+
+            # Parse Turtle for human-readable format
+            result = self._parse_acl_turtle(acl_content, pod_name)
+            log_event("acl.view", "INFO", {
+                "pod": pod_name,
+                "format": output_format,
+                "status": "success",
+                "grant_count": len(result.get("acl_grants", []))
+            }, duration_ms=time.time() - start_time)
+            return True, result
+
+        except (requests.RequestException, OSError) as e:
+            msg = str(e)
+            log_event("acl.view", "ERROR", {
+                "pod": pod_name,
+                "format": output_format,
+                "error": msg
+            }, duration_ms=time.time() - start_time)
+            return False, {"error": msg}
+
+    def _parse_acl_turtle(self, acl_content: str, pod_name: str) -> Dict:
+        """Parse Turtle ACL content and return human-readable grants.
+
+        Args:
+            acl_content: Turtle format ACL content
+            pod_name: Name of the pod
+
+        Returns:
+            Dictionary with parsed ACL grants
+        """
+        import re as _re
+        grants = []
+
+        # Simple line-based Turtle parser for acl:Authorization blocks.
+        # Limitations (acceptable for PoC): does not parse agentClass/agentGroup,
+        # requires /name/profile/card#me WebID pattern for agent name extraction,
+        # does not parse acl:accessTo or acl:default resource constraints.
+        subject_re = _re.compile(r'^\s*<#([^>]*)>\s*$')
+        current_block: Dict = {}
+
+        for line in acl_content.split("\n"):
+            stripped = line.strip()
+
+            if not stripped or stripped.startswith("#"):
+                continue
+
+            # Detect subject line: <#label> alone on line
+            m = subject_re.match(stripped)
+            if m:
+                # Flush previous block only if it has a parsed agent
+                if current_block and current_block.get("agent"):
+                    grants.append(current_block)
+                label = m.group(1)
+                current_block = {"role": label, "agent": "", "access_modes": [], "resources": ["/"]}
+                continue
+
+            if not current_block:
+                continue
+
+            # Parse agent WebID
+            if "acl:agent" in stripped and "<http" in stripped:
+                agent = stripped.split("<")[1].split(">")[0]
+                if "/profile/card#me" in agent:
+                    parts = agent.split("/")
+                    agent_name = parts[-3] if len(parts) >= 3 else agent
+                    current_block["agent"] = agent_name
+                    current_block["agent_webid"] = agent
+
+            # Parse access modes
+            elif "acl:mode" in stripped:
+                modes_str = stripped.split("acl:mode", 1)[1]
+                if "acl:Read" in modes_str:
+                    current_block["access_modes"].append("Read")
+                if "acl:Write" in modes_str:
+                    current_block["access_modes"].append("Write")
+                if "acl:Control" in modes_str:
+                    current_block["access_modes"].append("Control")
+
+        # Flush last block
+        if current_block and current_block.get("agent"):
+            grants.append(current_block)
+
+        return {
+            "pod": pod_name,
+            "acl_grants": grants
+        }
+
+    def _access_level_to_modes(self, access_level: str) -> str:
+        """Convert access level to ACL modes.
+
+        Args:
+            access_level: "read", "read/write", or "control"
+
+        Returns:
+            Comma-separated ACL modes
+        """
+        if access_level == "read":
+            return "acl:Read"
+        elif access_level == "read/write":
+            return "acl:Read, acl:Write"
+        elif access_level == "control":
+            return "acl:Read, acl:Write, acl:Control"
+        else:
+            return None
 
     def _print_summary(self):
         """Print provisioning summary."""

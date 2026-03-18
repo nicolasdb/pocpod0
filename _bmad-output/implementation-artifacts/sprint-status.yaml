@@ -11,8 +11,8 @@ development_status:
   epic-1: in-progress
   story-1-1-project-scaffold-service-orchestration: done
   story-1-2-nginx-content-negotiation-spike: done
-  story-1-3-pod-provisioning-acl-configuration: review
-  story-1-4-acl-grant-revocation-audit: ready-for-dev
+  story-1-3-pod-provisioning-acl-configuration: done
+  story-1-4-acl-grant-revocation-audit: done
   story-1-5-troll-acl-enforcement-validation: ready-for-dev
   epic-1-retrospective: optional
 

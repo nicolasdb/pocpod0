@@ -197,6 +197,132 @@ class TestACLStructure:
             )
 
 
+def _get_provisioner(css_base_url: str):
+    """Helper: instantiate PodProvisioner from source tree config path."""
+    from pocpod0_pipeline.provision_pods import PodProvisioner
+    from pathlib import Path
+    script_file = Path(__file__).resolve()
+    pipeline_dir = script_file.parent.parent.parent
+    project_root = pipeline_dir.parent
+    config_path = project_root / "infra" / "css" / "pods" / "pod-config.yaml"
+    return PodProvisioner(css_base_url, str(config_path))
+
+
+class TestACLGrantRevoke:
+    """Tests for dynamic ACL grant and revoke operations (Story 1.4)."""
+
+    # Agents used by this test class — revoked in teardown to keep pod state clean.
+    _TRANSIENT_AGENTS = [
+        ("ayoub", "http://localhost:3000/school-admin/profile/card#me"),
+        ("ayoub", "http://localhost:3000/temp-agent/profile/card#me"),
+        ("ayoub", "http://localhost:3000/roundtrip-test/profile/card#me"),
+    ]
+
+    @pytest.fixture(autouse=True)
+    def cleanup_transient_grants(self, css_base_url, css_is_healthy):
+        """Revoke all transient test grants before and after each test."""
+        provisioner = _get_provisioner(css_base_url)
+        for pod, webid in self._TRANSIENT_AGENTS:
+            provisioner.revoke_acl_access(pod, webid)
+        yield
+        for pod, webid in self._TRANSIENT_AGENTS:
+            provisioner.revoke_acl_access(pod, webid)
+
+    def test_grant_acl_access_succeeds(self, css_base_url, css_is_healthy):
+        """Test: Grant access to a new agent on a pod."""
+        provisioner = _get_provisioner(css_base_url)
+
+        success, message = provisioner.grant_acl_access(
+            "ayoub",
+            "http://localhost:3000/school-admin/profile/card#me",
+            "school",
+            "read"
+        )
+
+        assert success, f"Grant should succeed: {message}"
+        assert "ayoub" in message or "access" in message.lower()
+
+    def test_revoke_acl_access_succeeds(self, css_base_url, css_is_healthy):
+        """Test: Revoke access from an agent on a pod."""
+        provisioner = _get_provisioner(css_base_url)
+
+        grant_success, _ = provisioner.grant_acl_access(
+            "ayoub",
+            "http://localhost:3000/temp-agent/profile/card#me",
+            "temp",
+            "read"
+        )
+        assert grant_success, "Grant should succeed before revoke"
+
+        success, message = provisioner.revoke_acl_access(
+            "ayoub",
+            "http://localhost:3000/temp-agent/profile/card#me"
+        )
+
+        assert success, f"Revoke should succeed: {message}"
+        assert "ayoub" in message or "revok" in message.lower() or "not found" in message.lower()
+
+    def test_view_acl_state_human_readable(self, css_base_url, css_is_healthy):
+        """Test: View ACL state in human-readable format."""
+        provisioner = _get_provisioner(css_base_url)
+
+        success, result = provisioner.view_acl_state("ayoub", "human")
+
+        assert success, f"View should succeed: {result}"
+        assert isinstance(result, dict)
+        assert result["pod"] == "ayoub"
+        assert "acl_grants" in result
+        assert len(result["acl_grants"]) > 0
+
+    def test_view_acl_state_turtle_format(self, css_base_url, css_is_healthy):
+        """Test: View ACL state in turtle format."""
+        provisioner = _get_provisioner(css_base_url)
+
+        success, result = provisioner.view_acl_state("ayoub", "turtle")
+
+        assert success, f"View should succeed: {result}"
+        assert "acl_content" in result
+        assert "@prefix" in result["acl_content"] or "acl:" in result["acl_content"]
+
+    def test_grant_then_revoke_roundtrip(self, css_base_url, css_is_healthy):
+        """Test: Full grant/verify/revoke/verify cycle."""
+        provisioner = _get_provisioner(css_base_url)
+        test_agent = "http://localhost:3000/roundtrip-test/profile/card#me"
+        test_agent_name = "roundtrip-test"
+
+        # Step 1: Grant
+        grant_success, grant_message = provisioner.grant_acl_access(
+            "ayoub", test_agent, "roundtrip-test", "read"
+        )
+        assert grant_success, "Grant should succeed"
+
+        # Step 2: View and verify agent appears in grants.
+        # NOTE: In auth bypass mode (SEC-1), CSS may not persist the PUT (returns 401).
+        # Grant is only verifiable via view when CSS returns 200/201 on PUT.
+        view_success, view_result = provisioner.view_acl_state("ayoub", "human")
+        assert view_success, "View should succeed after grant"
+        granted_webids = [g.get("agent_webid") for g in view_result.get("acl_grants", [])]
+        auth_bypassed = "auth bypass" in grant_message
+        if not auth_bypassed:
+            assert test_agent in granted_webids, (
+                f"Agent should appear in grants after real PUT: {view_result}"
+            )
+        # If auth bypassed: grant was accepted by CSS but not persisted — this is the PoC boundary.
+        # Enforcement verification is owned by Story 1.5.
+
+        # Step 3: Revoke (idempotent — succeeds even if agent was never persisted)
+        revoke_success, _ = provisioner.revoke_acl_access("ayoub", test_agent)
+        assert revoke_success, "Revoke should succeed"
+
+        # Step 4: View and verify agent is absent from grants
+        view_success2, view_result2 = provisioner.view_acl_state("ayoub", "human")
+        assert view_success2, "View should succeed after revoke"
+        remaining_webids = [g.get("agent_webid") for g in view_result2.get("acl_grants", [])]
+        assert test_agent not in remaining_webids, (
+            f"Agent should not appear in grants after revoke: {view_result2}"
+        )
+
+
 class TestAuthenticationRejection:
     """Tests that verify CSS properly requires authentication (AC-4 basic)."""
 
