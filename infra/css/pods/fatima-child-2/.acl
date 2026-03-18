@@ -1,0 +1,33 @@
+@prefix acl: <http://www.w3.org/ns/auth/acl#>.
+
+# Child owner: full control
+<#owner>
+    a acl:Authorization;
+    acl:agent <http://localhost:3000/fatima-child-2/profile/card#me>;
+    acl:accessTo <./>;
+    acl:default <./>;
+    acl:mode acl:Read, acl:Write, acl:Control.
+
+# Fatima (parent): read access
+<#parent>
+    a acl:Authorization;
+    acl:agent <http://localhost:3000/fatima/profile/card#me>;
+    acl:accessTo <./>;
+    acl:default <./>;
+    acl:mode acl:Read.
+
+# Marc (admin): read access
+<#admin>
+    a acl:Authorization;
+    acl:agent <http://localhost:3000/marc/profile/card#me>;
+    acl:accessTo <./>;
+    acl:default <./>;
+    acl:mode acl:Read.
+
+# Isabelle (regional): read access
+<#regional>
+    a acl:Authorization;
+    acl:agent <http://localhost:3000/isabelle/profile/card#me>;
+    acl:accessTo <./>;
+    acl:default <./>;
+    acl:mode acl:Read.

@@ -1,0 +1,41 @@
+@prefix acl: <http://www.w3.org/ns/auth/acl#>.
+
+# Marc (admin): read AND write access (+ Control)
+<#admin>
+    a acl:Authorization;
+    acl:agent <http://localhost:3000/marc/profile/card#me>;
+    acl:accessTo <./>;
+    acl:default <./>;
+    acl:mode acl:Read, acl:Write, acl:Control.
+
+# Claire (tutor): read access
+<#tutor>
+    a acl:Authorization;
+    acl:agent <http://localhost:3000/claire/profile/card#me>;
+    acl:accessTo <./>;
+    acl:default <./>;
+    acl:mode acl:Read.
+
+# Fatima (parent): read access
+<#parent>
+    a acl:Authorization;
+    acl:agent <http://localhost:3000/fatima/profile/card#me>;
+    acl:accessTo <./>;
+    acl:default <./>;
+    acl:mode acl:Read.
+
+# Isabelle (regional): read access
+<#regional>
+    a acl:Authorization;
+    acl:agent <http://localhost:3000/isabelle/profile/card#me>;
+    acl:accessTo <./>;
+    acl:default <./>;
+    acl:mode acl:Read.
+
+# Ayoub (student): read access
+<#student-ayoub>
+    a acl:Authorization;
+    acl:agent <http://localhost:3000/ayoub/profile/card#me>;
+    acl:accessTo <./>;
+    acl:default <./>;
+    acl:mode acl:Read.

@@ -1,0 +1,54 @@
+# Pod Configuration for Story 1.3
+# Defines all pods to be provisioned and their metadata
+
+individual_pods:
+  - name: ayoub
+    owner: ayoub
+    description: "Ayoub's personal learning pod"
+
+  - name: claire-student-1
+    owner: claire-student-1
+    description: "Claire's first student"
+
+  - name: claire-student-2
+    owner: claire-student-2
+    description: "Claire's second student"
+
+  - name: fatima-child-1
+    owner: fatima-child-1
+    description: "Fatima's first child"
+
+  - name: fatima-child-2
+    owner: fatima-child-2
+    description: "Fatima's second child"
+
+community_pods:
+  - name: school-community
+    owner: school
+    description: "Shared school community pod"
+
+# Agent identities (simulated, no real OIDC authentication per SEC-1)
+agents:
+  ayoub:
+    role: Student
+    webid: "http://localhost:3000/ayoub/profile/card#me"
+
+  claire:
+    role: Tutor
+    webid: "http://localhost:3000/claire/profile/card#me"
+
+  fatima:
+    role: Parent
+    webid: "http://localhost:3000/fatima/profile/card#me"
+
+  marc:
+    role: Admin
+    webid: "http://localhost:3000/marc/profile/card#me"
+
+  isabelle:
+    role: Regional
+    webid: "http://localhost:3000/isabelle/profile/card#me"
+
+  troll:
+    role: Adversary
+    webid: "http://localhost:3000/troll/profile/card#me"

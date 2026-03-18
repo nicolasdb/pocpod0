@@ -13,8 +13,8 @@ authors = [
 ]
 
 dependencies = [
-    # Core dependencies (to be filled in by relevant stories)
-    # Example: rdflib>=7.0.0
+    "requests>=2.31.0",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]

@@ -1,0 +1,33 @@
+@prefix acl: <http://www.w3.org/ns/auth/acl#>.
+
+# Ayoub has full control of his own pod
+<#owner>
+    a acl:Authorization;
+    acl:agent <http://localhost:3000/ayoub/profile/card#me>;
+    acl:accessTo <./>;
+    acl:default <./>;
+    acl:mode acl:Read, acl:Write, acl:Control.
+
+# Claire (tutor) has read access
+<#tutor>
+    a acl:Authorization;
+    acl:agent <http://localhost:3000/claire/profile/card#me>;
+    acl:accessTo <./>;
+    acl:default <./>;
+    acl:mode acl:Read.
+
+# Marc (admin) has read access
+<#admin>
+    a acl:Authorization;
+    acl:agent <http://localhost:3000/marc/profile/card#me>;
+    acl:accessTo <./>;
+    acl:default <./>;
+    acl:mode acl:Read.
+
+# Isabelle (regional) has read access (aggregate)
+<#regional>
+    a acl:Authorization;
+    acl:agent <http://localhost:3000/isabelle/profile/card#me>;
+    acl:accessTo <./>;
+    acl:default <./>;
+    acl:mode acl:Read.
