@@ -6,11 +6,14 @@ services:
       - "${CSS_PORT:-3000}:3000"
     volumes:
       - css-data:/data
+      - ./infra/css/config.json:/config.json:ro${VOLUME_FLAGS:-}
     command:
       - "-p"
       - "3000"
       - "-f"
       - "/data"
+      - "-c"
+      - "/config.json"
     healthcheck:
       test: ["CMD-SHELL", "node -e \"const n=require('net');const c=n.createConnection(3000,'localhost');c.on('connect',()=>{c.end();process.exit(0)});c.on('error',()=>process.exit(1))\""]
       interval: 10s

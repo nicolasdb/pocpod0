@@ -99,12 +99,11 @@ class PodProvisioner:
         pod_url = f"{self.css_base_url}/{pod_name}/"
 
         try:
-            # CSS 7 requires authentication to create pods
-            # Try using UnsecureWebIdExtractor approach: set X-Ms-User header
-            # This allows setting an identity without OIDC authentication
+            # CSS debug-auth-header (SEC-1): Authorization: WebID <webid>
+            # UnsecureWebIdExtractor reads this for identity simulation. PoC only.
             headers = {
                 "Content-Type": "text/turtle",
-                "X-Ms-User": "http://localhost:3000/provisioner/profile/card#me",
+                "Authorization": "WebID http://localhost:3000/provisioner/profile/card#me",
             }
 
             response = requests.put(
@@ -114,15 +113,15 @@ class PodProvisioner:
                 timeout=10,
             )
 
-            if response.status_code in [200, 201]:
+            if response.status_code in [200, 201, 205]:
                 return True, pod_url
             elif response.status_code == 409:
                 # Pod already exists - that's OK
                 return True, pod_url
-            elif response.status_code == 401:
-                # Try alternative: maybe the pod directory already exists
-                # and we just need to apply ACLs
-                return True, pod_url
+            elif response.status_code in [401, 403]:
+                # Auth failure on pod creation — provisioner credentials or ACL bootstrap issue.
+                # Return False so the caller sees the error rather than silently proceeding.
+                return False, f"HTTP {response.status_code}: provisioner auth failed creating {pod_name}"
             else:
                 return False, f"HTTP {response.status_code}: {response.text}"
         except requests.RequestException as e:
@@ -148,7 +147,7 @@ class PodProvisioner:
             acl_url = f"{self.css_base_url}/{pod_name}/.acl"
             headers = {
                 "Content-Type": "text/turtle",
-                "X-Ms-User": "http://localhost:3000/provisioner/profile/card#me",
+                "Authorization": "WebID http://localhost:3000/provisioner/profile/card#me",
             }
             response = requests.put(
                 acl_url,
@@ -157,13 +156,13 @@ class PodProvisioner:
                 timeout=10,
             )
 
-            if response.status_code in [200, 201]:
+            if response.status_code in [200, 201, 205]:
+                # 205 = Reset Content (CSS success response for ACL PUT)
                 return True, f"ACL applied to {pod_name}"
-            elif response.status_code == 401:
-                # Even if we can't apply via HTTP (auth issue), the file exists
-                return True, f"ACL file exists for {pod_name} (skipped upload)"
             else:
-                return False, f"HTTP {response.status_code}: {response.text}"
+                # 401/403 means provisioner lacks Control on this pod's ACL —
+                # the ACL was NOT applied. Surface this as a real failure.
+                return False, f"HTTP {response.status_code}: ACL upload failed for {pod_name}"
         except (FileNotFoundError, requests.RequestException) as e:
             return False, str(e)
 
@@ -242,7 +241,7 @@ class PodProvisioner:
 
         try:
             # Read existing ACL from CSS
-            headers = {"X-Ms-User": provisioner_webid}
+            headers = {"Authorization": f"WebID {provisioner_webid}"}
             response = requests.get(acl_url, headers=headers, timeout=10)
 
             if response.status_code not in [200, 401]:
@@ -295,12 +294,12 @@ class PodProvisioner:
             # Write updated ACL back to CSS
             put_headers = {
                 "Content-Type": "text/turtle",
-                "X-Ms-User": provisioner_webid,
+                "Authorization": f"WebID {provisioner_webid}",
             }
             response = requests.put(acl_url, headers=put_headers,
                                     data=acl_content.encode("utf-8"), timeout=10)
 
-            if response.status_code in [200, 201]:
+            if response.status_code in [200, 201, 205]:
                 log_event("acl.grant", "INFO", {
                     "pod": pod_name,
                     "granted_agent": agent_webid,
@@ -362,7 +361,7 @@ class PodProvisioner:
 
         try:
             # Read existing ACL from CSS
-            headers = {"X-Ms-User": provisioner_webid}
+            headers = {"Authorization": f"WebID {provisioner_webid}"}
             response = requests.get(acl_url, headers=headers, timeout=10)
 
             if response.status_code not in [200, 401]:
@@ -441,12 +440,12 @@ class PodProvisioner:
             # Write updated ACL back to CSS
             put_headers = {
                 "Content-Type": "text/turtle",
-                "X-Ms-User": provisioner_webid,
+                "Authorization": f"WebID {provisioner_webid}",
             }
             response = requests.put(acl_url, headers=put_headers,
                                     data=acl_content.encode("utf-8"), timeout=10)
 
-            if response.status_code in [200, 201]:
+            if response.status_code in [200, 201, 205]:
                 log_event("acl.revoke", "INFO", {
                     "pod": pod_name,
                     "revoked_agent": agent_webid,
@@ -497,7 +496,7 @@ class PodProvisioner:
 
         try:
             # Read existing ACL from CSS
-            headers = {"X-Ms-User": provisioner_webid}
+            headers = {"Authorization": f"WebID {provisioner_webid}"}
             response = requests.get(acl_url, headers=headers, timeout=10)
 
             if response.status_code == 200:

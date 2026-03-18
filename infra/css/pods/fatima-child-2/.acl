@@ -16,18 +16,13 @@
     acl:default <./>;
     acl:mode acl:Read.
 
-# Marc (admin): read access
-<#admin>
-    a acl:Authorization;
-    acl:agent <http://localhost:3000/marc/profile/card#me>;
-    acl:accessTo <./>;
-    acl:default <./>;
-    acl:mode acl:Read.
+# Marc (admin): no direct individual pod access — school-community only (review fix P4)
+# Isabelle (regional): no direct individual pod access — school-community only (review fix P4)
 
-# Isabelle (regional): read access
-<#regional>
+# Provisioner has full control for pod management (SEC-1, PoC only)
+<#provisioner>
     a acl:Authorization;
-    acl:agent <http://localhost:3000/isabelle/profile/card#me>;
+    acl:agent <http://localhost:3000/provisioner/profile/card#me>;
     acl:accessTo <./>;
     acl:default <./>;
-    acl:mode acl:Read.
+    acl:mode acl:Read, acl:Write, acl:Control.

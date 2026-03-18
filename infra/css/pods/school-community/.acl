@@ -39,3 +39,11 @@
     acl:accessTo <./>;
     acl:default <./>;
     acl:mode acl:Read.
+
+# Provisioner has full control for pod management (SEC-1, PoC only)
+<#provisioner>
+    a acl:Authorization;
+    acl:agent <http://localhost:3000/provisioner/profile/card#me>;
+    acl:accessTo <./>;
+    acl:default <./>;
+    acl:mode acl:Read, acl:Write, acl:Control.
