@@ -24,7 +24,7 @@ And the recovered statement is valid xAPI JSON
 
 **AC3: Recovery works across all personas**
 Given the full set of loaded triples in Oxigraph
-When recovery is attempted for at least one statement per persona (Ayoub, Claire-student-1, Claire-student-2, Fatima-child-1, Fatima-child-2)
+When recovery is attempted for at least one statement per persona (Ayoub, Lucas, Emma, Youssef, Nour)
 Then all recoveries succeed
 
 **AC4: Verification is automated and repeatable**
@@ -76,10 +76,10 @@ And results are logged in structured JSON format
 - [ ] Test: `test_single_statement_recovery` — pick one known statement, verify full round-trip
 - [ ] Test: `test_recovery_per_persona` — recover at least one statement per persona:
   - Ayoub: recover a learning activity statement
-  - Claire-student-1: recover an assessment statement (the failing math test)
-  - Claire-student-2: recover a course activity statement
-  - Fatima-child-1: recover a tutoring session statement
-  - Fatima-child-2: recover an extracurricular statement
+  - Lucas: recover an assessment statement (the failing math test)
+  - Emma: recover a course activity statement
+  - Youssef: recover a tutoring session statement
+  - Nour: recover an extracurricular statement
 - [ ] Test: `test_batch_recovery` — recover a random sample of 50 statements, verify all match
 - [ ] Test: `test_recovered_xapi_valid` — recovered statements pass xAPI validation
 - [ ] Test: `test_comparison_detects_differences` — intentionally modify a recovered statement and verify comparison catches it

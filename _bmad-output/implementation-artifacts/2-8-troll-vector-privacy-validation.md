@@ -268,8 +268,8 @@ query_vector = response.json()["data"][0]["embedding"]
 ### Known Synthetic Data Names (Ground Truth for PII Detection)
 
 From the PRD and architecture docs, the synthetic dataset includes:
-- **Students:** Ayoub, Claire's students (claire-student-1, claire-student-2)
-- **Parents:** Fatima (children: fatima-child-1, fatima-child-2)
+- **Students:** Ayoub, Lucas and Emma (Claire's students), Youssef and Nour (Fatima's children)
+- **Parents:** Fatima
 - **Teachers:** Claire
 - **Administrators:** Marc
 - **Schools:** Brussels Flemish school, Liege Wallonia school

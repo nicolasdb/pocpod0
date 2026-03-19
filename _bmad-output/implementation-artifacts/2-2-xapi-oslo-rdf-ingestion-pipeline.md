@@ -11,7 +11,7 @@ so that the three-layer data architecture has realistic learning data flowing th
 ## Acceptance Criteria
 
 **AC1: Synthetic xAPI dataset generated**
-Given the 5 learner personas (Ayoub, Claire's 2 students, Fatima's 2 children)
+Given the 5 learner personas (Ayoub, Claire's 2 students, Fatima's children: Youssef and Nour)
 When the dataset generation script executes
 Then ~10K xAPI statements are produced in `data/synthetic/`
 And statements cover: course activities, assessments, tutoring sessions, self-study, extracurricular (robotics workshop), cross-institutional contexts
@@ -21,7 +21,7 @@ Given the generated dataset
 When analyzed for scenario coverage
 Then data supports:
 - Claire's cross-context query (struggling student with hidden tutoring progress)
-- Fatima's multi-child unified view (two children, two schools, NL+FR)
+- Fatima's multi-child unified view (Youssef + Nour, two schools, NL+FR)
 - Marc's transfer scenario (student transferring NL->FR)
 - Isabelle's aggregate policy query (STEM program impact across communities)
 - Ayoub's full learning history for governance/deletion scenarios
@@ -63,13 +63,13 @@ And the conversion is lossless — original xAPI data is preserved within the RD
 - [ ] Create `pipeline/src/pocpod0_pipeline/generate_dataset.py`
 - [ ] Define the 5 personas and their learning contexts:
   - **Ayoub:** Full K-12 history — math courses, science labs, Khan Academy self-study, robotics workshop, assessments across NL school
-  - **Claire-student-1:** Struggling in math at school, thriving in gemeente tutoring (geometric visualization approach), moderate self-study
-  - **Claire-student-2:** Average student, some tutoring, standard course progression
-  - **Fatima-child-1:** NL school, language arts + STEM activities, robotics workshop participant
-  - **Fatima-child-2:** FR school, similar subjects, different activity providers
+  - **Lucas (Claire's student):** Struggling in math at school, thriving in gemeente tutoring (geometric visualization approach), moderate self-study
+  - **Emma (Claire's student):** Average student, some tutoring, standard course progression
+  - **Youssef (Fatima's child):** NL school, language arts + STEM activities, robotics workshop participant
+  - **Nour (Fatima's child):** FR school, similar subjects, different activity providers
 - [ ] Generate ~10K xAPI statements distributed across personas:
   - Course activities (attended, completed, progressed)
-  - Assessments (scored, passed, failed) — ensure Claire-student-1 fails school math tests but excels in tutoring
+  - Assessments (scored, passed, failed) — ensure Lucas fails school math tests but excels in tutoring
   - Tutoring sessions (gemeente-funded, private)
   - Self-study (Khan Academy, online resources)
   - Extracurricular (robotics workshop with applied math exercises)
@@ -154,14 +154,14 @@ And the conversion is lossless — original xAPI data is preserved within the RD
 The dataset must be carefully designed to support all 5 demo journeys. Key data points:
 
 **Claire's scenario (cross-context insight):**
-- Claire-student-1 (Ayoub is also this student in the demo) fails math assessments at school
+- Lucas (Ayoub is also this student in the demo) fails math assessments at school
 - Same student excels in gemeente-funded tutoring (geometric visualization approach)
 - Same student has Khan Academy self-study activity
 - The hybrid query (SPARQL + vector) must be able to surface the tutoring insight that graph-only misses
 
 **Fatima's scenario (multi-child view):**
-- Fatima-child-1 attends NL school — language arts strong, STEM activities, robotics
-- Fatima-child-2 attends FR school — similar subjects, different providers
+- Youssef attends NL school — language arts strong, STEM activities, robotics
+- Nour attends FR school — similar subjects, different providers
 - Both children have extracurricular activities
 
 **Marc's scenario (transfer):**

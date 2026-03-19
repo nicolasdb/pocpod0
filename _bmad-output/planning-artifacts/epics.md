@@ -250,7 +250,7 @@ So that my learning data is stored under my exclusive control with appropriate a
 
 **Given** CSS is running and healthy
 **When** the provisioning script (`scripts/seed-pods.sh`) executes
-**Then** 5 individual pods are created (Ayoub, Claire-student-1, Claire-student-2, Fatima-child-1, Fatima-child-2)
+**Then** 5 individual pods are created (Ayoub, Lucas, Emma, Youssef, Nour)
 **And** 1 community pod is created (school-community)
 
 **Given** pods are provisioned
