@@ -8,13 +8,13 @@ communication_language: English
 # Sprint Status Tracking
 development_status:
   # Epic 1: Pod Sovereignty & Access Control
-  epic-1: in-progress
+  epic-1: done
   story-1-1-project-scaffold-service-orchestration: done
   story-1-2-nginx-content-negotiation-spike: done
   story-1-3-pod-provisioning-acl-configuration: done
   story-1-4-acl-grant-revocation-audit: done
   story-1-5-troll-acl-enforcement-validation: done
-  epic-1-retrospective: optional
+  epic-1-retrospective: done
 
   # Epic 2: Semantic Data Intelligence
   epic-2: in-progress
