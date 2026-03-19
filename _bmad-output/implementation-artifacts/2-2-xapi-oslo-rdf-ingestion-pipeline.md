@@ -128,6 +128,9 @@ And the conversion is lossless — original xAPI data is preserved within the RD
 
 ## Dev Notes
 
+> **Handoff from Story 2.1:** See `_bmad-output/implementation-artifacts/2-1-oslo-vocabulary-schema-contract.md` — Handoff Notes section for gotchas and recommendations.
+> Key: use schema files in `data/schemas/`; use `pocpod0:originalXapiJson` + `pocpod0:originalXapiStatementId` for lossless preservation; Oxigraph `POST /store` creates named graphs — always query with `GRAPH ?g { }`.
+
 ### Architecture Context
 - **Three-Layer Data Model:** This story populates Layer 1 (Pod/CSS). Stories 2-3 and 2-4 populate Layer 2 (Oxigraph).
 - **Data flow:** xAPI JSON -> oslo_mapper.py -> Turtle -> CSS Pod (PUT via HTTP) -> Later: load_graph.py reads from Pods and loads into Oxigraph

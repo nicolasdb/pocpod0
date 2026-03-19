@@ -15,18 +15,18 @@ try:
     from rdflib.namespace import SKOS
 
     HAS_RDFLIB = True
+    # Namespace constants (inside try so NameError never occurs at collection time)
+    OSLO_EDUC = Namespace("https://data.vlaanderen.be/ns/onderwijs#")
+    OSLO_PERSON = Namespace("https://data.vlaanderen.be/ns/persoon#")
+    XAPI = Namespace("https://w3id.org/xapi/ontology#")
+    POCPOD0 = Namespace("https://pocpod0.example.org/vocab#")
 except ImportError:
     HAS_RDFLIB = False
+    OSLO_EDUC = OSLO_PERSON = XAPI = POCPOD0 = None  # type: ignore[assignment]
 
 pytestmark = pytest.mark.skipif(
     not HAS_RDFLIB, reason="rdflib not installed; run: pip install rdflib"
 )
-
-# Namespace constants
-OSLO_EDUC = Namespace("https://data.vlaanderen.be/ns/onderwijs#")
-OSLO_PERSON = Namespace("https://data.vlaanderen.be/ns/persoon#")
-XAPI = Namespace("https://w3id.org/xapi/ontology#")
-POCPOD0 = Namespace("https://pocpod0.example.org/vocab#")
 
 
 # =============================================================================
@@ -84,12 +84,6 @@ class TestNamespacePrefixes:
         "xapi": "https://w3id.org/xapi/ontology#",
         "pocpod0": "https://pocpod0.example.org/vocab#",
     }
-
-    def _load_combined(self, all_schema_files):
-        g = Graph()
-        for f in all_schema_files:
-            g.parse(str(f), format="turtle")
-        return g
 
     def test_oslo_educ_namespace_in_education(self, oslo_education_ttl: Path):
         g = Graph()
@@ -200,9 +194,8 @@ class TestXapiToOsloMappings:
         for verb_uri in adl_verbs:
             verb = URIRef(verb_uri)
             has_mapping = any(
-                (verb, pred, obj) in g
+                next(g.objects(verb, pred), None) is not None
                 for pred in [SKOS.closeMatch, SKOS.exactMatch, OWL.equivalentClass]
-                for obj in g.objects(verb, pred)
             )
             assert has_mapping, f"ADL verb {verb_uri} has no OSLO mapping"
 
@@ -213,10 +206,7 @@ class TestXapiToOsloMappings:
         g = self._load_all(all_schema_files)
         prov_derived = URIRef("http://www.w3.org/ns/prov#wasDerivedFrom")
         # pocpod0:wasDerivedFromPodResource should be rdfs:subPropertyOf prov:wasDerivedFrom
-        uses_prov = any(
-            (s, RDFS.subPropertyOf, prov_derived) in g
-            for s in g.subjects(RDFS.subPropertyOf, prov_derived)
-        )
+        uses_prov = next(g.subjects(RDFS.subPropertyOf, prov_derived), None) is not None
         assert uses_prov, "No property is rdfs:subPropertyOf prov:wasDerivedFrom"
 
 

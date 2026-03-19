@@ -1,6 +1,6 @@
 # Story 2.1: OSLO Vocabulary Schema Contract
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -39,59 +39,59 @@ And SPARQL queries using OSLO classes return correct results
 ## Tasks / Subtasks
 
 ### Task 1: Research OSLO education vocabulary (AC1, AC2)
-- [ ] Review OSLO education vocabulary at `https://data.vlaanderen.be/ns/onderwijs`
-- [ ] Review OSLO person vocabulary at `https://data.vlaanderen.be/ns/persoon`
-- [ ] Identify the specific OSLO classes that map to xAPI Actor, Verb, Object, Result, Context
-- [ ] Document the mapping decisions (which OSLO class for each xAPI concept)
+- [x] Review OSLO education vocabulary at `https://data.vlaanderen.be/ns/onderwijs`
+- [x] Review OSLO person vocabulary at `https://data.vlaanderen.be/ns/persoon`
+- [x] Identify the specific OSLO classes that map to xAPI Actor, Verb, Object, Result, Context
+- [x] Document the mapping decisions (which OSLO class for each xAPI concept)
 
 ### Task 2: Create `oslo-education.ttl` (AC1, AC2)
-- [ ] Define namespace prefixes: `oslo-educ:`, `xapi:`, `pocpod0:`, standard prefixes (`rdf:`, `rdfs:`, `owl:`, `skos:`)
-- [ ] Map xAPI Verb to OSLO education activity types (e.g., `xapi:attempted` -> `oslo-educ:Evaluatie`)
-- [ ] Map xAPI Object to OSLO education resources (courses, assessments, learning materials)
-- [ ] Map xAPI Result to OSLO evaluation/result classes
-- [ ] Map xAPI Context to OSLO education context (school, class group, program)
-- [ ] Include `rdfs:label` and `rdfs:comment` on all classes and properties for discoverability
+- [x] Define namespace prefixes: `oslo-educ:`, `xapi:`, `pocpod0:`, standard prefixes (`rdf:`, `rdfs:`, `owl:`, `skos:`)
+- [x] Map xAPI Verb to OSLO education activity types (e.g., `xapi:attempted` -> `oslo-educ:Evaluatie`)
+- [x] Map xAPI Object to OSLO education resources (courses, assessments, learning materials)
+- [x] Map xAPI Result to OSLO evaluation/result classes
+- [x] Map xAPI Context to OSLO education context (school, class group, program)
+- [x] Include `rdfs:label` and `rdfs:comment` on all classes and properties for discoverability
 
 ### Task 3: Create `oslo-person.ttl` (AC1, AC2)
-- [ ] Map xAPI Actor to OSLO person classes (student, teacher, parent, administrator, regional advisor)
-- [ ] Define role-based person subtypes relevant to the 5 personas
-- [ ] Map xAPI Agent properties (name, mbox, account) to OSLO person properties
-- [ ] Include all 5 persona roles: student (Ayoub), tutor (Claire), parent (Fatima), admin (Marc), regional (Isabelle)
+- [x] Map xAPI Actor to OSLO person classes (student, teacher, parent, administrator, regional advisor)
+- [x] Define role-based person subtypes relevant to the 5 personas
+- [x] Map xAPI Agent properties (name, mbox, account) to OSLO person properties
+- [x] Include all 5 persona roles: student (Ayoub), tutor (Claire), parent (Fatima), admin (Marc), regional (Isabelle)
 
 ### Task 4: Create `xapi-to-oslo.ttl` (AC1, AC2)
-- [ ] Define mapping rules as RDF triples (e.g., using `owl:equivalentClass`, `rdfs:subClassOf`, or custom mapping predicates)
-- [ ] Map the complete xAPI statement structure:
+- [x] Define mapping rules as RDF triples (e.g., using `owl:equivalentClass`, `rdfs:subClassOf`, or custom mapping predicates)
+- [x] Map the complete xAPI statement structure:
   - `xapi:actor` -> `oslo-person:` classes
   - `xapi:verb` -> `oslo-educ:` activity types
   - `xapi:object` -> `oslo-educ:` learning resources
   - `xapi:result` -> `oslo-educ:` evaluation results
   - `xapi:context` -> `oslo-educ:` institutional context
-- [ ] Ensure mapping preserves all xAPI data (lossless: original xAPI fields must be recoverable)
-- [ ] Include provenance predicates (`prov:wasDerivedFrom`) in the mapping schema
+- [x] Ensure mapping preserves all xAPI data (lossless: original xAPI fields must be recoverable)
+- [x] Include provenance predicates (`prov:wasDerivedFrom`) in the mapping schema
 
 ### Task 5: Create `pocpod0-vocab.ttl` (AC1, AC2)
-- [ ] Define project-specific classes not covered by OSLO (e.g., `pocpod0:TutoringSession`, `pocpod0:SelfStudyActivity`, `pocpod0:RoboticsWorkshop`)
-- [ ] Define project-specific properties (e.g., `pocpod0:deletedAt` for soft-delete, `pocpod0:communityLanguage` for NL/FR)
-- [ ] Define provenance-related properties if not fully covered by PROV-O
-- [ ] Ensure all custom classes/properties have `rdfs:label`, `rdfs:comment`, and proper domain/range
+- [x] Define project-specific classes not covered by OSLO (e.g., `pocpod0:TutoringSession`, `pocpod0:SelfStudyActivity`, `pocpod0:RoboticsWorkshop`)
+- [x] Define project-specific properties (e.g., `pocpod0:deletedAt` for soft-delete, `pocpod0:communityLanguage` for NL/FR)
+- [x] Define provenance-related properties if not fully covered by PROV-O
+- [x] Ensure all custom classes/properties have `rdfs:label`, `rdfs:comment`, and proper domain/range
 
 ### Task 6: Validate schema in Oxigraph (AC3)
-- [ ] Start Oxigraph container (`oxigraph/oxigraph:0.5.6`, port 7878)
-- [ ] Load all 4 Turtle files into Oxigraph via SPARQL endpoint (HTTP POST)
-- [ ] Run validation SPARQL queries:
+- [x] Start Oxigraph container (`oxigraph/oxigraph:0.5.6`, port 7878)
+- [x] Load all 4 Turtle files into Oxigraph via SPARQL endpoint (HTTP POST)
+- [x] Run validation SPARQL queries:
   - Query all classes: `SELECT ?class WHERE { ?class a owl:Class . }`
   - Query all mappings: `SELECT ?xapi ?oslo WHERE { ?xapi owl:equivalentClass ?oslo . }`
   - Query by namespace: `SELECT ?s ?p ?o WHERE { ?s ?p ?o . FILTER(STRSTARTS(STR(?s), "https://data.vlaanderen.be/")) }`
-- [ ] Verify no parse errors, no missing references
-- [ ] Write at least 3 sample SPARQL queries that agents would use, using `?camelCase` variable naming:
+- [x] Verify no parse errors, no missing references
+- [x] Write at least 3 sample SPARQL queries that agents would use, using `?camelCase` variable naming:
   - `?studentName`, `?learningContext`, `?assessmentResult`, `?activityType`
 
 ### Task 7: Create unit tests (AC3)
-- [ ] Create `tests/pipeline/test_oslo_schema.py`
-- [ ] Test: all 4 Turtle files parse without errors (use `rdflib`)
-- [ ] Test: required namespace prefixes are defined
-- [ ] Test: all xAPI components have at least one OSLO mapping
-- [ ] Test: all custom `pocpod0:` classes have `rdfs:label`
+- [x] Create `tests/pipeline/test_oslo_schema.py`
+- [x] Test: all 4 Turtle files parse without errors (use `rdflib`)
+- [x] Test: required namespace prefixes are defined
+- [x] Test: all xAPI components have at least one OSLO mapping
+- [x] Test: all custom `pocpod0:` classes have `rdfs:label`
 
 ## Dev Notes
 
@@ -162,6 +162,48 @@ Directories to create (if not existing):
 ## Dev Agent Record
 
 ### Agent Model Used
+claude-sonnet-4-6
+
 ### Debug Log References
+- Oxigraph POST /store creates per-request named graphs (not default graph); SPARQL queries must use `GRAPH ?g { }` pattern. Validated with 467 triples across 4 named graphs.
+
 ### Completion Notes List
+- AC1: All 4 Turtle files created in `data/schemas/` with correct mappings
+- AC2: Namespace prefixes `oslo-educ:`, `oslo-person:`, `xapi:`, `pocpod0:` defined in all relevant files; all classes/properties have `rdfs:label` and `rdfs:comment`
+- AC2: Mapping decisions — xAPI Actor → `oslo-person:GeregistreerdPersoon` (role subtypes via `pocpod0:*Actor` classes); xAPI Verb → `oslo-educ:Leeractiviteit` subtypes; xAPI Object → `oslo-educ:Leermiddel` and subclasses; xAPI Result → `oslo-educ:EvaluatieResultaat`; xAPI Context → `oslo-educ:OnderwijsInstelling`
+- AC3: All 4 files loaded into Oxigraph (HTTP 201, 467 triples); 3 validation SPARQL queries return correct results (37 classes, 9 equivalentClass mappings, OSLO namespace triples)
+- AC3: 23 unit tests all pass; tests cover parse, namespace prefixes, xAPI mappings, pocpod0 class labels
+- Lossless round-trip: `pocpod0:originalXapiJson` and `pocpod0:originalXapiStatementId` properties preserve original xAPI for FR10 recovery
+- 3 sample SPARQL queries with `?camelCase` variables documented in `xapi-to-oslo.ttl`
+
 ### File List
+- `data/schemas/oslo-education.ttl` (created)
+- `data/schemas/oslo-person.ttl` (created)
+- `data/schemas/xapi-to-oslo.ttl` (created)
+- `data/schemas/pocpod0-vocab.ttl` (created)
+- `tests/pipeline/test_oslo_schema.py` (created)
+- `tests/pipeline/conftest.py` (created)
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` (updated: in-progress → review)
+
+## Change Log
+- 2026-03-19: Story 2.1 implemented — OSLO vocabulary schema contract created (4 Turtle files, 467 triples, 23 tests passing)
+
+## Handoff Notes
+
+### What Worked
+- OSLO class names mapped cleanly to xAPI components with no ambiguity
+- rdflib parsed all 4 Turtle files cleanly on first attempt; 23 tests green immediately
+- Oxigraph accepted all files via HTTP POST with no errors
+
+### What Didn't Work
+- Nothing significant failed
+
+### Gotchas
+- **Oxigraph named graphs:** `POST /store` creates one named graph per request (not the default graph). SPARQL queries must use `GRAPH ?g { }` pattern — plain `WHERE { ?s ?p ?o }` returns 0 results. This will affect every story that queries Oxigraph.
+
+### Recommendations for Next Stories
+- **2.2 (xAPI Ingestion — can run in parallel):** Import the 4 schema files in `data/schemas/` — don't redefine namespaces. Use `pocpod0:originalXapiJson` and `pocpod0:originalXapiStatementId` for lossless xAPI preservation.
+- **2.3 (Oxigraph Storage — merge point for 2.1 + 2.2):** This story depends on both 2.1 schema contract AND 2.2 ingestion output. Start 2.3 only after both are done. The named graph pattern from this story applies directly — each Pod resource should be loaded into its own named graph for isolation.
+
+### Corrections to Shared Understanding
+- None — story matched expectations

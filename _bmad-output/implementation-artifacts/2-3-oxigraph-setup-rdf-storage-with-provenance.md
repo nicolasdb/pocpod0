@@ -124,6 +124,9 @@ And data can be loaded via `http://localhost:7878/store`
 
 ## Dev Notes
 
+> **Handoff from Story 2.1 (schema) + 2.2 (ingestion):** This story is the merge point — start only after both 2.1 and 2.2 are done. See `_bmad-output/implementation-artifacts/2-1-oslo-vocabulary-schema-contract.md` — Handoff Notes section.
+> Key gotcha: Oxigraph `POST /store` creates one named graph per request. Each Pod resource should be loaded into its own named graph for isolation. All SPARQL queries must use `GRAPH ?g { }` pattern.
+
 ### Architecture Context
 - **Three-Layer Data Model:** This story populates Layer 2 (Graph/Oxigraph). Layer 1 (Pod/CSS) is populated by story 2-2. Layer 3 (Vector/Qdrant) is story 2-5.
 - **Oxigraph is NOT the source of truth** — it is a rebuildable queryable index. Pods are the source of truth. If Oxigraph data is lost, it can be rebuilt by re-running the graph loader against Pods.
