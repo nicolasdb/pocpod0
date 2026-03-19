@@ -18,7 +18,7 @@ development_status:
 
   # Epic 2: Semantic Data Intelligence
   epic-2: in-progress
-  story-2-1-oslo-vocabulary-schema-contract: ready-for-dev
+  story-2-1-oslo-vocabulary-schema-contract: in-progress
   story-2-2-xapi-oslo-rdf-ingestion-pipeline: ready-for-dev
   story-2-3-oxigraph-setup-rdf-storage-with-provenance: ready-for-dev
   story-2-4-round-trip-xapi-recovery-verification: ready-for-dev

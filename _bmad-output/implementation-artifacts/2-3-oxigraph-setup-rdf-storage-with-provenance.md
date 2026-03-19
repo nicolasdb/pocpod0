@@ -151,6 +151,8 @@ Two approaches are possible. Evaluate during implementation:
 - **Oxigraph port:** 7878
 - **SPARQL endpoint:** HTTP POST to `http://localhost:7878/query` (outside Docker) or `http://oxigraph:7878/query` (inside Docker)
 - **Data loading:** HTTP POST to `http://localhost:7878/store` with `Content-Type: text/turtle`
+- **Oxigraph health endpoint (FOG-OF-WAR):** The correct health endpoint name is unknown — verify empirically in Task 1. Try `/ready` first, then `/health`. Document the result for downstream stories.
+- **CSS Auth (CRITICAL):** ALL CSS requests (GET to read pod resources) MUST include `Authorization: WebID http://localhost:3000/provisioner/profile/card#me` header. `X-Ms-User` does NOT work. CSS must be configured with `debug-auth-header.json` (UnsecureWebIdExtractor). Without this header, GET requests to pod resources return 401.
 - **NFR1:** Simple SPARQL queries < 500ms at 10K triples
 - **Structured JSON logging to stdout**
 - **Python naming:** `snake_case` modules/functions, `PascalCase` classes

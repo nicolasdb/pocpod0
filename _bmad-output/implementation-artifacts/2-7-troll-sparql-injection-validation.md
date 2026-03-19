@@ -71,10 +71,11 @@ And when the shared SPARQL skill is implemented (Story 3-1), these tests can be 
 
 ### Task 1: Create injection test module (AC-1)
 - [ ] Create `agents/troll-adversary/attacks/sparql-injection.py`
+- [ ] Import `TrollTestResult` and `log_test_result()` from `agents/troll-adversary/attacks/__init__.py` — do NOT define a new dataclass; reuse the shared troll reporting infrastructure from Story 1.5
 - [ ] Structure the module with:
   - `InjectionTestSuite` class containing all test cases
-  - `run_all()` method that executes all injection tests and returns results
-  - `InjectionTestResult` dataclass matching the report format (AC-4)
+  - `run_all()` method that executes all injection tests and returns results using `TrollTestResult`
+- [ ] Add a **preflight check** before running any injection tests: verify Oxigraph is reachable and the expected collection/data exists. If preflight fails, abort with a clear error (do not run tests against a broken environment).
 
 ### Task 2: Create parameterized SPARQL template files (AC-2, AC-7)
 - [ ] Create or verify `.rq` template files in `agents/skills/sparql-query/templates/`:
@@ -197,6 +198,14 @@ When Story 3-1 is implemented, it imports the parameterization engine from this 
 ### Troll Dual Access Model
 
 For SPARQL injection, the troll uses `access_path: "through_skill"` — it tests the skill-level query sanitization boundary, not direct Oxigraph access. Direct Oxigraph access is a different attack category (ACL enforcement, Story 1-5).
+
+### Shared Troll Infrastructure (CRITICAL)
+
+Import and reuse from `agents/troll-adversary/attacks/__init__.py`:
+- `TrollTestResult` dataclass — the shared result type across all troll stories (1.5, 2.7, 2.8, 3.8, 5.3)
+- `log_test_result()` — shared structured logging function
+
+Do NOT define `InjectionTestResult` or any local dataclass — this breaks result aggregation across epics.
 
 ### Troll Report Format (from Architecture)
 

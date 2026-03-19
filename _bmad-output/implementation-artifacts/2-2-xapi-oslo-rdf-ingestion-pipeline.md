@@ -139,6 +139,8 @@ And the conversion is lossless — original xAPI data is preserved within the RD
 - **Always activate venv** for Python commands
 - **CSS base URL:** `http://localhost:3000` (or `http://css:3000` within Docker network)
 - **CSS API:** HTTP PUT to store resources, HTTP GET to retrieve — standard Solid/LDP protocol
+- **CSS Auth (CRITICAL):** ALL CSS requests (PUT, GET, DELETE) MUST include `Authorization: WebID http://localhost:3000/{agent}/profile/card#me` header. `X-Ms-User` does NOT work and is silently ignored by CSS 7. CSS must be configured with `debug-auth-header.json` (UnsecureWebIdExtractor). The provisioner WebID is `http://localhost:3000/provisioner/profile/card#me`. Without this header, all CSS operations return 401.
+- **CSS success codes:** Accept `[200, 201, 205]` — CSS returns HTTP 205 (Reset Content) for successful ACL PUT updates
 - **Structured JSON logging to stdout** — docker-compose captures it
 - **Error handling:** log+continue — never halt the pipeline for one bad statement
 - **Python naming:** `snake_case` modules/functions, `PascalCase` classes, `UPPER_SNAKE_CASE` constants

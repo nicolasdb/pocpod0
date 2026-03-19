@@ -82,10 +82,11 @@ Then a summary report is generated with:
 
 ### Task 1: Create vector privacy test module (AC-1)
 - [ ] Create `agents/troll-adversary/attacks/vector-privacy.py`
+- [ ] Import `TrollTestResult` and `log_test_result()` from `agents/troll-adversary/attacks/__init__.py` — do NOT define a new dataclass; reuse the shared troll reporting infrastructure from Story 1.5
 - [ ] Structure the module with:
   - `VectorPrivacyTestSuite` class containing all test cases
-  - `run_all(qdrant_url: str) -> VectorPrivacyReport` method
-  - `VectorPrivacyTestResult` dataclass matching the report format (AC-4)
+  - `run_all(qdrant_url: str) -> VectorPrivacyReport` method using `TrollTestResult` for individual results
+- [ ] Add a **preflight check** before running any privacy tests: verify Qdrant is reachable, the `pocpod0_embeddings` collection exists, and it contains points. If preflight fails, abort with a clear error.
 
 ### Task 2: Implement Qdrant direct access client (AC-2)
 - [ ] Use `httpx` or `qdrant-client` to connect directly to Qdrant REST API
@@ -190,6 +191,14 @@ Then a summary report is generated with:
 - [ ] Test that results are deterministic for the same inputs (NFR12)
 
 ## Dev Notes
+
+### Shared Troll Infrastructure (CRITICAL)
+
+Import and reuse from `agents/troll-adversary/attacks/__init__.py`:
+- `TrollTestResult` dataclass — the shared result type across all troll stories (1.5, 2.7, 2.8, 3.8, 5.3)
+- `log_test_result()` — shared structured logging function
+
+Do NOT define `VectorPrivacyTestResult` or any local dataclass — this breaks result aggregation across epics. The `result` field accepts `"pass"`, `"partial"`, `"fail"` — all three are valid for vector privacy (NFR8 non-blocking).
 
 ### Troll Dual Access Model — Direct Access
 

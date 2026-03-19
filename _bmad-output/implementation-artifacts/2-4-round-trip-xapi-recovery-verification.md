@@ -144,6 +144,7 @@ Match/Mismatch Result
 ### Technical Constraints
 - **Oxigraph SPARQL endpoint:** `http://localhost:7878/query` (outside Docker) or `http://oxigraph:7878/query` (inside Docker)
 - **CSS endpoint:** `http://localhost:3000` (outside Docker) or `http://css:3000` (inside Docker)
+- **CSS Auth (CRITICAL):** ALL CSS GET requests (fetching Pod resources via provenance link) MUST include `Authorization: WebID http://localhost:3000/provisioner/profile/card#me` header. `X-Ms-User` does NOT work. Without this header, CSS returns 401 and recovery will fail for every statement.
 - **Python naming:** `snake_case` modules/functions, `PascalCase` classes
 - **Structured JSON logging to stdout**
 - **Always activate venv** for Python commands

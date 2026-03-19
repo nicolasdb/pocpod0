@@ -224,7 +224,11 @@ Triple-to-embedding lookup:
 
 - **Oxigraph SPARQL:** `http://oxigraph:7878/query` (POST, `application/sparql-query`)
 - **Qdrant REST:** `http://qdrant:6333` (REST API)
-- **CSS Pods:** `http://community-solid-server:3000/{pod-name}/{resource-path}`
+- **CSS Pods:** `http://css:3000/{pod-name}/{resource-path}` (Docker hostname is `css`, NOT `community-solid-server`)
+
+### CSS Auth (CRITICAL)
+
+ALL CSS requests (HTTP HEAD to verify pod resource existence, HTTP GET to fetch content) MUST include `Authorization: WebID http://localhost:3000/provisioner/profile/card#me` header. `X-Ms-User` does NOT work and CSS 7 silently ignores it. CSS must be configured with `debug-auth-header.json` (UnsecureWebIdExtractor). Without this header, CSS returns 401 and the forward traceability chain will appear broken even when data is intact.
 
 ### Error Handling
 
