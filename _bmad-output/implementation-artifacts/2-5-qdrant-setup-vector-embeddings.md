@@ -1,6 +1,6 @@
 # Story 2.5: Qdrant Setup & Vector Embeddings
 
-Status: review
+Status: done
 
 ## Story
 
