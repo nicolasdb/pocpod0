@@ -50,29 +50,41 @@ OPENROUTER_API_URL = "https://openrouter.ai/api/v1/embeddings"
 QDRANT_BASE_URL = os.environ.get("QDRANT_BASE_URL", "http://localhost:6333")
 OXIGRAPH_BASE_URL = os.environ.get("OXIGRAPH_BASE_URL", "http://localhost:7878")
 
-# SPARQL query: extract semantically significant content with provenance
-# Fetches text values and pod_resource_uri from each named graph
+# SPARQL query: extract semantically significant content with provenance.
+#
+# Story 2.3 pattern: named graph URI == Pod resource URI (no prov:wasDerivedFrom needed).
+# Predicates confirmed from live data inspection (2026-03-20):
+#   rdfs:label (11490), foaf:name (5613), poc-pod0:role (4122),
+#   poc-pod0:scaledScore (2397), poc-pod0:success (2397), rdfs:comment (185)
+# Excluded: originalXapiJson (raw JSON noise), originalXapiStatementId (UUID),
+#           timestamp (not semantic), schema graph.
 _SPARQL_CONTENT_QUERY = """\
-PREFIX prov: <http://www.w3.org/ns/prov#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+PREFIX poc:  <https://poc-pod0.edu/vocab/>
 PREFIX schema: <http://schema.org/>
-PREFIX xapi: <https://poc-pod0.edu/vocab/>
+PREFIX dct:  <http://purl.org/dc/terms/>
+PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
 
-SELECT ?graph ?pod_resource_uri ?text_value
+SELECT ?graph ?text_value
 WHERE {
   GRAPH ?graph {
     ?subject ?predicate ?text_value .
-    OPTIONAL { ?graph prov:wasDerivedFrom ?pod_resource_uri . }
     FILTER (isLiteral(?text_value))
     FILTER (
-      ?predicate = schema:name ||
-      ?predicate = schema:description ||
-      ?predicate = <http://www.w3.org/2004/02/skos/core#prefLabel> ||
-      ?predicate = <http://adlnet.gov/expapi/verbs/display> ||
-      ?predicate = <https://poc-pod0.edu/vocab/activityName> ||
-      ?predicate = <https://poc-pod0.edu/vocab/result> ||
-      ?predicate = <https://poc-pod0.edu/vocab/definition>
+      ?predicate = rdfs:label ||
+      ?predicate = rdfs:comment ||
+      ?predicate = foaf:name ||
+      ?predicate = poc:role ||
+      ?predicate = poc:scaledScore ||
+      ?predicate = poc:success ||
+      ?predicate = poc:completion ||
+      ?predicate = poc:ext-language-context ||
+      ?predicate = schema:provider ||
+      ?predicate = dct:title ||
+      ?predicate = dct:description ||
+      ?predicate = skos:example
     )
-    FILTER (lang(?text_value) = "en" || lang(?text_value) = "fr" || lang(?text_value) = "")
   }
   FILTER (?graph != <https://poc-pod0.edu/vocab/schema>)
 }
@@ -223,7 +235,8 @@ def extract_content_chunks(oxigraph_base: str) -> List[Dict]:
 
     for b in bindings:
         graph_uri = b.get("graph", {}).get("value", "")
-        pod_uri = b.get("pod_resource_uri", {}).get("value", graph_uri)
+        # Story 2.3: named graph URI == Pod resource URI (no prov:wasDerivedFrom needed)
+        pod_uri = graph_uri
         text_val = b.get("text_value", {}).get("value", "")
         if not text_val.strip():
             continue
