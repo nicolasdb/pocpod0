@@ -25,7 +25,7 @@ development_status:
   story-2-5-qdrant-setup-vector-embeddings: done
   story-2-6-bidirectional-traceability-embedding-triple-pod: done
   story-2-7-troll-sparql-injection-validation: done
-  story-2-8-troll-vector-privacy-validation: ready-for-dev
+  story-2-8-troll-vector-privacy-validation: done
   epic-2-retrospective: optional
 
   # Epic 3: Cross-Context Learning Insights
@@ -238,6 +238,52 @@ notes:
   timebox_guidance: "Phase 1 hard timebox; invest most time in Phase 2 (intellectual core); Phase 3 implements quality data with fallback to 3 journeys; Phase 4 completes with troll run and dashboard."
   context_switching_cost: "Budget 1 ramp-up day per phase transition (different tech stacks)."
   dependencies: "Nginx spike (story-1-2) is critical path with 3-day timebox and explicit fallback plan."
+
+# Known Issues — Privacy Findings (real partial results from Story 2.8)
+# These are not artificial failures. They reflect genuine architectural constraints
+# discovered during adversarial testing. All are "known unknowns" to address before
+# the pilot. Easy fixes should be absorbed into Epics 3-6 stories; hard fixes are
+# post-pilot recommendations.
+#
+# Root cause: pod_resource_uri stored in Qdrant payloads uses the pod slug
+# (e.g. "http://localhost:3000/ayoub/"), which encodes the student name.
+# Any operator with raw Qdrant access can correlate embeddings to student identities.
+#
+known_issues:
+  - id: PRIV-1
+    title: "pod_resource_uri leaks student identity via pod slug"
+    source: story-2-8 (vector_privacy.py, 9/14 tests partial)
+    severity: medium
+    attack_categories_affected: [name-extraction, identity-correlation, location-extraction, grade-extraction]
+    status: open
+    fix_effort: medium
+    target: epic-5 or epic-6
+    proposed_fix: >
+      At embed time, store an opaque UUID (derived from pod_resource_uri via SHA-256)
+      in the Qdrant payload instead of the raw URI. Maintain a separate lookup index
+      (in Oxigraph or a config file) mapping UUID → pod_resource_uri for authorized
+      services only. Changes: embed pipeline (story-2-5 code), traceability module
+      (story-2-6 code). Likely absorbed into story-5-2 (deletion cascade) which
+      already needs to walk pod→embedding linkage.
+    easy_partial_fix: >
+      Short-term (no code change): document that Qdrant port 6333 must never be
+      exposed outside the Docker network. Already true in current compose config;
+      add an explicit note in infra README and story-6-1 report.
+
+  - id: PRIV-2
+    title: "Cross-person correlation via shared semantic domain"
+    source: story-2-8 (cross-person correlation attack, partial results)
+    severity: low
+    attack_categories_affected: [cross-person-correlation]
+    status: open
+    fix_effort: low
+    target: epic-6 (document in funder report)
+    proposed_fix: >
+      This is expected behavior: all students study math, so their embeddings cluster
+      by subject domain, not by individual. Not a real leakage risk — an adversary
+      learns "these students both study algebra", not any PII. Mitigation is to
+      document this clearly in the Epic 6 funder report (story-6-1) as an
+      acceptable risk with explanation. No code change needed.
 
 # Ready to implement: call 'bmad-create-story' with story ID from sprint_backlog_order to begin work
 
