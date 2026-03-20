@@ -29,6 +29,7 @@ dev = [
 pocpod0-ingest = "pocpod0_pipeline.ingest:main"
 pocpod0-generate-scenarios = "pocpod0_pipeline.generate_scenarios:main"
 pocpod0-generate-troll = "pocpod0_pipeline.generate_troll_load:main"
+pocpod0-load-graph = "pocpod0_pipeline.load_graph:main"
 
 [tool.setuptools]
 packages = ["pocpod0_pipeline"]

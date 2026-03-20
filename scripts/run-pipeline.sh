@@ -51,4 +51,11 @@ python -m pocpod0_pipeline.ingest \
   --css-base-url "$CSS_BASE_URL" \
   $DRY_RUN
 
+echo "=== Step 4: Load RDF graph into Oxigraph ==="
+OXIGRAPH_BASE_URL="${OXIGRAPH_BASE_URL:-http://localhost:7878}"
+python -m pocpod0_pipeline.load_graph \
+  --css-base-url "$CSS_BASE_URL" \
+  --oxigraph-url "$OXIGRAPH_BASE_URL" \
+  --load-schema
+
 echo "=== Pipeline complete ==="
