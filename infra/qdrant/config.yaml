@@ -1,26 +1,41 @@
-# Qdrant v1.17.0 Configuration
+# Qdrant v1.17.0 Collection Configuration for pocpod0
 #
-# This is a placeholder for collection and query configuration.
-# Runtime configuration is managed via the Qdrant REST API.
+# This file documents the collection schema used by the embedding pipeline.
+# Collections are created dynamically via the Qdrant REST API at startup.
 #
-# Reference: https://qdrant.tech/documentation/
+# Reference: https://qdrant.tech/documentation/concepts/collections/
 
-# Storage path (set via Docker volume mount to /qdrant/storage)
-# storage:
-#   path: /qdrant/storage
-
-# API configuration
-# api:
-#   http:
-#     port: 6333
-#   grpc:
-#     port: 6334
-
-# Collections will be created dynamically via API calls
-# Example collection configuration:
+# Collection: pocpod0_embeddings
 #
-# collections:
-#   embeddings:
-#     vectors:
-#       size: 1536
-#       distance: Cosine
+# Purpose: Stores vector embeddings of semantically significant RDF content
+#          from learner Pods, enabling semantic similarity search.
+#
+# Vector configuration:
+#   model:    qwen/qwen3-embedding-8b (via OpenRouter API)
+#   size:     4096  — qwen3-embedding-8b output dimension
+#   distance: Cosine — appropriate for text similarity tasks
+#
+# Payload schema (per point):
+#   triple_uris     (array of strings) — source Oxigraph triple URIs
+#   pod_resource_uri (string)           — source CSS Pod resource URI
+#
+# Payload index:
+#   pod_resource_uri — keyword index for efficient reverse lookups (AC-5)
+#   Enables filter queries: "give me all embeddings from pod resource X"
+#
+# Protocol decision (API-3):
+#   Using REST (port 6333) — simpler to debug, adequate for batch upsert
+#   at POC scale (303 scenarios). gRPC (port 6334) not needed.
+#
+# Write-only pattern:
+#   The pipeline is the ONLY component that writes to this collection.
+#   The shared Qdrant skill (Story 3-2) and troll agent only read from it.
+
+collection:
+  name: pocpod0_embeddings
+  vectors:
+    size: 4096
+    distance: Cosine
+  payload_indexes:
+    - field: pod_resource_uri
+      type: keyword

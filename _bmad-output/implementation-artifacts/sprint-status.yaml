@@ -22,7 +22,7 @@ development_status:
   story-2-2-xapi-oslo-rdf-ingestion-pipeline: done
   story-2-3-oxigraph-setup-rdf-storage-with-provenance: done
   story-2-4-round-trip-xapi-recovery-verification: done
-  story-2-5-qdrant-setup-vector-embeddings: ready-for-dev
+  story-2-5-qdrant-setup-vector-embeddings: review
   story-2-6-bidirectional-traceability-embedding-triple-pod: ready-for-dev
   story-2-7-troll-sparql-injection-validation: ready-for-dev
   story-2-8-troll-vector-privacy-validation: ready-for-dev

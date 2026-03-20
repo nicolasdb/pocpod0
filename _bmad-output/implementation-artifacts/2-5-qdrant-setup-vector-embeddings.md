@@ -1,6 +1,6 @@
 # Story 2.5: Qdrant Setup & Vector Embeddings
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -52,79 +52,79 @@ Then a structured JSON log entry is emitted: `{ timestamp, service: "pipeline", 
 ## Tasks / Subtasks
 
 ### Task 1: Define Qdrant collection configuration (AC-1)
-- [ ] Update `infra/qdrant/config.yaml` with collection schema:
+- [x] Update `infra/qdrant/config.yaml` with collection schema:
   - Collection name: `pocpod0_embeddings` (or similar snake_case name)
   - Vector size: determine from qwen/qwen3-embedding-8b output dimensions (check OpenRouter docs or test call)
   - Distance metric: cosine similarity
   - Payload index on `pod_resource_uri` for efficient reverse lookups (AC-5)
-- [ ] Document the collection schema in the config file with comments
+- [x] Document the collection schema in the config file with comments
 
 ### Task 2: Implement OpenRouter embedding client (AC-2)
-- [ ] Add OpenRouter API client code in `pipeline/src/pocpod0_pipeline/embed.py`
-- [ ] Read `OPENROUTER_API_KEY` from environment
-- [ ] Call OpenRouter API with model `qwen/qwen3-embedding-8b` for embedding generation
-- [ ] Handle API rate limiting, retries, and errors gracefully (log + continue pattern)
-- [ ] Accept a list of text strings, return list of embedding vectors
-- [ ] Add `openai` or `httpx` to `pipeline/pyproject.toml` dependencies (OpenRouter is OpenAI-compatible)
+- [x] Add OpenRouter API client code in `pipeline/src/pocpod0_pipeline/embed.py`
+- [x] Read `OPENROUTER_API_KEY` from environment
+- [x] Call OpenRouter API with model `qwen/qwen3-embedding-8b` for embedding generation
+- [x] Handle API rate limiting, retries, and errors gracefully (log + continue pattern)
+- [x] Accept a list of text strings, return list of embedding vectors
+- [x] Add `openai` or `httpx` to `pipeline/pyproject.toml` dependencies (OpenRouter is OpenAI-compatible)
 
 ### Task 3: Extract semantically significant content from Oxigraph (AC-2)
-- [ ] Query Oxigraph via SPARQL to extract content suitable for embedding:
+- [x] Query Oxigraph via SPARQL to extract content suitable for embedding:
   - Text content from learning activities, assessment results, tutoring notes
   - Concatenate relevant triple values into embedding-worthy text chunks
-- [ ] For each chunk, track the source `triple_uris` (array) and `pod_resource_uri` (string)
-- [ ] Use the `prov:wasDerivedFrom` triples in Oxigraph to resolve Pod resource URIs
+- [x] For each chunk, track the source `triple_uris` (array) and `pod_resource_uri` (string)
+- [x] Use the `prov:wasDerivedFrom` triples in Oxigraph to resolve Pod resource URIs
 
 ### Task 4: Implement batch upsert to Qdrant (AC-3)
-- [ ] Use `qdrant-client` Python library to connect to Qdrant at `qdrant:6333`
-- [ ] Create collection if it does not exist (idempotent)
-- [ ] Batch upsert points with:
+- [x] Use `qdrant-client` Python library to connect to Qdrant at `qdrant:6333`
+- [x] Create collection if it does not exist (idempotent)
+- [x] Batch upsert points with:
   - `id`: deterministic UUID derived from content hash or triple URIs
   - `vector`: embedding from OpenRouter
   - `payload`: `{ "triple_uris": [...], "pod_resource_uri": "..." }`
-- [ ] Batch size: configurable, default reasonable (e.g., 100 points per batch)
-- [ ] Add `qdrant-client` to `pipeline/pyproject.toml` dependencies
+- [x] Batch size: configurable, default reasonable (e.g., 100 points per batch)
+- [x] Add `qdrant-client` to `pipeline/pyproject.toml` dependencies
 
 ### Task 5: Implement forward traceability verification (AC-4)
-- [ ] Write a utility function that given a Qdrant point ID:
+- [x] Write a utility function that given a Qdrant point ID:
   - Retrieves the point's payload
   - Extracts `triple_uris` and `pod_resource_uri`
   - Queries Oxigraph for each triple URI to confirm existence
   - Confirms the Pod resource URI resolves
-- [ ] This is used by tests and by Story 2-6
+- [x] This is used by tests and by Story 2-6
 
 ### Task 6: Implement reverse traceability query (AC-5)
-- [ ] Write a utility function that given a `pod_resource_uri`:
+- [x] Write a utility function that given a `pod_resource_uri`:
   - Queries Qdrant with payload filter `{ "must": [{ "key": "pod_resource_uri", "match": { "value": "<uri>" } }] }`
   - Returns all matching points
-- [ ] Ensure Qdrant payload index on `pod_resource_uri` is created (Task 1)
+- [x] Ensure Qdrant payload index on `pod_resource_uri` is created (Task 1)
 
 ### Task 7: Add structured logging (AC-7)
-- [ ] Use the project logging pattern: structured JSON to stdout
-- [ ] Log events:
+- [x] Use the project logging pattern: structured JSON to stdout
+- [x] Log events:
   - `embed.batch_start`: `{ batch_size, collection }`
   - `embed.openrouter_call`: `{ model, text_count, duration_ms }`
   - `embed.qdrant_upsert`: `{ point_count, collection, duration_ms }`
   - `embed.error`: `{ error_type, message, details }`
-- [ ] Errors log and continue — do not halt the pipeline for a single failed embedding
+- [x] Errors log and continue — do not halt the pipeline for a single failed embedding
 
 ### Task 8: REST vs gRPC fog-of-war comparison (AC-1)
-- [ ] Start with REST (port 6333) as the default — simpler to debug
-- [ ] Optionally test gRPC (port 6334) for batch upsert performance
-- [ ] Document the comparison findings in a comment in `embed.py`
-- [ ] Pick one protocol and use it consistently (API-3 decision)
+- [x] Start with REST (port 6333) as the default — simpler to debug
+- [x] Optionally test gRPC (port 6334) for batch upsert performance
+- [x] Document the comparison findings in a comment in `embed.py`
+- [x] Pick one protocol and use it consistently (API-3 decision)
 
 ### Task 9: Write unit tests (AC-2, AC-3)
-- [ ] Create `pipeline/tests/test_embed.py`
-- [ ] Test OpenRouter client (mock API responses)
-- [ ] Test batch upsert logic (mock Qdrant client)
-- [ ] Test payload metadata structure (`triple_uris` is array, `pod_resource_uri` is string)
-- [ ] Test error handling (API failure, Qdrant connection failure)
+- [x] Create `pipeline/tests/test_embed.py`
+- [x] Test OpenRouter client (mock API responses)
+- [x] Test batch upsert logic (mock Qdrant client)
+- [x] Test payload metadata structure (`triple_uris` is array, `pod_resource_uri` is string)
+- [x] Test error handling (API failure, Qdrant connection failure)
 
 ### Task 10: Write integration test (AC-4, AC-5)
-- [ ] Verify end-to-end: Oxigraph has triples -> embed.py generates embeddings -> Qdrant has points with correct payloads
-- [ ] Verify forward traceability: pick a random point, follow chain to Pod resource
-- [ ] Verify reverse traceability: pick a Pod resource URI, find all derived embeddings
-- [ ] Place in `tests/integration/` or `pipeline/tests/` as appropriate
+- [x] Verify end-to-end: Oxigraph has triples -> embed.py generates embeddings -> Qdrant has points with correct payloads
+- [x] Verify forward traceability: pick a random point, follow chain to Pod resource
+- [x] Verify reverse traceability: pick a Pod resource URI, find all derived embeddings
+- [x] Place in `tests/integration/` or `pipeline/tests/` as appropriate
 
 ## Dev Notes
 
@@ -211,6 +211,32 @@ distrobox-host-exec podman compose up qdrant
 ## Dev Agent Record
 
 ### Agent Model Used
+claude-sonnet-4-6
+
 ### Debug Log References
+- Vector size confirmed 4096 from qwen3-embedding-8b documentation (story notes aligned)
+- REST protocol chosen over gRPC: no measurable difference at POC scale (303 scenarios), REST easier to debug
+- `httpx` used for OpenRouter (not `openai` SDK) — avoids heavyweight dependency for a single endpoint
+- `_query_oxigraph` reuses `requests` (already in pyproject.toml) to avoid circular httpx dependency
+
 ### Completion Notes List
+- ✅ Task 1: `infra/qdrant/config.yaml` updated with full collection schema, comments, and payload index decision
+- ✅ Task 2: `EmbeddingPipeline` class — httpx client, OpenRouter API, rate limit retry with exponential backoff
+- ✅ Task 3: `extract_content_chunks()` — SPARQL SELECT over Oxigraph, groups by (graph, pod_uri), concatenates text
+- ✅ Task 4: `QdrantWriter` class — idempotent collection creation, deterministic UUID from SHA-256 hash, batch upsert
+- ✅ Task 5: `verify_forward_traceability()` — retrieves point payload, ASK queries Oxigraph, HEAD checks Pod URI
+- ✅ Task 6: `get_points_for_resource()` — Qdrant scroll with keyword payload filter on `pod_resource_uri`
+- ✅ Task 7: Structured JSON logging throughout: `embed.batch_start`, `embed.openrouter_call`, `embed.qdrant_upsert`, `embed.error`
+- ✅ Task 8: REST chosen (port 6333), decision documented in module docstring
+- ✅ Task 9: 16 unit tests covering all ACs — all pass (mocked OpenRouter and Qdrant)
+- ✅ Task 10: 4 integration tests in `tests/integration/test_embed_qdrant.py` — skip gracefully if services unavailable
+
 ### File List
+- `pipeline/src/pocpod0_pipeline/embed.py` — new: main embedding pipeline module
+- `pipeline/tests/test_embed.py` — new: 16 unit tests
+- `pipeline/tests/integration/test_embed_qdrant.py` — new: 4 integration tests
+- `pipeline/pyproject.toml` — modified: added `qdrant-client>=1.9.0`, `httpx>=0.27.0`, `pocpod0-embed` script
+- `infra/qdrant/config.yaml` — modified: full collection schema with comments
+
+## Change Log
+- 2026-03-20: Story 2.5 implemented — Qdrant setup + vector embeddings pipeline (embed.py, 16 unit tests, 4 integration tests)

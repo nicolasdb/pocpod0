@@ -17,6 +17,8 @@ dependencies = [
     "pyyaml>=6.0",
     "rdflib>=7.0",
     "pydantic>=2.0",
+    "qdrant-client>=1.9.0",
+    "httpx>=0.27.0",
 ]
 
 [project.optional-dependencies]
@@ -30,6 +32,7 @@ pocpod0-ingest = "pocpod0_pipeline.ingest:main"
 pocpod0-generate-scenarios = "pocpod0_pipeline.generate_scenarios:main"
 pocpod0-generate-troll = "pocpod0_pipeline.generate_troll_load:main"
 pocpod0-load-graph = "pocpod0_pipeline.load_graph:main"
+pocpod0-embed = "pocpod0_pipeline.embed:main"
 
 [tool.setuptools]
 packages = ["pocpod0_pipeline"]
