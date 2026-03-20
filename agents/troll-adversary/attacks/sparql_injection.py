@@ -163,14 +163,19 @@ def _execute_sparql(base_url: str, query: str) -> tuple[Optional[int], Optional[
 
 
 def _has_unexpected_results(response_body: Optional[str]) -> bool:
-    """Check if SPARQL response contains any result rows (data leak indicator)."""
+    """Check if SPARQL response contains any result rows (data leak indicator).
+
+    Returns True only if results are present.
+    Re-raises JSONDecodeError so callers can detect malformed Oxigraph responses (#4).
+    """
     if not response_body:
         return False
+    data = json.loads(response_body)  # Propagate JSONDecodeError — not silenced
     try:
-        data = json.loads(response_body)
         bindings = data.get("results", {}).get("bindings", [])
         return len(bindings) > 0
-    except (json.JSONDecodeError, AttributeError):
+    except (AttributeError, KeyError):
+        # Unexpected response structure — treat as no results, not as parse failure
         return False
 
 
@@ -335,28 +340,52 @@ class InjectionTestSuite:
                 },
             )
 
-        if status_code == 200 and _has_unexpected_results(response_body):
-            return TrollTestResult(
-                attack_category="sparql_injection",
-                access_path="through_skill",
-                test_name=test_name,
-                result="fail",
-                details=(
-                    f"BLOCKING: {category} injection in '{param_name}' succeeded — "
-                    f"query executed and returned data (NFR6 VIOLATION). "
-                    f"Payload: {safe_payload_repr}"
-                ),
-                evidence={
-                    "template": template_name,
-                    "parameter": param_name,
-                    "payload": payload,
-                    "engine_response": "accepted",
-                    "oxigraph_reached": True,
-                    "oxigraph_status": status_code,
-                    "expected": "engine rejection or empty results",
-                    "actual": f"HTTP 200 with data: {response_body[:500]}",
-                },
-            )
+        if status_code == 200:
+            try:
+                has_data = _has_unexpected_results(response_body)
+            except json.JSONDecodeError as exc:
+                return TrollTestResult(
+                    attack_category="sparql_injection",
+                    access_path="through_skill",
+                    test_name=test_name,
+                    result="partial",
+                    details=(
+                        f"Engine accepted {category} payload; Oxigraph returned HTTP 200 "
+                        f"but response was not valid JSON — cannot confirm injection result: {exc}"
+                    ),
+                    evidence={
+                        "template": template_name,
+                        "parameter": param_name,
+                        "payload": payload,
+                        "engine_response": "accepted",
+                        "oxigraph_reached": True,
+                        "oxigraph_status": status_code,
+                        "parse_error": str(exc),
+                    },
+                )
+
+            if has_data:
+                return TrollTestResult(
+                    attack_category="sparql_injection",
+                    access_path="through_skill",
+                    test_name=test_name,
+                    result="fail",
+                    details=(
+                        f"BLOCKING: {category} injection in '{param_name}' succeeded — "
+                        f"query executed and returned data (NFR6 VIOLATION). "
+                        f"Payload: {safe_payload_repr}"
+                    ),
+                    evidence={
+                        "template": template_name,
+                        "parameter": param_name,
+                        "payload": payload,
+                        "engine_response": "accepted",
+                        "oxigraph_reached": True,
+                        "oxigraph_status": status_code,
+                        "expected": "engine rejection or empty results",
+                        "actual": f"HTTP 200 with data: {response_body[:500]}",
+                    },
+                )
 
         return TrollTestResult(
             attack_category="sparql_injection",

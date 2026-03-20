@@ -24,7 +24,7 @@ development_status:
   story-2-4-round-trip-xapi-recovery-verification: done
   story-2-5-qdrant-setup-vector-embeddings: done
   story-2-6-bidirectional-traceability-embedding-triple-pod: done
-  story-2-7-troll-sparql-injection-validation: review
+  story-2-7-troll-sparql-injection-validation: done
   story-2-8-troll-vector-privacy-validation: ready-for-dev
   epic-2-retrospective: optional
 

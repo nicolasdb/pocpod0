@@ -64,8 +64,8 @@ _URI_INJECTION_PATTERNS = [
     re.compile(r"\s"),                         # whitespace in URIs is always invalid
 ]
 
-# Placeholder pattern: $word_chars only
-_PLACEHOLDER_RE = re.compile(r"\$([a-zA-Z_][a-zA-Z0-9_]*)")
+# Placeholder pattern: $word_chars only (max 128 chars to prevent DoS)
+_PLACEHOLDER_RE = re.compile(r"\$([a-zA-Z_][a-zA-Z0-9_]{0,127})")
 
 # URI pattern: must look like a URI (scheme://...) or a relative path
 # We intentionally allow only URI-safe characters
@@ -91,13 +91,27 @@ def load_template(template_name: str, template_dir: Optional[Path] = None) -> st
 
     Raises:
         FileNotFoundError: If template does not exist.
+        ValueError: If path escapes template directory or template is empty.
     """
-    directory = template_dir or _DEFAULT_TEMPLATE_DIR
+    directory = Path(template_dir or _DEFAULT_TEMPLATE_DIR).resolve()
     name = template_name if template_name.endswith(".rq") else f"{template_name}.rq"
-    path = Path(directory) / name
-    if not path.exists():
+    path = (directory / name).resolve()
+
+    # Prevent path traversal and symlink escape (#1)
+    if not path.is_relative_to(directory):
+        raise ValueError(f"Template path escapes template directory: {template_name!r}")
+
+    if not path.is_file():
         raise FileNotFoundError(f"Template not found: {path}")
-    return path.read_text(encoding="utf-8")
+
+    # Strip BOM if present (#3), read as UTF-8
+    content = path.read_text(encoding="utf-8-sig")
+
+    # Reject empty or whitespace-only templates (#5)
+    if not content or not content.strip():
+        raise ValueError(f"Template {name!r} is empty or contains only whitespace")
+
+    return content
 
 
 def parameterize_query(template: str, params: dict[str, str]) -> str:
@@ -178,8 +192,9 @@ def _validate_param_value(name: str, value: str) -> None:
     # Check for SPARQL keywords (case-insensitive, whole-word match)
     # Skip keyword check for URIs — SPARQL keywords appear legitimately in vocabularies
     # e.g. <https://data.vlaanderen.be/ns/onderwijs#base>
+    # Use casefold() for Unicode-aware case normalization (#2)
     if not is_uri:
-        value_upper = value.upper()
+        value_upper = value.casefold().upper()
         for keyword in _SPARQL_KEYWORDS:
             if re.search(r"(?<![A-Z])" + keyword + r"(?![A-Z])", value_upper):
                 raise ValueError(

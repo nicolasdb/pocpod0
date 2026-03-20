@@ -1,6 +1,6 @@
 # Story 2.7: Troll SPARQL Injection Validation
 
-Status: review
+Status: done
 
 ## Change Log
 - 2026-03-20: Story 2.7 implemented — SPARQL injection test suite, parameterization engine, 5 .rq templates, 140 injection tests (140 pass), 28 unit tests, full regression clean
