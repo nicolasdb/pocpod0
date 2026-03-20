@@ -1,6 +1,6 @@
 # Story 2.6: Bidirectional Traceability — Embedding, Triple, Pod
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -56,7 +56,7 @@ Then the functions are importable from a shared module in the pipeline package
 ## Tasks / Subtasks
 
 ### Task 1: Create traceability utility module (AC-1, AC-2, AC-7)
-- [ ] Create `pipeline/src/pocpod0_pipeline/traceability.py` with reusable functions:
+- [x] Create `pipeline/src/pocpod0_pipeline/traceability.py` with reusable functions:
   - `trace_embedding_to_pod(qdrant_client, oxigraph_url, point_id) -> TraceResult`
     - Retrieve Qdrant point -> extract `triple_uris` and `pod_resource_uri` -> verify triples in Oxigraph -> verify `prov:wasDerivedFrom` links -> return full chain
   - `trace_pod_to_embeddings(qdrant_client, oxigraph_url, pod_resource_uri) -> ReverseTraceResult`
@@ -69,7 +69,7 @@ Then the functions are importable from a shared module in the pipeline package
     - Cross-check that Oxigraph provenance and Qdrant payloads agree
 
 ### Task 2: Define data classes for trace results (AC-7)
-- [ ] Define typed result classes (dataclasses or Pydantic models):
+- [x] Define typed result classes (dataclasses or Pydantic models):
   ```python
   @dataclass
   class TraceResult:
@@ -99,7 +99,7 @@ Then the functions are importable from a shared module in the pipeline package
   ```
 
 ### Task 3: Implement forward traceability (AC-1)
-- [ ] `trace_embedding_to_pod()`:
+- [x] `trace_embedding_to_pod()`:
   - Call Qdrant REST API to retrieve point by ID
   - Extract `triple_uris` and `pod_resource_uri` from payload
   - For each triple URI, execute SPARQL ASK query against Oxigraph to confirm existence
@@ -108,24 +108,24 @@ Then the functions are importable from a shared module in the pipeline package
   - Return `TraceResult` with chain completeness flag
 
 ### Task 4: Implement reverse traceability (AC-2, AC-3)
-- [ ] `trace_pod_to_triples()`:
+- [x] `trace_pod_to_triples()`:
   - SPARQL query: `SELECT ?s ?p ?o WHERE { ?s ?p ?o . ?s prov:wasDerivedFrom <pod_resource_uri> }`
   - Execute against Oxigraph at `http://oxigraph:7878/query`
   - Parse SPARQL JSON results
-- [ ] `trace_pod_to_embeddings()`:
+- [x] `trace_pod_to_embeddings()`:
   - Call Qdrant scroll/search with payload filter: `{ "must": [{ "key": "pod_resource_uri", "match": { "value": "<uri>" } }] }`
   - Return all matching points
-- [ ] Combine both into `trace_pod_to_embeddings()` returning full `ReverseTraceResult`
+- [x] Combine both into `trace_pod_to_embeddings()` returning full `ReverseTraceResult`
 
 ### Task 5: Implement triple-to-embedding lookup (AC-4)
-- [ ] `trace_triples_to_embeddings()`:
+- [x] `trace_triples_to_embeddings()`:
   - For each triple URI, query Qdrant with payload filter on `triple_uris` array contains the URI
   - Qdrant filter: `{ "must": [{ "key": "triple_uris", "match": { "any": ["<triple_uri>"] } }] }`
   - Note: verify Qdrant v1.17.0 supports `match.any` on array fields; if not, iterate individual matches
   - Return deduplicated list of matching points
 
 ### Task 6: Implement provenance consistency check (AC-5)
-- [ ] `verify_provenance_consistency()`:
+- [x] `verify_provenance_consistency()`:
   - Get all triple URIs from Oxigraph for a given Pod resource (Task 4)
   - Get all embedding points from Qdrant for the same Pod resource (Task 4)
   - Cross-reference: every triple should have at least one embedding referencing it (unless the content was not semantically significant)
@@ -134,20 +134,20 @@ Then the functions are importable from a shared module in the pipeline package
   - Note: orphaned triples (triples without embeddings) are acceptable for non-semantic content. Orphaned embeddings (embeddings referencing non-existent triples) are NOT acceptable.
 
 ### Task 7: Write integration test (AC-6)
-- [ ] Create `tests/integration/test_traceability.py`
-- [ ] Test requires live services: Oxigraph (with loaded triples from Story 2-3) and Qdrant (with embeddings from Story 2-5)
-- [ ] Test cases:
+- [x] Create `tests/integration/test_traceability.py`
+- [x] Test requires live services: Oxigraph (with loaded triples from Story 2-3) and Qdrant (with embeddings from Story 2-5)
+- [x] Test cases:
   - `test_forward_trace_embedding_to_pod`: pick a random Qdrant point, trace to Pod resource, assert chain complete
   - `test_reverse_trace_pod_to_all_derived`: pick a known Pod resource URI, find all triples and embeddings, assert counts > 0
   - `test_reverse_trace_pod_to_triples`: verify SPARQL returns triples with correct provenance
   - `test_triple_to_embedding_mapping`: pick triple URIs, find corresponding embeddings
   - `test_provenance_consistency`: run consistency check, assert no orphaned embeddings
   - `test_nonexistent_pod_returns_empty`: verify traceability for a URI that was never ingested returns empty results
-- [ ] Use pytest fixtures for Qdrant client and Oxigraph URL configuration
-- [ ] Tests must be deterministic and reproducible (NFR12)
+- [x] Use pytest fixtures for Qdrant client and Oxigraph URL configuration
+- [x] Tests must be deterministic and reproducible (NFR12)
 
 ### Task 8: Add structured logging (AC-7)
-- [ ] Log traceability operations:
+- [x] Log traceability operations:
   - `traceability.forward_trace`: `{ point_id, chain_complete, duration_ms }`
   - `traceability.reverse_trace`: `{ pod_resource_uri, triple_count, embedding_count, duration_ms }`
   - `traceability.consistency_check`: `{ pod_resource_uri, consistent, orphaned_triples, orphaned_embeddings }`
@@ -277,6 +277,27 @@ distrobox-host-exec podman compose up oxigraph qdrant
 ## Dev Agent Record
 
 ### Agent Model Used
+claude-sonnet-4-6
+
 ### Debug Log References
+- Handoff from Story 2.5: actual provenance model uses named graph URI == Pod resource URI, NOT prov:wasDerivedFrom triples. All SPARQL queries adapted accordingly.
+- CSS HEAD request requires `Authorization: WebID <provisioner_webid>` — taken from utils.PROVISIONER_WEBID.
+- `trace_triples_to_embeddings`: iterated per URI instead of relying on Qdrant `match.any` (compatibility-safe approach per story note).
+- AC-5 adapted: "prov:wasDerivedFrom triple" in story doc is the architectural intent; actual check uses named graph existence (`ASK { GRAPH <uri> { ?s ?p ?o } }`).
+
 ### Completion Notes List
+- ✅ `traceability.py` created with all 5 functions + 4 dataclasses (`Triple`, `TraceResult`, `ReverseTraceResult`, `ConsistencyReport`)
+- ✅ Forward trace (AC-1): Qdrant → named graph in Oxigraph → CSS HEAD — chain verified
+- ✅ Reverse trace (AC-2, AC-3): `GRAPH <pod_resource_uri>` SPARQL + Qdrant scroll by pod_resource_uri
+- ✅ Triple-to-embedding (AC-4): iterative MatchValue scroll with deduplication
+- ✅ Consistency check (AC-5): orphaned embeddings = data integrity issue; orphaned triples = acceptable
+- ✅ Structured logging on all 3 operations with duration_ms (AC-7)
+- ✅ 6/6 integration tests pass against live services (AC-6)
+- ✅ 23 existing unit tests pass — no regressions
+
 ### File List
+- `pipeline/src/pocpod0_pipeline/traceability.py` (new)
+- `tests/integration/test_traceability.py` (new)
+
+## Change Log
+- 2026-03-20: Story 2.6 implemented — bidirectional traceability module + integration tests. All ACs satisfied.
