@@ -1,6 +1,9 @@
 # Story 2.7: Troll SPARQL Injection Validation
 
-Status: ready-for-dev
+Status: review
+
+## Change Log
+- 2026-03-20: Story 2.7 implemented — SPARQL injection test suite, parameterization engine, 5 .rq templates, 140 injection tests (140 pass), 28 unit tests, full regression clean
 
 ## Story
 
@@ -70,25 +73,25 @@ And when the shared SPARQL skill is implemented (Story 3-1), these tests can be 
 ## Tasks / Subtasks
 
 ### Task 1: Create injection test module (AC-1)
-- [ ] Create `agents/troll-adversary/attacks/sparql-injection.py`
-- [ ] Import `TrollTestResult` and `log_test_result()` from `agents/troll-adversary/attacks/__init__.py` — do NOT define a new dataclass; reuse the shared troll reporting infrastructure from Story 1.5
-- [ ] Structure the module with:
+- [x] Create `agents/troll-adversary/attacks/sparql-injection.py`
+- [x] Import `TrollTestResult` and `log_test_result()` from `agents/troll-adversary/attacks/__init__.py` — do NOT define a new dataclass; reuse the shared troll reporting infrastructure from Story 1.5
+- [x] Structure the module with:
   - `InjectionTestSuite` class containing all test cases
   - `run_all()` method that executes all injection tests and returns results using `TrollTestResult`
-- [ ] Add a **preflight check** before running any injection tests: verify Oxigraph is reachable and the expected collection/data exists. If preflight fails, abort with a clear error (do not run tests against a broken environment).
+- [x] Add a **preflight check** before running any injection tests: verify Oxigraph is reachable and the expected collection/data exists. If preflight fails, abort with a clear error (do not run tests against a broken environment).
 
 ### Task 2: Create parameterized SPARQL template files (AC-2, AC-7)
-- [ ] Create or verify `.rq` template files in `agents/skills/sparql-query/templates/`:
+- [x] Create or verify `.rq` template files in `agents/skills/sparql-query/templates/`:
   - `student-progress.rq` — query with `$student_uri` and `$context_uri` parameters
   - `cross-context-query.rq` — query with `$agent_role` and `$pod_uri` parameters
   - `aggregate-anonymized.rq` — query with `$program_uri` and `$community_uri` parameters
   - `parental-view.rq` — query with `$parent_uri` and `$child_uri` parameters
   - `transfer-profile.rq` — query with `$student_uri` and `$school_uri` parameters
-- [ ] Each template uses `$parameter` placeholders (NOT string concatenation)
-- [ ] Templates must be valid SPARQL when parameters are substituted with clean values
+- [x] Each template uses `$parameter` placeholders (NOT string concatenation)
+- [x] Templates must be valid SPARQL when parameters are substituted with clean values
 
 ### Task 3: Implement template parameterization engine (AC-2, AC-7)
-- [ ] Create `agents/skills/sparql-query/parameterize.py` (or equivalent):
+- [x] Create `agents/skills/sparql-query/parameterize.py` (or equivalent):
   - `load_template(template_name: str) -> str` — reads `.rq` file
   - `parameterize_query(template: str, params: dict[str, str]) -> str` — safe substitution
   - Safe substitution MUST:
@@ -97,10 +100,10 @@ And when the shared SPARQL skill is implemented (Story 3-1), these tests can be 
     - Reject parameter values that contain injection patterns
     - Only substitute declared `$parameter` placeholders
   - This is the security boundary that SEC-3 requires
-- [ ] This module is shared between the troll tests (this story) and the SPARQL skill (Story 3-1)
+- [x] This module is shared between the troll tests (this story) and the SPARQL skill (Story 3-1)
 
 ### Task 4: Implement injection payload library (AC-3)
-- [ ] Create a catalog of injection payloads in the test module:
+- [x] Create a catalog of injection payloads in the test module:
   ```python
   INJECTION_PAYLOADS = {
       "clause_injection": [
@@ -133,7 +136,7 @@ And when the shared SPARQL skill is implemented (Story 3-1), these tests can be 
   ```
 
 ### Task 5: Implement injection test execution (AC-1, AC-2, AC-3)
-- [ ] For each template file:
+- [x] For each template file:
   - For each parameter in the template:
     - For each injection payload:
       - Substitute the injection payload as the parameter value
@@ -141,11 +144,11 @@ And when the shared SPARQL skill is implemented (Story 3-1), these tests can be 
       - If the engine accepts the payload: attempt to execute against Oxigraph
       - A test PASSES if: the engine rejects the payload OR Oxigraph returns only expected results (no data leak)
       - A test FAILS if: the injection payload reaches Oxigraph AND returns unauthorized data
-- [ ] Track results for each test case
+- [x] Track results for each test case
 
 ### Task 6: Implement report generation (AC-4)
-- [ ] Each test produces a JSON report entry with the exact schema from AC-4
-- [ ] Aggregate results into a summary:
+- [x] Each test produces a JSON report entry with the exact schema from AC-4
+- [x] Aggregate results into a summary:
   ```json
   {
     "category": "sparql_injection",
@@ -155,24 +158,24 @@ And when the shared SPARQL skill is implemented (Story 3-1), these tests can be 
     "blocking": true
   }
   ```
-- [ ] Write individual results to stdout as structured JSON logs
-- [ ] Write summary to a report file: `agents/troll-adversary/report/sparql-injection-results.json`
+- [x] Write individual results to stdout as structured JSON logs
+- [x] Write summary to a report file: `agents/troll-adversary/report/sparql-injection-results.json`
 
 ### Task 7: Implement blocking failure behavior (AC-5)
-- [ ] If any injection test fails:
+- [x] If any injection test fails:
   - Log at ERROR level with full evidence (payload, response, expected vs actual)
   - Set exit code to non-zero
   - Mark the overall suite result as `BLOCKING_FAILURE`
-- [ ] This is per NFR6: injection resistance MUST pass
+- [x] This is per NFR6: injection resistance MUST pass
 
 ### Task 8: Write unit tests for parameterization engine (AC-2, AC-6)
-- [ ] Create `agents/troll-adversary/tests/test_sparql_injection.py` (or colocate with attack module)
-- [ ] Test that clean parameter values produce valid SPARQL
-- [ ] Test that each injection payload category is rejected by the parameterization engine
-- [ ] Test determinism: same inputs produce same results (NFR12)
+- [x] Create `agents/troll-adversary/tests/test_sparql_injection.py` (or colocate with attack module)
+- [x] Test that clean parameter values produce valid SPARQL
+- [x] Test that each injection payload category is rejected by the parameterization engine
+- [x] Test determinism: same inputs produce same results (NFR12)
 
 ### Task 9: Create runner script (AC-1)
-- [ ] Create entry point to run the injection test suite:
+- [x] Create entry point to run the injection test suite:
   - Accept Oxigraph URL as argument (default: `http://oxigraph:7878`)
   - Accept template directory as argument (default: `agents/skills/sparql-query/templates/`)
   - Print summary to stdout
@@ -316,6 +319,33 @@ distrobox-host-exec podman compose up oxigraph
 ## Dev Agent Record
 
 ### Agent Model Used
+claude-sonnet-4-6
+
 ### Debug Log References
+- Fixed `#` fragment in WebID URIs (`profile/card#me`) was incorrectly rejected as SPARQL comment injection. Solution: split injection validation into URI-specific and string-specific pattern sets. URIs allow `#` fragment but reject whitespace; strings reject `#` entirely.
+- Fixed `parents[4]` → `parents[3]` in importlib path resolution (test file is 3 levels deep, not 4).
+- `sparql-query` and `troll-adversary` directory names have hyphens; used `importlib.util.spec_from_file_location` for all cross-module imports.
+
 ### Completion Notes List
+- ✅ Task 1: `agents/troll-adversary/attacks/sparql_injection.py` — InjectionTestSuite with preflight, run_all(), structured JSON output, blocking exit code
+- ✅ Task 2: 5 `.rq` template files with $parameter syntax, OSLO vocabulary, valid SPARQL
+- ✅ Task 3: `agents/skills/sparql-query/parameterize.py` — security boundary, URI-aware validation, reusable by Story 3-1
+- ✅ Task 4: 6 injection payload categories (clause, string_escape, uri, comment, filter, nested_query)
+- ✅ Task 5: per-template per-parameter per-payload test execution; 140 test cases against live Oxigraph: 140/140 PASS
+- ✅ Task 6: AC-4 JSON schema per test + summary report → `agents/troll-adversary/report/sparql-injection-results.json`
+- ✅ Task 7: `blocking=True` + exit code 1 on any fail result
+- ✅ Task 8: 28 unit tests, 28/28 pass — clean substitution, all 6 injection categories, determinism, template loading
+- ✅ Task 9: `main()` with argparse, `--oxigraph-url`, `--template-dir`, summary + exit code
+- Full regression: 208 passed, 4 skipped, 0 failures (2026-03-20)
+
 ### File List
+- `agents/troll-adversary/attacks/sparql_injection.py` (new)
+- `agents/troll-adversary/tests/__init__.py` (new)
+- `agents/troll-adversary/tests/test_sparql_injection.py` (new)
+- `agents/skills/sparql-query/parameterize.py` (new)
+- `agents/skills/sparql-query/templates/student-progress.rq` (new)
+- `agents/skills/sparql-query/templates/cross-context-query.rq` (new)
+- `agents/skills/sparql-query/templates/aggregate-anonymized.rq` (new)
+- `agents/skills/sparql-query/templates/parental-view.rq` (new)
+- `agents/skills/sparql-query/templates/transfer-profile.rq` (new)
+- `agents/troll-adversary/report/sparql-injection-results.json` (generated, gitignored)

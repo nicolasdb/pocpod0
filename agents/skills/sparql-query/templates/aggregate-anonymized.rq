@@ -1,0 +1,14 @@
+# aggregate-anonymized.rq
+# Aggregate anonymized statistics for a program within a community.
+# Parameters: $program_uri, $community_uri
+PREFIX oslo-educ: <https://data.vlaanderen.be/ns/onderwijs#>
+PREFIX prov: <http://www.w3.org/ns/prov#>
+
+SELECT (COUNT(?student) AS ?count) (AVG(?score) AS ?avg_score) WHERE {
+  GRAPH $community_uri {
+    ?activity oslo-educ:programma $program_uri .
+    ?activity oslo-educ:betreft ?student .
+    ?activity oslo-educ:score ?score .
+  }
+}
+GROUP BY $program_uri

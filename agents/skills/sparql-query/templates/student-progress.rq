@@ -1,0 +1,17 @@
+# student-progress.rq
+# Query learning activities for a specific student in a specific context.
+# Parameters: $student_uri, $context_uri
+# Safe substitution via parameterize.py — never concatenate directly.
+PREFIX oslo-educ: <https://data.vlaanderen.be/ns/onderwijs#>
+PREFIX prov: <http://www.w3.org/ns/prov#>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+
+SELECT ?activity ?result ?date WHERE {
+  GRAPH $context_uri {
+    ?activity oslo-educ:betreft $student_uri .
+    ?activity oslo-educ:resultaat ?result .
+    ?activity oslo-educ:datum ?date .
+    ?activity prov:wasGeneratedBy ?process .
+  }
+}
+ORDER BY DESC(?date)

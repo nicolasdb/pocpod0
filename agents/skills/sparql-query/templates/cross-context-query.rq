@@ -1,0 +1,15 @@
+# cross-context-query.rq
+# Query activities accessible to a given agent role across a pod.
+# Parameters: $agent_role, $pod_uri
+PREFIX oslo-educ: <https://data.vlaanderen.be/ns/onderwijs#>
+PREFIX prov: <http://www.w3.org/ns/prov#>
+PREFIX acl: <http://www.w3.org/ns/auth/acl#>
+
+SELECT ?activity ?subject ?result WHERE {
+  GRAPH $pod_uri {
+    ?activity oslo-educ:betreft ?subject .
+    ?activity oslo-educ:resultaat ?result .
+    ?activity oslo-educ:rolBetrokken $agent_role .
+  }
+}
+ORDER BY ?subject
