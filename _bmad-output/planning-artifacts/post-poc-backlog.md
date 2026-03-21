@@ -48,6 +48,51 @@ Apply the same pod sovereignty + data silo architecture to a healthcare domain i
 
 ---
 
+## Idea: Personal PodGraphRAG — Shippable Container with BYOK OpenClaw
+
+**Captured:** 2026-03-21 (Epic 2 Retrospective)
+**Status:** backlog
+**Depends on:** Epics 1-6 complete
+
+### Concept
+
+Package the full pocpod0 stack (CSS + Oxigraph + Qdrant + OpenClaw + Mission Control) as a single `docker compose up` deployment with onboarding flow. Target: alpha testing with low-tech real users who never touch SPARQL, ACLs, or config files.
+
+### Two packaging tiers
+
+**Tier 1 — Developer / evaluator:**
+- Ship repo + `.env.template` + docs
+- User edits `.env` (pod names, OpenRouter API key)
+- `docker compose up` + `provision_pods.py` + pipeline
+- OpenClaw installed separately, pointed at local stack
+
+**Tier 2 — Non-technical user (target):**
+- All-in-one compose with OpenClaw + mission control baked in
+- First-run onboarding: "What's your name? Who are your students?" → auto-provisions pods, ACLs, agent configs
+- `.env` only needs OpenRouter key (or local LLM endpoint)
+- Mission control dashboard (Story 6-2) doubles as onboarding UI
+
+### Multi-user: VPS + Domain unlock
+
+- Current: `localhost:3000/ayoub/` — meaningless outside this machine
+- With VPS + domain: `https://pods.family.be/ayoub/` — real dereferenceable WebID
+- CSS `baseUrl` config is the only change; no code hardcodes localhost
+- Enables: cross-machine pod access, real ACL enforcement (WebID-TLS/OIDC), federation between PodGraphRAG instances
+- URI portability (domain migration) handled by Solid protocol (`owl:sameAs` in WebID profile) — not our problem to solve
+
+### North star: family.be
+
+Nicolas's family running their own PodGraphRAG on a ~5€/month VPS. Personal pods for each family member, collective memory pod, personal agent bridging technical work into accessible updates. Proof of success: non-technical family members receiving fresh news without vulgarization overhead.
+
+### Reuse from POC
+
+- 100% of Epics 1-6 code reusable
+- Onboarding = `provision_pods.py` with a UI skin
+- Agent config = OpenClaw preset pointing at local compose services
+- Pipeline = same ingestion/embed flow, triggered by onboarding
+
+---
+
 ## Improvement: Live progress indicator for long-running pipeline jobs
 
 **Captured:** 2026-03-20

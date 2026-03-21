@@ -329,7 +329,18 @@ agents/
 
 - Use `distrobox-host-exec` for accessing podman containers from within the distrobox environment
 - Example: `distrobox-host-exec podman exec community-solid-server ...`
-- OpenClaw runtime itself runs on the host (Node.js), connecting to Docker services via exposed ports or Docker network
+- OpenClaw runtime MUST be added as a Docker service in the existing `docker-compose.yml`, running on the internal Docker network only, accessible via local web portal. It does NOT run on the host.
+
+### Validated Patterns from Epic 2
+
+- **CSS auth pattern (Story 1.5):** Use `Authorization: WebID <webid>` header for CSS authentication (NOT `X-Ms-User`)
+- **Oxigraph health endpoint (Story 2.3):** Health check is `GET /` (root, returns 200), NOT `/health`
+
+### OpenClaw Resources
+
+- **GitHub:** https://github.com/openclaw/openclaw
+- **Docker deployment guide:** https://openclaws.io/blog/openclaw-docker-deployment/
+- **Docker Hub:** https://hub.docker.com/r/alpine/openclaw
 
 ### References
 

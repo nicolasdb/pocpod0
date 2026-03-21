@@ -17,7 +17,7 @@ development_status:
   epic-1-retrospective: done
 
   # Epic 2: Semantic Data Intelligence
-  epic-2: in-progress
+  epic-2: done
   story-2-1-oslo-vocabulary-schema-contract: done
   story-2-2-xapi-oslo-rdf-ingestion-pipeline: done
   story-2-3-oxigraph-setup-rdf-storage-with-provenance: done
@@ -26,7 +26,7 @@ development_status:
   story-2-6-bidirectional-traceability-embedding-triple-pod: done
   story-2-7-troll-sparql-injection-validation: done
   story-2-8-troll-vector-privacy-validation: done
-  epic-2-retrospective: optional
+  epic-2-retrospective: done
 
   # Epic 3: Cross-Context Learning Insights
   epic-3: in-progress
@@ -159,35 +159,36 @@ sprint_backlog_order:
     priority: must-ship
     rationale: "Data layer 3: enables semantic search and hybrid queries"
 
+  # Epic 3 sequence reordered at Epic 2 retro (2026-03-21): de-risk OpenClaw first
   9:
-    story: story-3-1-shared-sparql-skill-foundation
-    epic: epic-3
-    priority: must-ship
-    rationale: "Foundation for all cross-context queries"
-
-  10:
     story: story-3-3-openClaw-agent-infrastructure
     epic: epic-3
     priority: must-ship
-    rationale: "Agent platform: enables all role scenarios"
+    rationale: "De-risk biggest unknown first: new technology not yet coded against (Epic 2 retro decision)"
+
+  10:
+    story: story-3-1-shared-sparql-skill-foundation
+    epic: epic-3
+    priority: must-ship
+    rationale: "SPARQL skill built knowing agent runtime shape; reuses parameterize.py from Story 2.7"
 
   11:
+    story: story-3-2-shared-qdrant-skill-foundation
+    epic: epic-3
+    priority: must-ship
+    rationale: "Qdrant skill reuses traceability.py from Story 2.6; built after agent runtime known"
+
+  12:
     story: story-3-4-claire-cross-context-insight-discovery
     epic: epic-3
     priority: must-ship
     rationale: "Must-ship journey: emotional core and hybrid query demo"
 
-  12:
-    story: story-4-1-marc-seamless-student-transfer
-    epic: epic-4
-    priority: must-ship
-    rationale: "Must-ship journey: operational proof"
-
   13:
-    story: story-5-1-ayoub-governance-transition
-    epic: epic-5
+    story: story-3-7-graph-only-vs-hybrid-comparison
+    epic: epic-3
     priority: must-ship
-    rationale: "Must-ship journey: principled architecture + honest failure"
+    rationale: "Scientific comparison right after Claire when real cross-context data exists"
 
   14:
     story: story-3-5-fatima-unified-parental-view
@@ -202,31 +203,48 @@ sprint_backlog_order:
     rationale: "Target journey: policy-level demo; add if resources permit"
 
   16:
-    story: story-1-5-troll-acl-enforcement-validation
-    epic: epic-1
+    story: story-3-8-troll-cross-inference-validation
+    epic: epic-3
     priority: must-ship
-    rationale: "Security validation: tests foundational access control"
-    fallback: "Can run after story-1-4"
+    rationale: "Troll capstone last, same pattern as Epic 2; includes PRIV-1 probes"
 
   17:
+    story: story-4-1-marc-seamless-student-transfer
+    epic: epic-4
+    priority: must-ship
+    rationale: "Must-ship journey: operational proof"
+
+  18:
+    story: story-5-1-ayoub-governance-transition
+    epic: epic-5
+    priority: must-ship
+    rationale: "Must-ship journey: principled architecture + honest failure"
+
+  19:
     story: story-5-2-deletion-cascade-propagation
     epic: epic-5
     priority: must-ship
     rationale: "Data lifecycle: tests right-to-erasure across all layers"
 
-  18:
+  20:
+    story: story-5-3-troll-deletion-timing-validation
+    epic: epic-5
+    priority: must-ship
+    rationale: "Adversarial validation of deletion cascade"
+
+  21:
     story: story-6-1-troll-comprehensive-run-and-report
     epic: epic-6
     priority: must-ship
     rationale: "Phase 4: comprehensive adversarial testing and reporting"
 
-  19:
+  22:
     story: story-6-2-mission-control-dashboard-implementation
     epic: epic-6
     priority: target
     rationale: "Phase 4: dashboard designed after Phase 1-3 provide component requirements"
 
-  20:
+  23:
     story: story-6-3-funder-intervention-points
     epic: epic-6
     priority: target

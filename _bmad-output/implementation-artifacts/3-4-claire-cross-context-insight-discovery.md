@@ -16,7 +16,7 @@ When Claire queries "Which students are struggling with quadratic equations acro
 Then the SPARQL skill executes `cross-context-query.rq` scoped to Claire's authorized pods (FR14, FR17)
 And returns structured facts: failed tests, attendance records, self-study module counts
 And results include only data from pods Claire's tutor role can access
-And each result includes `prov:wasDerivedFrom` provenance URIs
+And each result includes provenance via named graph URI (graph URI == Pod resource URI, queried with `GRAPH <uri> {}` syntax)
 
 **AC2: Hybrid query returns semantically enriched insights**
 Given the same query as AC1
@@ -37,8 +37,8 @@ And the output format clearly labels which result came from which query type
 Given any query result (graph-only or hybrid)
 When Claire inspects provenance (FR20)
 Then each result shows which Oxigraph triples contributed to it
-And each triple links back to its source Pod resource URI (`prov:wasDerivedFrom`)
-And the provenance chain is navigable: result -> triples -> Pod resources
+And each triple links back to its source Pod resource URI (named graph URI == Pod resource URI)
+And the provenance chain is navigable: Qdrant Point -> `triple_uris` -> Oxigraph named graph -> Pod resource URI
 And Qdrant results additionally show `triple_uris` linking back to the graph layer
 
 **AC5: ACL enforcement prevents cross-role leakage**
@@ -78,7 +78,7 @@ And the access denial is logged in structured JSON format
   - Assessment results (failed/passed, scores)
   - Tutoring attendance counts
   - Self-study module completion counts
-  - `prov:wasDerivedFrom` URIs for each result row
+  - Named graph URIs (== Pod resource URIs) for each result row
 - [ ] Verify response time < 500ms (NFR1)
 
 ### Task 3: Implement hybrid query execution (AC2)
@@ -135,8 +135,8 @@ And the access denial is logged in structured JSON format
 
 ### Task 5: Implement provenance display (AC4)
 - [ ] For graph-only results, show provenance chain:
-  - Result row -> SPARQL `prov:wasDerivedFrom` URI -> Pod resource path
-  - Example: "This result derived from `http://community-solid-server:3000/ayoub/learning/assessment-3.ttl`"
+  - Result row -> Oxigraph named graph URI -> Pod resource path (named graph URI == Pod resource URI)
+  - Example: "This result from named graph `http://community-solid-server:3000/ayoub/learning/assessment-3.ttl`"
 - [ ] For hybrid results, show extended provenance chain:
   - SPARQL portion: same as graph-only
   - Qdrant portion: result -> `triple_uris` -> `pod_resource_uri`
@@ -221,12 +221,12 @@ This is not just a technical query — it is a demonstration that the architectu
 - **NFR9:** Query logging with timestamp, agent, latency, result count
 - **SEC-2:** ACL enforcement at query level via SPARQL skill
 - **API-2:** Two shared skills, agents compose hybrid by calling both
-- **DA-2:** Provenance schema — `prov:wasDerivedFrom` on triples, `triple_uris` + `pod_resource_uri` on Qdrant points
+- **DA-2:** Provenance schema — named graph URI == Pod resource URI (queried with `GRAPH <uri> {}` syntax), `triple_uris` + `pod_resource_uri` on Qdrant points. Use `parameterize.py` (Story 2.7) for safe query construction.
 
 ### Agent Query Protocol (from Architecture)
 
 1. Agent determines query type: graph-only, semantic, or hybrid
-2. **Graph path:** Agent calls SPARQL skill -> skill validates ACL -> selects `.rq` template -> parameterizes -> executes against Oxigraph -> returns results with `prov:wasDerivedFrom` provenance URIs
+2. **Graph path:** Agent calls SPARQL skill -> skill validates ACL -> selects `.rq` template -> parameterizes via `parameterize.py` (Story 2.7) -> executes against Oxigraph -> returns results with named graph provenance (graph URI == Pod resource URI)
 3. **Semantic path:** Agent calls Qdrant skill -> skill generates query embedding -> similarity search against Qdrant -> returns results with `triple_uris` and `pod_resource_uri` traceability
 4. **Hybrid path:** Agent calls BOTH skills (can be parallel), receives two result sets, merges them itself based on persona context
 5. **Agent formats results** for its persona's narrative

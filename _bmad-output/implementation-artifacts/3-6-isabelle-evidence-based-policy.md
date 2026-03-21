@@ -68,7 +68,6 @@ Then a structured JSON log entry is emitted with timestamp, agent (`isabelle-pol
   - Example template structure:
     ```sparql
     PREFIX oslo-educ: <https://data.vlaanderen.be/ns/onderwijs#>
-    PREFIX prov: <http://www.w3.org/ns/prov#>
     PREFIX pocpod0: <http://pocpod0.local/vocab#>
 
     SELECT
@@ -76,27 +75,29 @@ Then a structured JSON log entry is emitted with timestamp, agent (`isabelle-pol
       ?communityScope
       (COUNT(DISTINCT ?student) AS ?participantCount)
       (AVG(?score) AS ?averageScore)
-      (COUNT(DISTINCT ?provenanceUri) AS ?tripleCount)
+      (COUNT(DISTINCT ?graphUri) AS ?namedGraphCount)
       (COUNT(DISTINCT ?podUri) AS ?podCount)
     WHERE {
-      ?program a oslo-educ:Onderwijsactiviteit .
-      ?program oslo-educ:naam ?programName .
-      ?program pocpod0:programType "STEM" .
-      ?program pocpod0:communityScope ?communityScope .
-      ?activity oslo-educ:isOnderdeelVan ?program .
-      ?activity oslo-educ:heeftDeelnemer ?student .
-      ?student pocpod0:podUri ?podUri .
-      ?student pocpod0:consentGrant "regional-access" .
-      ?activity oslo-educ:heeftResultaat ?resultNode .
-      ?resultNode oslo-educ:score ?score .
-      ?activity prov:wasDerivedFrom ?provenanceUri .
+      GRAPH ?graphUri {
+        ?program a oslo-educ:Onderwijsactiviteit .
+        ?program oslo-educ:naam ?programName .
+        ?program pocpod0:programType "STEM" .
+        ?program pocpod0:communityScope ?communityScope .
+        ?activity oslo-educ:isOnderdeelVan ?program .
+        ?activity oslo-educ:heeftDeelnemer ?student .
+        ?student pocpod0:podUri ?podUri .
+        ?student pocpod0:consentGrant "regional-access" .
+        ?activity oslo-educ:heeftResultaat ?resultNode .
+        ?resultNode oslo-educ:score ?score .
+      }
     }
     GROUP BY ?programName ?communityScope
     ORDER BY ?programName
     ```
   - The `GROUP BY` clause ensures only aggregate results are returned — no individual student data
   - The `pocpod0:consentGrant "regional-access"` filter ensures only data from pods with active consent is included
-  - The provenance aggregate (`?tripleCount`, `?podCount`) provides the "derived from N triples across M student pods" provenance narrative
+  - The provenance aggregate (`?namedGraphCount`, `?podCount`) provides the "derived from N named graphs across M student pods" provenance narrative
+  - `GRAPH ?graphUri {}` scopes across multiple named graphs (one per Pod resource), enabling cross-community aggregation
 
 ### Task 3: Implement aggregate-only access enforcement in SPARQL skill (AC3)
 - [ ] In `agents/skills/sparql-query/handler.py`, add aggregate-only enforcement for the `regional-policy` role:
@@ -196,7 +197,7 @@ Then a structured JSON log entry is emitted with timestamp, agent (`isabelle-pol
 
 ### Architecture Decisions Referenced
 
-- **DA-2:** Provenance & Traceability Schema. Aggregate queries must still show provenance — but at the aggregate level (count of triples, count of pods), not individual URIs. This is the "derived from N triples across M student pods" pattern.
+- **DA-2:** Provenance & Traceability Schema. Named graph URI == Pod resource URI (queried with `GRAPH <uri> {}` syntax). Aggregate queries show provenance at the aggregate level (count of named graphs, count of pods), not individual URIs. This is the "derived from N named graphs across M student pods" pattern. Use `parameterize.py` (Story 2.7) for safe query construction.
 - **DA-3:** OSLO Vocabulary Schema Contract. NL and FR community data is queryable in a single SPARQL query because both are mapped to the same OSLO vocabulary classes. Cross-community aggregation is a SPARQL GROUP BY, not a data integration challenge.
 - **SEC-2:** ACL enforcement at query level. Isabelle's role gets a stricter enforcement: not just "can you access these pods?" but "can you access these pods AND are you limited to aggregate queries?" This is a role-specific ACL constraint.
 - **SEC-3:** Parameterized `.rq` templates. The `aggregate-anonymized.rq` template uses `$programUri` and `$communityScope` parameters.

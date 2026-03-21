@@ -55,6 +55,8 @@ Then the result follows the troll report format:
 
 ### Task 1: Create cross-inference attack module (AC1)
 - [ ] Create `agents/troll-adversary/attacks/cross-inference.py`
+- [ ] Reuse `TrollTestResult` dataclass and `log_test_result()` from `attacks/__init__.py` (established pattern from Stories 2.7/2.8)
+- [ ] Reuse `vector_privacy.py` embed/Qdrant helpers from Story 2.8 for any vector-layer probes (e.g., PRIV-1 URI leak checks)
 - [ ] Implement `CrossInferenceAttack` class with:
   - `__init__(self, agent_configs: dict)` — loads target agent configurations
   - `run_all_probes(self) -> list[ProbeResult]` — runs all cross-inference probes
@@ -95,6 +97,8 @@ Then the result follows the troll report format:
      - Boundary: regional policy advisor gets aggregate-only access, never individual records
 - [ ] Each probe must be designed to test a SPECIFIC role boundary, not a generic "give me everything" attack
 - [ ] Probes should be realistic NL — the kind of question a real user might innocently ask
+- [ ] **PRIV-1 probes (Story 2.8 finding):** Include probes that test whether cross-inference queries expose `pod_resource_uri` patterns across different agent roles. The `pod_resource_uri` field in Qdrant payloads leaks student identity (e.g., `/ayoub/` in the URI reveals the student name). Probe whether an agent's response inadvertently surfaces URI path segments belonging to other roles' pods.
+- [ ] **SEC-3 bypass probes (Story 2.7):** Include probes that attempt to trick the agent into bypassing the `parameterize.py` security boundary (SEC-3) in SPARQL skill queries — e.g., NL prompts crafted to coerce the agent into injecting unparameterized values into skill invocations.
 
 ### Task 3: Implement probe execution through agent layer (AC1, AC2)
 - [ ] Implement `run_probe(self, probe: Probe) -> ProbeResult`:
@@ -269,6 +273,10 @@ The troll agent has three access patterns. This story uses the THIRD:
 
 The key distinction: in this story, the troll does NOT send SPARQL queries or direct API calls. It sends natural language prompts to role agents, just as a real user would. The agent processes the NL prompt through its LLM, decides which skills to invoke, and returns a response. The troll then analyzes whether the response leaked cross-role data.
 
+### Traceability Pattern
+
+Note: Oxigraph traceability uses the **named graph pattern** (one named graph per Pod URI), NOT `prov:wasDerivedFrom`. Cross-inference probes that touch SPARQL results should be aware that data isolation is enforced via named graph scoping, not provenance predicates.
+
 ### Why Cross-Inference Is Different
 
 Cross-inference is fundamentally different from other troll tests:
@@ -365,6 +373,8 @@ agents/
 
 - **Depends on Story 3.3:** All agent configs must exist. The troll sends probes TO role agents — they must be running and responsive.
 - **Depends on Story 3.1:** SPARQL skill must exist — role agents use it to process queries, and the ACL enforcement layer is where cross-inference probes should be blocked.
+- **Reuses from Story 2.7:** `parameterize.py` security boundary (SEC-3) — cross-inference probes should test whether agents can be tricked into bypassing parameterization. Also reuses `TrollTestResult` dataclass and `log_test_result()` from `attacks/__init__.py`.
+- **Reuses from Story 2.8:** `vector_privacy.py` embed/Qdrant helpers for vector-layer probes. PRIV-1 finding (pod_resource_uri identity leak) must be covered in the probe catalog.
 - **Depends on Epic 2 data:** Oxigraph and Qdrant must have data loaded. Without real data, agents can't meaningfully respond to cross-inference probes.
 - **Depends on Epic 1:** Pods must exist with ACLs configured — the ACL permissions are what define role boundaries.
 - **Consumed by Story 6.1:** The comprehensive troll run aggregates results from this story's cross-inference module alongside all other attack categories.
@@ -389,7 +399,8 @@ agents/
 - PRD: `_bmad-output/planning-artifacts/prd.md` (FR30, NFR8, NFR12, NFR13, Troll Attack Path Mapping)
 - Epics: `_bmad-output/planning-artifacts/epics.md` (Story 3.6 acceptance criteria — maps to this sprint story 3-8)
 - Story 1.5: `_bmad-output/implementation-artifacts/1-5-troll-acl-enforcement-validation.md` (troll report format precedent, direct infra access pattern)
-- Story 2.7: `_bmad-output/implementation-artifacts/2-7-troll-sparql-injection-validation.md` (through-skill access pattern precedent)
+- Story 2.7: `_bmad-output/implementation-artifacts/2-7-troll-sparql-injection-validation.md` (through-skill access pattern precedent, `parameterize.py` SEC-3 boundary, `TrollTestResult`/`log_test_result()` in `attacks/__init__.py`)
+- Story 2.8: `_bmad-output/implementation-artifacts/2-8-troll-vector-privacy-validation.md` (PRIV-1 `pod_resource_uri` identity leak finding, `vector_privacy.py` embed/Qdrant helpers)
 - Story 3.1: `_bmad-output/implementation-artifacts/3-1-shared-sparql-skill-foundation.md` (SPARQL skill ACL enforcement that should block cross-role queries)
 - Story 3.3: agent configuration (must exist — all role agents needed as probe targets)
 

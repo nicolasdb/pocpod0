@@ -184,7 +184,7 @@ Then the combined response time is < 2s (NFR2)
 This is the full protocol from the architecture doc that agents follow:
 
 1. **Agent determines query type:** graph-only, semantic, or hybrid
-2. **Graph path:** Agent calls SPARQL skill (`sparql-query`) -> skill validates ACL -> selects `.rq` template -> parameterizes -> executes against Oxigraph -> returns results with `prov:wasDerivedFrom` provenance URIs
+2. **Graph path:** Agent calls SPARQL skill (`sparql-query`) -> skill validates ACL -> selects `.rq` template -> parameterizes -> executes against Oxigraph -> returns results with provenance metadata (named graph URI == Pod resource URI, `GRAPH <uri> {}` scoping)
 3. **Semantic path:** Agent calls Qdrant skill (`qdrant-search`) -> skill generates query embedding -> similarity search against Qdrant -> returns results with `triple_uris` and `pod_resource_uri` traceability metadata
 4. **Hybrid path:** Agent calls BOTH skills (can be parallel), receives two result sets, merges them itself based on persona context
 5. **Agent formats results** for its persona's narrative
@@ -248,6 +248,7 @@ agents/
 - **Depends on Story 2.5:** Qdrant must have embeddings loaded with the correct payload schema (`triple_uris`, `pod_resource_uri`). Check Story 2.5 implementation for collection name, payload schema, and protocol choice (REST vs gRPC).
 - **Depends on Epic 1:** Pods must exist (for `pod_resource_uri` references to be valid).
 - **Depends on Epic 2:** Oxigraph must have data loaded (for `triple_uris` references to be valid).
+- **Reuses Story 2.6 traceability.py:** Import provenance navigation functions from `pipeline/src/pocpod0_pipeline/traceability.py` — functions: `trace_embedding_to_pod()`, `trace_pod_to_triples()`, `trace_triples_to_embeddings()`, `verify_provenance_consistency()`. Use these for bidirectional traceability between embeddings, triples, and Pod resources.
 - **Blocks Stories 3.3-3.7:** All role agent journey stories depend on both skills for hybrid queries.
 
 ### Isolation Notes

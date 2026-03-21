@@ -21,7 +21,7 @@ When an agent calls the skill with a query request and role identity
 Then the skill validates the agent's role against Pod ACLs before executing
 And selects the appropriate parameterized `.rq` template
 And executes the query against Oxigraph
-And returns results with provenance metadata (`prov:wasDerivedFrom` URIs)
+And returns results with provenance metadata (named graph URI == Pod resource URI, using `GRAPH <uri> {}` scoping)
 
 **AC3: Access denied on insufficient ACLs**
 Given an agent with insufficient ACL permissions
@@ -55,7 +55,7 @@ Then a log entry is emitted with timestamp, requesting agent, latency, and resul
 - [ ] Create `agents/skills/sparql-query/templates/student-progress.rq`
   - Query: student learning progress across contexts, scoped by student Pod URI
   - Parameters: `$studentPodUri`, `$learningContext` (optional)
-  - Must include `prov:wasDerivedFrom` in SELECT for provenance
+  - Must use `GRAPH <$studentPodUri> {}` scoping for provenance (named graph URI == Pod resource URI)
 - [ ] Create `agents/skills/sparql-query/templates/cross-context-query.rq`
   - Query: cross-institutional data for a given subject/topic across authorized pods
   - Parameters: `$subject`, `$authorizedPodUris` (list)
@@ -98,7 +98,7 @@ Then a log entry is emitted with timestamp, requesting agent, latency, and resul
   3. Content-Type for request: `application/sparql-query`
   4. Accept header: `application/sparql-results+json`
   5. Parse JSON results
-  6. Extract `prov:wasDerivedFrom` URIs from results for provenance metadata
+  6. Provenance is implicit: the named graph URI in `GRAPH <uri> {}` scoping IS the Pod resource URI (no separate `prov:wasDerivedFrom` extraction needed)
   7. Return results with provenance to the calling agent
 
 ### Task 7: Implement structured JSON logging (AC3, AC4)
@@ -182,13 +182,13 @@ PREFIX oslo-person: <https://data.vlaanderen.be/ns/persoon#>
 PREFIX prov: <http://www.w3.org/ns/prov#>
 PREFIX pocpod0: <http://pocpod0.local/vocab#>
 
-SELECT ?activity ?result ?context ?provenanceUri
+SELECT ?activity ?result ?context
 WHERE {
-  ?activity oslo-educ:heeftDeelnemer ?student .
-  ?student pocpod0:podUri $studentPodUri .
-  ?activity oslo-educ:heeftResultaat ?result .
-  ?activity prov:wasDerivedFrom ?provenanceUri .
-  OPTIONAL { ?activity oslo-educ:context ?context }
+  GRAPH <$studentPodUri> {
+    ?activity oslo-educ:heeftDeelnemer ?student .
+    ?activity oslo-educ:heeftResultaat ?result .
+    OPTIONAL { ?activity oslo-educ:context ?context }
+  }
 }
 ```
 
@@ -213,7 +213,7 @@ The handler reads the `.rq` file, replaces `$studentPodUri` with the actual valu
 5. If YES: select `.rq` template based on `query_type`
 6. Parameterize template: replace `$studentPodUri` etc. with actual values
 7. Execute parameterized SPARQL query against `http://oxigraph:7878/query` via HTTP POST
-8. Parse results, extract `prov:wasDerivedFrom` URIs
+8. Parse results (provenance is the named graph URI used in `GRAPH <uri> {}` scoping)
 9. Return: `{ status: "success", results: [...], provenance: [...] }`
 10. Log execution with timing
 
@@ -240,6 +240,8 @@ agents/
 
 - **Depends on Epic 1:** Pods must exist with ACLs configured (Story 1.1, 1.4)
 - **Depends on Epic 2:** Data must be loaded in Oxigraph with OSLO mappings and provenance (Stories 2.1, 2.2, 2.3)
+- **Reuses Story 2.7 parameterize.py:** Import the parameterization engine from `agents/skills/sparql-query/parameterize.py` (SEC-3 security constraints: whitelist-only parameter substitution, no string concatenation). This is the validated engine for safe `.rq` template parameterization.
+- **Reuses Story 2.6 traceability.py:** Import provenance navigation functions from `pipeline/src/pocpod0_pipeline/traceability.py` — functions: `trace_embedding_to_pod()`, `trace_pod_to_triples()`, `trace_triples_to_embeddings()`, `verify_provenance_consistency()`. Named graph URI == Pod resource URI; queries use `GRAPH <uri> {}` syntax.
 - **Blocks Story 3.2:** Qdrant skill depends on SPARQL skill existing for hybrid query composition
 - **Blocks Stories 3.3-3.7:** All role agent journey stories depend on this skill
 

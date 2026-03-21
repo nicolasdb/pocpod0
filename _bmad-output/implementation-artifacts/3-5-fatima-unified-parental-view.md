@@ -64,26 +64,26 @@ Then a structured JSON log entry is emitted with timestamp, agent (`fatima-paren
     - Activity type / learning context (school, tutoring, extracurricular)
     - Subject / topic
     - Result / assessment outcome
-    - Provenance: `prov:wasDerivedFrom` URI for each result row
+    - Provenance: named graph URI for each result row (graph URI == Pod resource URI, queried with `GRAPH <uri> {}` syntax)
   - Query must handle both NL and FR school data seamlessly because it queries OSLO-mapped RDF (language-neutral structured data)
   - Example template structure:
     ```sparql
     PREFIX oslo-educ: <https://data.vlaanderen.be/ns/onderwijs#>
     PREFIX oslo-person: <https://data.vlaanderen.be/ns/persoon#>
-    PREFIX prov: <http://www.w3.org/ns/prov#>
     PREFIX pocpod0: <http://pocpod0.local/vocab#>
 
-    SELECT ?child ?childName ?activity ?activityType ?subject ?result ?learningContext ?provenanceUri
+    SELECT ?child ?childName ?activity ?activityType ?subject ?result ?learningContext ?graphUri
     WHERE {
       VALUES ?childPod { $childPodUris }
-      ?child pocpod0:podUri ?childPod .
-      ?child oslo-person:volledigeNaam ?childName .
-      ?activity oslo-educ:heeftDeelnemer ?child .
-      ?activity a ?activityType .
-      ?activity oslo-educ:heeftResultaat ?result .
-      ?activity prov:wasDerivedFrom ?provenanceUri .
-      OPTIONAL { ?activity oslo-educ:context ?learningContext }
-      OPTIONAL { ?activity oslo-educ:onderwerp ?subject }
+      GRAPH ?graphUri {
+        ?child pocpod0:podUri ?childPod .
+        ?child oslo-person:volledigeNaam ?childName .
+        ?activity oslo-educ:heeftDeelnemer ?child .
+        ?activity a ?activityType .
+        ?activity oslo-educ:heeftResultaat ?result .
+        OPTIONAL { ?activity oslo-educ:context ?learningContext }
+        OPTIONAL { ?activity oslo-educ:onderwerp ?subject }
+      }
     }
     ORDER BY ?child ?activityType
     ```
@@ -170,8 +170,8 @@ Then a structured JSON log entry is emitted with timestamp, agent (`fatima-paren
 
 ### Architecture Decisions Referenced
 
-- **DA-2:** Provenance & Traceability Schema. Every result must include `prov:wasDerivedFrom` URIs linking back to Pod resources. Fatima must see which Pod resources contributed to her unified view.
-- **SEC-2:** ACL enforcement at query level. The SPARQL skill validates `fatima-parent` role against Pod ACLs BEFORE executing queries. This is the second layer of defense-in-depth (Pod-level WebACL is the first layer from Epic 1).
+- **DA-2:** Provenance & Traceability Schema. Every result must include named graph URIs linking back to Pod resources (named graph URI == Pod resource URI, queried with `GRAPH <uri> {}` syntax). Fatima must see which Pod resources contributed to her unified view. Use `parameterize.py` (Story 2.7) for safe query construction.
+- **SEC-2:** ACL enforcement at query level. The SPARQL skill validates `fatima-parent` role against Pod ACLs BEFORE executing queries, using CSS auth with `Authorization: WebID <webid>` header (Story 1.5). This is the second layer of defense-in-depth (Pod-level WebACL is the first layer from Epic 1).
 - **SEC-3:** Parameterized `.rq` templates. The `parental-view.rq` template uses `$childPodUris` parameter — never string concatenation.
 - **API-2:** Two separate skills. Fatima's agent calls SPARQL skill for structured cross-context data and Qdrant skill for semantic enrichment. The agent merges the results itself (hybrid protocol).
 - **DA-3:** OSLO Vocabulary Schema Contract. NL and FR school data is seamlessly queryable because both are mapped to the same OSLO vocabulary classes during Phase 2 ingestion. The SPARQL query does not need language-specific handling.
