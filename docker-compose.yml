@@ -69,6 +69,13 @@ services:
 
   openclaw-gateway:
     image: ${OPENCLAW_IMAGE:-ghcr.io/openclaw/openclaw:latest}
+    depends_on:
+      community-solid-server:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      oxigraph:
+        condition: service_started
     container_name: openclaw-gateway
     restart: unless-stopped
     env_file:

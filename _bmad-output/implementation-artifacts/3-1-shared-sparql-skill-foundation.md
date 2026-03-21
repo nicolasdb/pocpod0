@@ -270,7 +270,13 @@ OpenClaw agents use their `exec` tool to run `handler.py` via command line — t
 **4. CSS baseUrl is `http://community-solid-server:3000/` for Docker-internal calls**
 CSS was restarted in Story 3-3 with `--baseUrl http://community-solid-server:3000/`. All CSS calls from within the Docker network (including from `handler.py` running inside the openclaw-gateway container) must use this hostname — never `localhost:3000`. Using localhost returns HTTP 500 ("identifier outside configured identifier space").
 
-**5. Re-provision pods after CSS restart**
+**5. `--allow-unconfigured` flag in docker-compose gateway command**
+The openclaw-gateway command passes `--allow-unconfigured`. This is required to allow the gateway to start and serve agents even when not all agent state directories are fully initialized. Without it, the gateway refuses to start if any agent's `agentDir` path doesn't exist yet. Leave this flag in place.
+
+**6. `skipBootstrap: true` in openclaw.json defaults**
+Set because agent workspaces are bind-mounted read-only (`./agents:/app/agents:ro`). OpenClaw's bootstrap process tries to write to the workspace directory — disabling it prevents a crash on startup. Agent context (SOUL.md, AGENTS.md, IDENTITY.md) is still loaded from the workspace; bootstrap only affects the initial setup wizard flow.
+
+**7. Re-provision pods after CSS restart**
 CSS was restarted in Story 3-3 (baseUrl fix). ACLs will have drifted. Run `provision_pods.py` before any ACL-sensitive handler tests:
 ```bash
 source .venv/bin/activate && python -m pocpod0_pipeline.provision_pods

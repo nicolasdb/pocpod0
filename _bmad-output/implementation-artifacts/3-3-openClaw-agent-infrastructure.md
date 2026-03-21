@@ -1,6 +1,6 @@
 # Story 3.3: OpenClaw Agent Infrastructure & Role Persona Configurations
 
-Status: review
+Status: done
 
 ## Story
 
@@ -11,32 +11,34 @@ so that every journey story can run its agent against the shared SPARQL and Qdra
 ## Acceptance Criteria
 
 **AC1: OpenClaw runtime starts and connects to OpenRouter**
-Given OpenClaw is configured with `agents/openclaw.config.yaml` pointing to OpenRouter API
+Given OpenClaw is configured with `agents/openclaw.json` (JSON5, not openclaw.config.yaml — validated format deviation)
 When the runtime starts
-Then it connects to OpenRouter using `minimax/minimax-m2.5` (NFR20)
+Then it connects to OpenRouter using primary model `nvidia/nemotron-3-super-120b-a12b:free`, fallback `minimax/minimax-m2.5` (NFR20 — nemotron promoted to primary for free-tier availability; minimax retained as fallback)
 And the single secret `OPENROUTER_API_KEY` is read from `.env` (NFR22)
-And the runtime discovers all agent configs in `agents/*/agent.yaml`
-And the runtime discovers all shared skills in `agents/skills/*/skill.yaml`
+And the runtime discovers all agent workspaces via `workspace` path per agent in openclaw.json (not `agents/*/agent.yaml` — validated format deviation)
+And the runtime discovers all shared skills via `skills.load.extraDirs` pointing to `agents/skills/` (SKILL.md format, not skill.yaml — validated format deviation)
 
 **AC2: Five role agents are spawnable with correct persona and ACL identity**
-Given agent configs exist for claire-teacher, marc-admin, isabelle-policy, fatima-parent, and ayoub-student (FR35)
+Given workspace files exist for claire-teacher, marc-admin, isabelle-policy, fatima-parent, and ayoub-student (FR35)
 When each agent is spawned by the runtime
-Then the agent has its persona description loaded (role, location, narrative context)
-And the agent has its ACL role identity set (tutor, admin, regional, parental, student)
-And the agent can invoke both shared skills (sparql-query, qdrant-search)
+Then the agent has its persona description loaded (SOUL.md: role, location, narrative context)
+And the agent has its ACL role identity set (AGENTS.md: tutor, admin, regional, parental, student)
+And the agent configuration declares both shared skills (sparql-query, qdrant-search)
+*Note: skill invocation (handler execution) is validated in Stories 3-1 and 3-2 when handler.py files exist. This story validates discovery and configuration only.*
 
 **AC3: Each agent has persona-specific query patterns**
 Given a spawned role agent
 When the agent processes a user query
-Then the agent selects query patterns appropriate to its persona (e.g., Claire uses cross-context-query and student-progress templates; Isabelle uses aggregate-anonymized)
-And the agent formats results using its persona's narrative voice
+Then the agent selects query patterns appropriate to its persona (defined in SOUL.md and AGENTS.md: Claire uses cross-context-query and student-progress; Isabelle uses aggregate-anonymized only)
+And the agent formats results using its persona's narrative voice (defined in SOUL.md)
+*Note: end-to-end query execution validated in Stories 3-1/3-2/3-4 through 3-6 when skill handlers and .rq templates exist.*
 
 **AC4: Troll agent has dual access model**
-Given the troll-adversary agent config exists (FR37)
+Given the troll-adversary workspace exists (FR37)
 When the troll agent is spawned
 Then it can access data through the shared skills (sparql-query, qdrant-search) — the "through skill" path
 And it can access data directly against service endpoints (CSS :3000, Oxigraph :7878, Qdrant :6333) — the "direct" path
-And both access paths are explicitly configured in `agents/troll-adversary/agent.yaml`
+And both access paths are explicitly configured in `agents/troll-adversary/AGENTS.md` and `SOUL.md` (not agent.yaml — validated format deviation)
 
 **AC5: Agent lifecycle logging**
 Given any agent spawn or skill invocation

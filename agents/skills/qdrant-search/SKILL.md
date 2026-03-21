@@ -12,7 +12,7 @@ using query embeddings generated via OpenRouter API (model: `qwen/qwen3-embeddin
 
 When an agent needs to enrich structured query results with semantic context, invoke this skill with:
 - `query`: the natural-language semantic search query
-- `collection`: Qdrant collection name (default: `learning-events`)
+- `collection`: Qdrant collection name (default: `pocpod0_embeddings`)
 - `limit`: max results to return (default: 10)
 - `score_threshold`: minimum similarity score (default: 0.7)
 - `filters`: optional payload filters (e.g. filter by pod_resource_uri)
