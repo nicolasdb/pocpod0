@@ -11,7 +11,7 @@ so that all role agents have a secure, reusable foundation for querying the grap
 ## Acceptance Criteria
 
 **AC1: OpenClaw runtime configured with OpenRouter**
-Given OpenClaw is installed with `openclaw.config.yaml` pointing to OpenRouter API (minimax/minimax-m2.5)
+Given OpenClaw is installed with `openclaw.json` pointing to OpenRouter API (minimax/minimax-m2.5)
 When the agent runtime starts
 Then the OpenRouter connection is verified and the runtime is ready to spawn agents
 
@@ -38,7 +38,7 @@ Then a log entry is emitted with timestamp, requesting agent, latency, and resul
 
 ### Task 1: Install and configure OpenClaw runtime (AC1)
 - [ ] Install OpenClaw (Node.js-based agent runtime) in the project
-- [ ] Create `agents/openclaw.config.yaml` with OpenRouter API configuration
+- [ ] Create `agents/openclaw.json` with OpenRouter API configuration
   - Model: `minimax/minimax-m2.5` (NFR20)
   - API endpoint: OpenRouter API
   - API key: reference `OPENROUTER_API_KEY` from `.env`
@@ -47,7 +47,7 @@ Then a log entry is emitted with timestamp, requesting agent, latency, and resul
 - [ ] Document any OpenClaw-specific setup steps
 
 ### Task 2: Create SPARQL skill directory structure (AC2)
-- [ ] Create `agents/skills/sparql-query/skill.yaml` — Skill definition file
+- [ ] Create `agents/skills/sparql-query/SKILL.md` — Skill definition file
 - [ ] Create `agents/skills/sparql-query/handler.py` — Main skill handler
 - [ ] Create `agents/skills/sparql-query/templates/` directory for .rq files
 
@@ -123,8 +123,8 @@ Then a log entry is emitted with timestamp, requesting agent, latency, and resul
 - [ ] Error events use `"event": "sparql.query.error"` with `"level": "ERROR"`
 - [ ] Log to stdout so docker-compose captures it (feeds dashboard in Phase 4)
 
-### Task 8: Create skill.yaml definition (AC1, AC2)
-- [ ] Define `agents/skills/sparql-query/skill.yaml` with:
+### Task 8: Create SKILL.md definition (AC1, AC2)
+- [ ] Define `agents/skills/sparql-query/SKILL.md` with:
   - Skill name: `sparql-query`
   - Description: Shared SPARQL skill for ACL-validated graph queries
   - Input schema: query type, parameters, agent role identity
@@ -148,14 +148,17 @@ Then a log entry is emitted with timestamp, requesting agent, latency, and resul
 - **API-2:** Two separate skills (SPARQL and Qdrant) keep concerns clean. This story implements the SPARQL skill only.
 - **NFR20:** Agent LLM model is `minimax/minimax-m2.5` via OpenRouter API.
 
-### OpenClaw Runtime Details
+### OpenClaw Runtime Details (updated post-Story 3-3)
 
-- OpenClaw is a **Node.js-based** self-contained agent runtime
-- Global config: `agents/openclaw.config.yaml`
-- Agent configs: `agents/{agent-name}/agent.yaml` (created in later stories)
-- Skills shared across agents: `agents/skills/{skill-name}/`
+- **Runtime already configured in Story 3-3** — `openclaw.json` exists, gateway running, agents listed
+- OpenClaw uses **JSON5** config (`openclaw.json`), NOT YAML. Skills use **SKILL.md** (YAML frontmatter + Markdown), NOT `skill.yaml`.
+- Global config: `agents/openclaw.json` (bind-mounted into container at `/home/node/.openclaw/openclaw.json`)
+- Agent configs: defined in `agents.list[]` inside `openclaw.json` (NOT separate agent.yaml files)
+- Skills shared across agents: `agents/skills/{skill-name}/SKILL.md`
+- Skills are already enabled in `openclaw.json` → `skills.entries` → `sparql-query: { enabled: true }`
 - The skill handler is Python (`handler.py`) — OpenClaw supports Python skill handlers
 - OpenRouter API key comes from `OPENROUTER_API_KEY` in `.env` at project root
+- **Task 1 of this story is partially done**: runtime install, config, OpenRouter connection, and skill discovery are all validated. This story only needs to create the SKILL.md and handler.py for the SPARQL skill.
 
 ### Oxigraph Connection Details
 
@@ -219,21 +222,22 @@ The handler reads the `.rq` file, replaces `$studentPodUri` with the actual valu
 
 ### Project Structure Notes
 
-Directories/files to create:
+Only `handler.py` needs to be created. Everything else already exists (created in Stories 2.7 and 3.3):
 
 ```
 agents/
-├── openclaw.config.yaml              # NEW - OpenClaw global config
+├── openclaw.json              # EXISTS (Story 3.3)
 └── skills/
-    └── sparql-query/                  # NEW - Shared SPARQL skill
-        ├── skill.yaml                 # NEW - Skill definition
-        ├── handler.py                 # NEW - SPARQL execution + ACL check
-        └── templates/                 # NEW - Parameterized .rq files
-            ├── student-progress.rq    # NEW - Claire's cross-context query
-            ├── cross-context-query.rq # NEW - Generic cross-context
-            ├── aggregate-anonymized.rq # NEW - Isabelle's policy queries
-            ├── parental-view.rq       # NEW - Fatima's unified view
-            └── transfer-profile.rq    # NEW - Marc's transfer scenario
+    └── sparql-query/          # EXISTS
+        ├── SKILL.md           # EXISTS stub (Story 3.3) — UPDATE with invocation pattern
+        ├── parameterize.py    # EXISTS (Story 2.7) — reuse as-is
+        ├── handler.py         # NEW — only file to create
+        └── templates/         # EXISTS — all 5 templates already created
+            ├── student-progress.rq    # EXISTS
+            ├── cross-context-query.rq # EXISTS
+            ├── aggregate-anonymized.rq # EXISTS
+            ├── parental-view.rq       # EXISTS
+            └── transfer-profile.rq    # EXISTS
 ```
 
 ### Dependencies
@@ -249,6 +253,28 @@ agents/
 
 - Use `distrobox-host-exec` for accessing podman containers from within the distrobox environment
 - Example: `distrobox-host-exec podman exec oxigraph ...`
+
+### Handoff from Story 3.3
+
+The following was discovered during Story 3-3 implementation and directly affects this story:
+
+**1. SKILL.md already exists — update, don't create**
+`agents/skills/sparql-query/SKILL.md` was created as a stub in Story 3-3 to make the skill discoverable by the runtime. Task 2 says "create" it — update the existing file instead.
+
+**2. `parameterize.py` already exists**
+`agents/skills/sparql-query/parameterize.py` was carried over from Story 2.7. Confirm it is intact before building the handler around it.
+
+**3. How OpenClaw invokes skill handlers**
+OpenClaw agents use their `exec` tool to run `handler.py` via command line — the LLM reads SKILL.md instructions and executes the handler as a subprocess. The handler must be invocable via CLI (accept args or stdin), not just importable as a library. Update SKILL.md to include the exact invocation pattern (e.g. `python handler.py --query-type student-progress --role tutor --params '{...}'`).
+
+**4. CSS baseUrl is `http://community-solid-server:3000/` for Docker-internal calls**
+CSS was restarted in Story 3-3 with `--baseUrl http://community-solid-server:3000/`. All CSS calls from within the Docker network (including from `handler.py` running inside the openclaw-gateway container) must use this hostname — never `localhost:3000`. Using localhost returns HTTP 500 ("identifier outside configured identifier space").
+
+**5. Re-provision pods after CSS restart**
+CSS was restarted in Story 3-3 (baseUrl fix). ACLs will have drifted. Run `provision_pods.py` before any ACL-sensitive handler tests:
+```bash
+source .venv/bin/activate && python -m pocpod0_pipeline.provision_pods
+```
 
 ### References
 

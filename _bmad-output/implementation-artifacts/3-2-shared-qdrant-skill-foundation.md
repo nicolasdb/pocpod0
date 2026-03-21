@@ -30,11 +30,11 @@ Then the combined response time is < 2s (NFR2)
 ## Tasks / Subtasks
 
 ### Task 1: Create Qdrant skill directory structure (AC1)
-- [ ] Create `agents/skills/qdrant-search/skill.yaml` — Skill definition file
+- [ ] Create `agents/skills/qdrant-search/SKILL.md` — Skill definition file
 - [ ] Create `agents/skills/qdrant-search/handler.py` — Main skill handler
 
-### Task 2: Create skill.yaml definition (AC1)
-- [ ] Define `agents/skills/qdrant-search/skill.yaml` with:
+### Task 2: Create SKILL.md definition (AC1)
+- [ ] Define `agents/skills/qdrant-search/SKILL.md` with:
   - Skill name: `qdrant-search`
   - Description: Shared Qdrant skill for semantic similarity search with provenance
   - Input schema: semantic query text, optional filters (collection, limit, score threshold)
@@ -226,21 +226,23 @@ Directories/files to create:
 agents/
 └── skills/
     └── qdrant-search/                 # NEW - Shared Qdrant skill
-        ├── skill.yaml                 # NEW - Skill definition
+        ├── SKILL.md                 # NEW - Skill definition
         └── handler.py                 # NEW - Vector similarity search + provenance
 ```
 
-Files that must already exist (from Story 3.1):
+Files that must already exist (from Stories 3-3 and 3-1):
 
 ```
 agents/
-├── openclaw.config.yaml               # Created in Story 3.1
+├── openclaw.json               # Created in Story 3-3 (runtime, agents, skills enabled)
 └── skills/
-    └── sparql-query/                   # Created in Story 3.1
-        ├── skill.yaml
+    └── sparql-query/                   # Created in Story 3-1
+        ├── SKILL.md
         ├── handler.py
         └── templates/*.rq
 ```
+
+**Note (post-Story 3-3):** OpenClaw uses JSON5 config (`openclaw.json`), NOT YAML. Skills use `SKILL.md` (YAML frontmatter + Markdown), NOT `skill.yaml`. The Qdrant skill is already enabled in `openclaw.json` → `skills.entries` → `qdrant-search: { enabled: true }`. This story only needs to create the `SKILL.md` and `handler.py`.
 
 ### Dependencies
 

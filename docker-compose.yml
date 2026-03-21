@@ -14,6 +14,8 @@ services:
       - "/data"
       - "-c"
       - "/config.json"
+      - "--baseUrl"
+      - "http://community-solid-server:3000/"
     healthcheck:
       test: ["CMD-SHELL", "node -e \"const n=require('net');const c=n.createConnection(3000,'localhost');c.on('connect',()=>{c.end();process.exit(0)});c.on('error',()=>process.exit(1))\""]
       interval: 10s
@@ -65,10 +67,49 @@ services:
       retries: 12
       start_period: 10s
 
+  openclaw-gateway:
+    image: ${OPENCLAW_IMAGE:-ghcr.io/openclaw/openclaw:latest}
+    container_name: openclaw-gateway
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - HOME=/home/node
+      - NODE_ENV=production
+      - TERM=xterm-256color
+      - OPENCLAW_GATEWAY_BIND=${OPENCLAW_GATEWAY_BIND:-lan}
+      - OPENCLAW_GATEWAY_PORT=${OPENCLAW_GATEWAY_PORT:-18789}
+      - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN}
+      - GOG_KEYRING_PASSWORD=${GOG_KEYRING_PASSWORD}
+      - XDG_CONFIG_HOME=/home/node/.openclaw
+      - PATH=/home/linuxbrew/.linuxbrew/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    volumes:
+      - ./agents/openclaw.json:/tmp/openclaw.json:ro${VOLUME_FLAGS:-}
+      - ./agents:/app/agents:ro${VOLUME_FLAGS:-}
+      - openclaw-data:/home/node/.openclaw
+    ports:
+      - "127.0.0.1:${OPENCLAW_GATEWAY_PORT:-18789}:18789"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        cp /tmp/openclaw.json /home/node/.openclaw/openclaw.json
+        exec node dist/index.js gateway \
+          --bind "$${OPENCLAW_GATEWAY_BIND:-lan}" \
+          --port "$${OPENCLAW_GATEWAY_PORT:-18789}" \
+          --allow-unconfigured
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"const n=require('net');const c=n.createConnection(18789,'localhost');c.on('connect',()=>{c.end();process.exit(0)});c.on('error',()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+
 volumes:
   css-data:
     driver: local
   oxigraph-data:
     driver: local
   qdrant-data:
+    driver: local
+  openclaw-data:
     driver: local

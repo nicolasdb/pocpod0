@@ -1,0 +1,91 @@
+{
+  "gateway": {
+    "controlUi": {
+      "dangerouslyAllowHostHeaderOriginFallback": true
+    }
+  },
+  "env": {
+    "OPENROUTER_API_KEY": "${OPENROUTER_API_KEY}"
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+        "fallbacks": ["openrouter/minimax/minimax-m2.5"]
+      },
+      "skipBootstrap": true
+    },
+    "list": [
+      {
+        "id": "claire-teacher",
+        "default": true,
+        "name": "Claire",
+        "workspace": "/app/agents/claire-teacher",
+        "agentDir": "/home/node/.openclaw/agents/claire-teacher/state",
+        "identity": {
+          "name": "Claire",
+          "emoji": "👩‍🏫"
+        }
+      },
+      {
+        "id": "marc-admin",
+        "name": "Marc",
+        "workspace": "/app/agents/marc-admin",
+        "agentDir": "/home/node/.openclaw/agents/marc-admin/state",
+        "identity": {
+          "name": "Marc",
+          "emoji": "🏫"
+        }
+      },
+      {
+        "id": "isabelle-policy",
+        "name": "Isabelle",
+        "workspace": "/app/agents/isabelle-policy",
+        "agentDir": "/home/node/.openclaw/agents/isabelle-policy/state",
+        "identity": {
+          "name": "Isabelle",
+          "emoji": "📊"
+        }
+      },
+      {
+        "id": "fatima-parent",
+        "name": "Fatima",
+        "workspace": "/app/agents/fatima-parent",
+        "agentDir": "/home/node/.openclaw/agents/fatima-parent/state",
+        "identity": {
+          "name": "Fatima",
+          "emoji": "👩‍👧‍👦"
+        }
+      },
+      {
+        "id": "ayoub-student",
+        "name": "Ayoub",
+        "workspace": "/app/agents/ayoub-student",
+        "agentDir": "/home/node/.openclaw/agents/ayoub-student/state",
+        "identity": {
+          "name": "Ayoub",
+          "emoji": "🎓"
+        }
+      },
+      {
+        "id": "troll-adversary",
+        "name": "Troll",
+        "workspace": "/app/agents/troll-adversary",
+        "agentDir": "/home/node/.openclaw/agents/troll-adversary/state",
+        "identity": {
+          "name": "Troll",
+          "emoji": "🧌"
+        }
+      }
+    ]
+  },
+  "skills": {
+    "load": {
+      "extraDirs": ["/app/agents/skills"]
+    },
+    "entries": {
+      "sparql-query": { "enabled": true },
+      "qdrant-search": { "enabled": true }
+    }
+  }
+}

@@ -32,7 +32,7 @@ development_status:
   epic-3: in-progress
   story-3-1-shared-sparql-skill-foundation: ready-for-dev
   story-3-2-shared-qdrant-skill-foundation: ready-for-dev
-  story-3-3-openClaw-agent-infrastructure: ready-for-dev
+  story-3-3-openClaw-agent-infrastructure: review
   story-3-4-claire-cross-context-insight-discovery: ready-for-dev
   story-3-5-fatima-unified-parental-view: ready-for-dev
   story-3-6-isabelle-evidence-based-policy: ready-for-dev

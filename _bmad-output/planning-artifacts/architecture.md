@@ -132,11 +132,16 @@ mkdir -p pocpod0/{infra,pipeline,agents,dashboard,scripts,data/{synthetic,schema
 - **Vector Layer (Qdrant):** Semantic index. Embeddings of semantically significant content, with payload metadata linking back to Oxigraph triple URIs and Pod resource URIs.
 - **Rationale:** Separation allows independent scaling, clear deletion cascade order (Pod → Graph → Vector), and honest about what each layer provides.
 
-**Decision DA-2: Provenance & Traceability Schema**
-- Every Oxigraph triple includes `prov:wasDerivedFrom <pod-resource-uri>` provenance
-- Every Qdrant point payload includes `{ "triple_uris": [...], "pod_resource_uri": "..." }`
-- Bidirectional: given any embedding, navigate to triples → pod resource. Given any pod resource, find all derived triples and embeddings.
-- **Rationale:** FR12 requires bidirectional traceability. This is the architectural primitive that makes deletion cascade and provenance display possible.
+**Decision DA-2: Provenance & Traceability Schema** _(updated Story 3.3 — original design was wrong)_
+- **Oxigraph provenance: named graphs, NOT `prov:wasDerivedFrom`**. Each Pod resource is stored in a named graph whose URI equals the Pod resource URI. SPARQL queries use `GRAPH <pod_resource_uri> { ?s ?p ?o }` for scoping. The original `prov:wasDerivedFrom` predicate approach was invalidated in Story 2.6 — it returns nothing.
+- Every Qdrant point payload includes `{ "triple_uris": [...], "pod_resource_uri": "..." }` — validated in Story 2.5/2.6.
+- Bidirectional traceability implemented via the `traceability.py` module (`pipeline/src/pocpod0_pipeline/traceability.py`):
+  - `trace_embedding_to_pod(point_id)` — forward: embedding → triples → pod resource
+  - `trace_pod_to_embeddings(pod_uri)` — reverse: pod resource → embeddings
+  - `trace_pod_to_triples(pod_uri)` — reverse: pod resource → Oxigraph triples
+  - `trace_triples_to_embeddings(triple_uris)` — triples → embeddings
+  - `verify_provenance_consistency(pod_uri)` — cross-layer consistency check
+- **Rationale:** FR12 requires bidirectional traceability. Named graphs provide provenance natively without extra triples. The traceability module is the shared primitive for deletion cascade and provenance display.
 
 **Decision DA-3: OSLO Vocabulary Schema Contract**
 - Schema defined as Turtle files in `data/schemas/`
@@ -158,10 +163,17 @@ mkdir -p pocpod0/{infra,pipeline,agents,dashboard,scripts,data/{synthetic,schema
 - **Troll validation:** Tests both levels independently (direct infra access tests CSS ACLs; skill-mediated tests query-level enforcement)
 - **Rationale:** Defense in depth. The troll's dual access model (FR37) requires both levels to be testable independently.
 
-**Decision SEC-3: SPARQL Injection Defense**
+**Decision SEC-3: SPARQL Injection Defense** _(implementation detail added Story 2.7)_
 - Shared SPARQL skill uses parameterized query templates, not string concatenation
 - Query templates stored as `.rq` files with named parameters
 - Troll agent tests injection through the skill interface (FR29)
+- **Validated injection defence rules (parameterize.py, Story 2.7):**
+  - URI values (matched by `^scheme://` regex) → wrapped as `<uri>`
+  - Plain strings → double-quoted `"value"`, must match `[a-zA-Z0-9_\-.:/@ ]+`
+  - SPARQL keywords rejected via keyword blocklist (case-insensitive)
+  - `#` allowed in URIs (fragment identifier) but rejected in plain strings (comment injection)
+  - Path traversal blocked via `resolve().is_relative_to(templates_dir)`
+  - Parameter names capped at 128 characters
 - **Rationale:** FR29 requires injection resistance. Parameterized templates are the simplest defense that's also testable.
 
 ### API & Communication Patterns
@@ -181,13 +193,14 @@ mkdir -p pocpod0/{infra,pipeline,agents,dashboard,scripts,data/{synthetic,schema
 - Troll agent has dual access: through skills (tests boundaries) AND direct to services (tests infrastructure)
 - **Rationale:** Two separate skills keep concerns clean — graph queries and vector queries have different interfaces and failure modes. Both shared across all agents. Agents decide when to use one or both.
 
-**Decision API-3: Qdrant Access Pattern**
+**Decision API-3: Qdrant Access Pattern** _(updated Story 2.5 — fog-of-war resolved)_
 - Pipeline writes to Qdrant during ingestion (batch upsert)
 - Shared Qdrant skill reads from Qdrant for semantic search
 - Troll agent reads directly from Qdrant for vector privacy tests (bypasses skill)
-- Embedding generation: call OpenRouter API (qwen/qwen3-embedding-8b) from pipeline Python code
-- REST vs gRPC: **fog-of-war** — both protocols available (ports 6333/6334), compare during Phase 2 implementation and pick one
-- **Rationale:** Clear read/write separation. Only the pipeline writes; skills and troll only read. Protocol choice deferred to hands-on comparison.
+- Embedding generation: call OpenRouter API (`qwen/qwen3-embedding-8b`) from pipeline Python code
+- **Protocol: REST (port 6333)** — gRPC not worth the complexity at PoC scale (303 scenarios). Decided in Story 2.5.
+- **Collection schema (validated Story 2.5/2.8):** collection `pocpod0_embeddings`, vector size 4096, cosine distance, payload `{ "triple_uris": [...], "pod_resource_uri": "..." }`, point ID = deterministic UUID from `sha256(pod_resource_uri + "\x00" + text)[:32]`
+- **Rationale:** Clear read/write separation. REST is sufficient for PoC scale; gRPC adds complexity without measurable benefit.
 
 ### Infrastructure & Deployment
 
@@ -207,6 +220,10 @@ mkdir -p pocpod0/{infra,pipeline,agents,dashboard,scripts,data/{synthetic,schema
 - Default Docker network (services communicate via container names)
 - Bind mounts for persistent data with `.env`-driven volume flags (SELinux `:Z` on Fedora, none on Ubuntu)
 - Health checks on all services with `depends_on: condition: service_healthy`
+- **Health endpoints (validated):** Oxigraph health is `GET /` (root, returns 200) — `/health` returns 404. CSS uses TCP connect check.
+- **CSS `--baseUrl` required (Story 3.3):** CSS must start with `--baseUrl http://community-solid-server:3000/`. Without it, requests from other containers arrive with `Host: community-solid-server` and CSS rejects them with HTTP 500 ("identifier outside configured identifier space"). All agent skill handlers calling CSS must use `http://community-solid-server:3000/` — never `localhost:3000`.
+- **CSS ACL state drift (Story 1.5/2.4):** CSS ACL state lives in the Docker volume, not static files. If CSS container is recreated, ACLs revert. Re-run `provision_pods.py` after any CSS restart before running ACL-sensitive tests.
+- **CSS HTTP status codes:** ACL PUT returns 205 (Reset Content) on success — accept `[200, 201, 205]`. Oxigraph store returns 201 (new graph) or 204 (update) — accept `[200, 201, 204]`.
 - **Rationale:** PRD FR40 and NFRs require reproducible startup with dependency ordering.
 
 **Decision INFRA-3: Environment Configuration**
@@ -343,9 +360,9 @@ mkdir -p pocpod0/{infra,pipeline,agents,dashboard,scripts,data/{synthetic,schema
 - Troll errors: log as test results (errors are findings, not failures)
 - Infrastructure errors: health check catches them, `depends_on` prevents cascading startup failures
 
-**Deletion Cascade Protocol:**
+**Deletion Cascade Protocol:** _(updated Story 2.6 — provenance query mechanism corrected)_
 1. Mark Pod resource as soft-deleted (add `pocpod0:deletedAt` triple)
-2. Remove all derived triples from Oxigraph matching `prov:wasDerivedFrom <pod-resource-uri>`
+2. Remove all derived triples from Oxigraph by dropping the named graph: `DROP GRAPH <pod-resource-uri>` (NOT `prov:wasDerivedFrom` — that predicate is not stored)
 3. Remove all Qdrant points with matching `pod_resource_uri` in payload
 4. Verify: query all three layers, confirm zero results for the resource
 5. Log each step with completion status for dashboard display
@@ -373,6 +390,22 @@ mkdir -p pocpod0/{infra,pipeline,agents,dashboard,scripts,data/{synthetic,schema
 - Storing derived data as source of truth (Oxigraph and Qdrant are rebuildable indexes)
 - Using `latest` Docker tags
 - Skipping health checks in docker-compose
+- Using `localhost:3000` for CSS from inside Docker network (use `community-solid-server:3000`)
+- Using `prov:wasDerivedFrom` queries against Oxigraph (named graphs are the provenance mechanism)
+
+### Validated Implementation Findings
+
+These patterns were unknown at design time and discovered during Epic 1–3 implementation. All downstream stories must follow them.
+
+**xAPI Actor Identity (Story 2.4)**
+In the synthetic xAPI dataset (and recovered statements from Pods), actor identity is in `actor.account.name` as a full WebID URL (e.g. `http://localhost:3000/ayoub/profile/card#me`). `actor.name` is absent. Agent skill handlers and SPARQL queries that filter by persona must use `actor.account.name`.
+
+**OpenClaw Agent Configuration (Story 3.3)**
+OpenClaw does not use `agent.yaml` files. Per-agent configuration uses workspace markdown files injected at session start: `SOUL.md` (persona/tone), `AGENTS.md` (instructions/ACL identity), `IDENTITY.md` (name/emoji). The global config is `openclaw.json` (JSON5). Skills use `SKILL.md` (YAML frontmatter + Markdown instructions). Set `skipBootstrap: true` in agent defaults when workspaces are bind-mounted read-only. Use `skills.load.extraDirs` to point OpenClaw at custom skill directories.
+
+**Vector Privacy Known Issues (Story 2.8)**
+- **PRIV-1** (medium severity, target Story 5.2): `pod_resource_uri` stored in Qdrant payload uses the pod slug (e.g. `.../ayoub/`) which encodes the student name. Any operator with raw Qdrant access can correlate embeddings to student identities. Proposed fix: store opaque UUID derived from pod URI via SHA-256; maintain authorized lookup index.
+- **PRIV-2** (low severity, document in Story 6.1): cross-pod similarity is non-zero because students study the same subjects. Not exploitable — an adversary learns "these students study algebra", not PII. Document as acceptable risk in funder report, no code change needed.
 
 ---
 
@@ -428,11 +461,15 @@ pocpod0/
 │       └── conftest.py              # Shared fixtures
 │
 ├── agents/                          # OpenClaw agent workspace
-│   ├── openclaw.config.yaml         # OpenClaw global config (OpenRouter, models)
+│   ├── openclaw.json                # OpenClaw global config JSON5 (Story 3.3)
+│   │                                # NOTE: NOT openclaw.config.yaml — OpenClaw uses JSON5 format
+│   │                                # Contains: gateway settings, agents list, skills, model, env vars
 │   ├── skills/
 │   │   ├── sparql-query/            # Shared SPARQL skill (graph queries)
-│   │   │   ├── skill.yaml           # Skill definition
+│   │   │   ├── SKILL.md             # Skill definition (YAML frontmatter + Markdown instructions)
+│   │   │   │                        # NOTE: NOT skill.yaml — OpenClaw uses SKILL.md format
 │   │   │   ├── handler.py           # SPARQL execution + ACL check
+│   │   │   ├── parameterize.py      # Injection-safe template parameterization (Story 2.7)
 │   │   │   └── templates/           # Parameterized .rq files
 │   │   │       ├── student-progress.rq
 │   │   │       ├── cross-context-query.rq
@@ -440,29 +477,23 @@ pocpod0/
 │   │   │       ├── parental-view.rq
 │   │   │       └── transfer-profile.rq
 │   │   └── qdrant-search/           # Shared Qdrant skill (semantic search)
-│   │       ├── skill.yaml           # Skill definition
+│   │       ├── SKILL.md             # Skill definition (YAML frontmatter + Markdown instructions)
 │   │       └── handler.py           # Vector similarity search + provenance
-│   ├── claire-teacher/
-│   │   └── agent.yaml               # Claire persona + journey config
-│   ├── marc-admin/
-│   │   └── agent.yaml
-│   ├── isabelle-policy/
-│   │   └── agent.yaml
-│   ├── fatima-parent/
-│   │   └── agent.yaml
-│   ├── ayoub-student/
-│   │   └── agent.yaml
-│   └── troll-adversary/
-│       ├── agent.yaml               # Troll persona + dual access config
-│       ├── attacks/
-│       │   ├── acl-enforcement.py    # Direct infra ACL tests
-│       │   ├── sparql-injection.py   # Through-skill injection tests
-│       │   ├── cross-inference.py    # Agent-layer NL inference tests
-│       │   ├── vector-privacy.py     # Direct Qdrant privacy tests
-│       │   └── deletion-timing.py    # 3-layer cascade timing tests
-│       └── report/
-│           ├── generator.py          # Troll report generation
-│           └── template.md           # Report template (non-technical)
+│   ├── claire-teacher/              # Agent workspace — persona injected via markdown files (Story 3.3)
+│   │   ├── SOUL.md                  # Persona, boundaries, tone (injected at session start)
+│   │   ├── AGENTS.md                # Operating instructions, ACL identity, skill usage
+│   │   ├── IDENTITY.md              # Name and emoji
+│   │   ├── MEMORY.md                # Persistent agent memory (starts empty)
+│   │   └── state/                   # OpenClaw agentDir (auth profiles, sessions — gitignored)
+│   ├── marc-admin/                  # Same structure as claire-teacher
+│   ├── isabelle-policy/             # Same structure
+│   ├── fatima-parent/               # Same structure
+│   ├── ayoub-student/               # Same structure
+│   └── troll-adversary/             # Same workspace structure + dual access config in SOUL.md
+│       ├── SOUL.md                  # Dual access model: through-skill + direct endpoints
+│       ├── AGENTS.md                # Attack categories + report format
+│       ├── IDENTITY.md
+│       └── state/
 │
 ├── dashboard/                       # Mission control (dev mode)
 │   ├── pyproject.toml
@@ -560,7 +591,7 @@ Pipeline: ingest.py (xAPI → OSLO RDF with provenance)
     │
     ├──▶ CSS Pods (raw Turtle resources + ACLs)
     │
-    ├──▶ Oxigraph (OSLO-mapped triples + prov:wasDerivedFrom)
+    ├──▶ Oxigraph (OSLO-mapped triples in named graphs — graph URI == Pod resource URI)
     │
     └──▶ OpenRouter API (embedding generation)
             │
@@ -586,7 +617,7 @@ Agent query (hybrid):
 | Transfer (FR21–23) | `agents/marc-admin/`, SPARQL skill | `agents/skills/sparql-query/templates/` |
 | Governance (FR24–27) | `pipeline/src/.../delete_cascade.py` | Agent configs for governance scenario |
 | Adversarial (FR28–34) | `agents/troll-adversary/` | `agents/troll-adversary/attacks/`, `report/` |
-| Agent Infra (FR35–37) | `agents/` (all) | `agents/openclaw.config.yaml` |
+| Agent Infra (FR35–37) | `agents/` (all) | `agents/openclaw.json` |
 | Demo/Dashboard (FR38–39) | `dashboard/`, `scripts/run-demo.sh` | `agents/` (intervention routing) |
 | Infrastructure (FR40) | `docker-compose.yml` | `infra/`, `.env`, `scripts/setup.sh` |
 
