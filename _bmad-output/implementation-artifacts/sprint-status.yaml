@@ -31,7 +31,7 @@ development_status:
   # Epic 3: Cross-Context Learning Insights
   epic-3: in-progress
   story-3-1-shared-sparql-skill-foundation: done
-  story-3-2-shared-qdrant-skill-foundation: ready-for-dev
+  story-3-2-shared-qdrant-skill-foundation: done
   story-3-3-openClaw-agent-infrastructure: done
   story-3-4-claire-cross-context-insight-discovery: ready-for-dev
   story-3-5-fatima-unified-parental-view: ready-for-dev
