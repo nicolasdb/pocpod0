@@ -1,6 +1,6 @@
 # Story 3.1: [foundation] OpenClaw Agent Runtime & Shared SPARQL Skill
 
-Status: review
+Status: done
 
 ## Story
 
