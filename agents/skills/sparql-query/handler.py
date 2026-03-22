@@ -1,0 +1,473 @@
+"""SPARQL Query Skill handler for OpenClaw agents.
+
+CLI invocation pattern (used by OpenClaw exec tool):
+    python handler.py --query-type TEMPLATE_NAME \
+                      --webid AGENT_WEBID \
+                      --role AGENT_ROLE \
+                      --params '{"param_name": "value", ...}'
+
+Arguments:
+    --query-type  Template name (student-progress, cross-context-query,
+                  aggregate-anonymized, parental-view, transfer-profile)
+    --webid       Agent WebID URI for CSS ACL validation
+                  (e.g. http://localhost:3000/claire/profile/card#me)
+    --role        Agent role (tutor, admin, regional, parental, student)
+    --params      JSON object with template parameter name-value pairs
+
+Output:
+    Structured JSON log lines emitted first (timestamp, service, level, event, ...)
+    Final result JSON printed last: {"status": "success|denied|error", ...}
+    Exit code 0 on success, 1 on denied or error.
+
+Environment variables (override defaults for Docker-internal execution):
+    CSS_IDENTIFIER_URL   Identifier-space base URL for pod URI recognition and ACL path
+                         computation. Must match CSS --baseUrl (default: http://localhost:3000).
+                         On VPS: set to https://mypods.example.com
+    CSS_CONNECT_URL    TCP target for CSS requests (default: http://localhost:3000)
+                         On VPS/Docker: may differ from CSS_IDENTIFIER_URL
+                         (e.g. http://community-solid-server:3000 inside Docker)
+    CSS_IDENTIFIER_HOST  Host header to send to CSS (default: derived from CSS_IDENTIFIER_URL)
+                         Required when CSS_CONNECT_URL differs from CSS_IDENTIFIER_URL.
+    OXIGRAPH_URL       Oxigraph SPARQL endpoint base (default: http://localhost:7878)
+
+Security:
+    SEC-2: ACL check happens BEFORE any SPARQL execution.
+    SEC-3: Template parameterization via parameterize.py — never string concat.
+"""
+
+import argparse
+import json
+import os
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+import requests
+
+# ---------------------------------------------------------------------------
+# Local imports: parameterize.py is in the same directory
+# ---------------------------------------------------------------------------
+sys.path.insert(0, str(Path(__file__).parent))
+from parameterize import load_template, parameterize_query
+
+# ---------------------------------------------------------------------------
+# Configuration (environment-overridable for Docker-internal execution)
+# ---------------------------------------------------------------------------
+
+# CSS: three-var model for identifier space vs. transport routing
+#
+# CSS_IDENTIFIER_URL  — the public base URL CSS uses for pod URIs (matches CSS --baseUrl).
+#                       Used to recognise pod URIs in params and build ACL check paths.
+#                       localhost dev: http://localhost:3000  (default)
+#                       VPS:           https://mypods.example.com
+#
+# CSS_CONNECT_URL     — the TCP endpoint to actually connect to.
+#                       Same as CSS_IDENTIFIER_URL unless routing differs (Docker-internal).
+#                       Docker-internal: http://community-solid-server:3000
+#
+# CSS_IDENTIFIER_HOST — Host header to send when CSS_CONNECT_URL differs from
+#                       CSS_IDENTIFIER_URL. CSS uses it to resolve resource identity.
+#                       Defaults to the host part of CSS_IDENTIFIER_URL.
+_CSS_IDENTIFIER_URL = os.environ.get("CSS_IDENTIFIER_URL", "http://localhost:3000").rstrip("/")
+_CSS_CONNECT_URL = os.environ.get("CSS_CONNECT_URL", _CSS_IDENTIFIER_URL).rstrip("/")
+# Default Host header: host+port from the identifier URL
+_CSS_IDENTIFIER_HOST = os.environ.get(
+    "CSS_IDENTIFIER_HOST",
+    _CSS_IDENTIFIER_URL.split("//", 1)[-1],  # strips scheme
+)
+
+# Oxigraph SPARQL query endpoint
+_OXIGRAPH_URL = os.environ.get("OXIGRAPH_URL", "http://localhost:7878")
+_OXIGRAPH_QUERY_ENDPOINT = f"{_OXIGRAPH_URL}/query"
+
+SERVICE_NAME = "sparql-query-skill"
+
+# ---------------------------------------------------------------------------
+# Structured logging
+# ---------------------------------------------------------------------------
+
+
+def _iso_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _log(
+    level: str,
+    event: str,
+    agent: str,
+    details: dict[str, Any],
+    duration_ms: int = 0,
+    result_count: int | None = None,
+) -> None:
+    """Emit a structured JSON log entry to stdout (captured by docker-compose).
+
+    AC4 schema: timestamp, service, level, event, agent, duration_ms,
+    result_count (top-level, success events only), details.
+    """
+    entry: dict[str, Any] = {
+        "timestamp": _iso_now(),
+        "service": SERVICE_NAME,
+        "level": level,
+        "event": event,
+        "agent": agent,
+        "duration_ms": duration_ms,
+    }
+    if result_count is not None:
+        entry["result_count"] = result_count
+    entry["details"] = details
+    print(json.dumps(entry), flush=True)
+
+
+# ---------------------------------------------------------------------------
+# ACL validation (SEC-2)
+# ---------------------------------------------------------------------------
+
+
+def _extract_pod_uris(params: dict[str, str]) -> list[str]:
+    """Extract pod root URIs from skill parameters.
+
+    Looks for URI-shaped values starting with CSS_IDENTIFIER_URL (the public pod base).
+    Normalises profile card URIs to their pod root.
+
+    Returns deduplicated list of pod root URIs for ACL checking.
+    """
+    css_base = _CSS_IDENTIFIER_URL  # from env — works on localhost and VPS
+    pod_uris: list[str] = []
+    for value in params.values():
+        if not isinstance(value, str):
+            continue
+        if not value.startswith(css_base + "/"):
+            continue
+        # Normalise profile card to pod root
+        if "/profile/card" in value:
+            # http://localhost:3000/ayoub/profile/card#me → http://localhost:3000/ayoub/
+            pod_root = value.split("/profile/card")[0] + "/"
+        else:
+            # For specific document URIs (.ttl), extract the pod root (first path segment)
+            parts = value[len(css_base) + 1:].split("/")
+            if parts:
+                pod_root = css_base + "/" + parts[0] + "/"
+            else:
+                continue
+        if pod_root not in pod_uris:
+            pod_uris.append(pod_root)
+    return pod_uris
+
+
+def _check_acl(webid: str, pod_uris: list[str]) -> tuple[bool, str]:
+    """Verify the agent WebID has read access to all target pod URIs.
+
+    Makes a HEAD request to each pod root URI with the agent's WebID in the
+    Authorization header. CSS WebACL enforces the check natively.
+
+    Isolation note: uses CSS_CONNECT_URL (may be community-solid-server:3000)
+    with Host header CSS_IDENTIFIER_HOST to work from within Docker while
+    CSS identifier space uses CSS_IDENTIFIER_URL.
+
+    Returns:
+        (True, "ok") if access granted to all pods.
+        (False, reason) if access denied to any pod.
+    Raises:
+        ValueError: if webid is not a valid URI (prevents header injection).
+    """
+    # P-5: validate WebID is a proper URI before embedding in Authorization header
+    from urllib.parse import urlparse
+    parsed = urlparse(webid)
+    if not parsed.scheme or not parsed.netloc or "\n" in webid or "\r" in webid:
+        raise ValueError(f"Invalid WebID URI: {webid!r}")
+
+    for pod_uri in pod_uris:
+        # Build the path relative to CSS identifier base, then append to connect URL
+        # pod_uri = http://localhost:3000/ayoub/ → path = /ayoub/
+        if pod_uri.startswith(_CSS_IDENTIFIER_URL):
+            path = pod_uri[len(_CSS_IDENTIFIER_URL):]
+        else:
+            path = "/" + pod_uri.split("//", 1)[-1].split("/", 1)[-1]
+        connect_url = _CSS_CONNECT_URL + path
+
+        try:
+            resp = requests.head(
+                connect_url,
+                headers={
+                    "Authorization": f"WebID {webid}",
+                    "Host": _CSS_IDENTIFIER_HOST,
+                },
+                timeout=5,
+                allow_redirects=True,
+            )
+            if resp.status_code in (401, 403):
+                return False, f"Access denied to {pod_uri} (HTTP {resp.status_code})"
+            if resp.status_code >= 500:
+                return False, f"CSS error for {pod_uri} (HTTP {resp.status_code})"
+        except requests.RequestException as exc:
+            return False, f"CSS connection error for {pod_uri}: {exc}"
+    return True, "ok"
+
+
+# ---------------------------------------------------------------------------
+# Oxigraph query execution
+# ---------------------------------------------------------------------------
+
+
+def _execute_query(sparql_query: str) -> tuple[list[dict], int]:
+    """Execute a SPARQL SELECT query against Oxigraph via HTTP POST.
+
+    Returns:
+        (bindings_list, oxigraph_latency_ms)
+
+    Raises:
+        requests.HTTPError: on non-2xx response from Oxigraph.
+        requests.RequestException: on connection failure.
+    """
+    t0 = time.monotonic()
+    resp = requests.post(
+        _OXIGRAPH_QUERY_ENDPOINT,
+        data=sparql_query.encode("utf-8"),
+        headers={
+            "Content-Type": "application/sparql-query",
+            "Accept": "application/sparql-results+json",
+        },
+        timeout=30,
+    )
+    latency_ms = int((time.monotonic() - t0) * 1000)
+    resp.raise_for_status()
+    bindings = resp.json().get("results", {}).get("bindings", [])
+    return bindings, latency_ms
+
+
+# ---------------------------------------------------------------------------
+# Main skill execution
+# ---------------------------------------------------------------------------
+
+
+def run_skill(
+    query_type: str,
+    webid: str,
+    role: str,
+    params: dict[str, str],
+) -> dict[str, Any]:
+    """Execute the SPARQL skill with ACL enforcement.
+
+    Execution flow (see Dev Notes: Skill Flow):
+      1. Extract pod URIs from params
+      2. ACL check (SEC-2: must happen before any SPARQL)
+      3. Load and parameterize .rq template (SEC-3: via parameterize.py)
+      4. Execute parameterized query against Oxigraph
+      5. Log execution with timing
+      6. Return result with provenance
+
+    Args:
+        query_type: Template name (e.g. "student-progress")
+        webid:      Agent WebID URI
+        role:       Agent role string
+        params:     Template parameter dict
+
+    Returns:
+        Result dict: {"status": "success|denied|error", ...}
+    """
+    t_start = time.monotonic()
+
+    # Derive a short agent identifier for logging
+    # WebID example: http://localhost:3000/claire/profile/card#me → "claire"
+    agent_id = _agent_id_from_webid(webid)
+
+    # ── Step 1: Extract pod URIs for ACL check ──────────────────────────────
+    pod_uris = _extract_pod_uris(params)
+
+    # ── Step 2: ACL validation (must precede SPARQL, SEC-2) ──────────────────
+    # P-1: templates that reference no pod URIs get an explicit "skipped" only
+    # for aggregate-anonymized (community-scoped, non-personal). All personal-data
+    # templates (student-progress, cross-context-query, parental-view,
+    # transfer-profile) must have at least one pod URI in params or we error.
+    _PERSONAL_TEMPLATES = {
+        "student-progress", "cross-context-query", "parental-view", "transfer-profile"
+    }
+    if not pod_uris and query_type in _PERSONAL_TEMPLATES:
+        duration_ms = int((time.monotonic() - t_start) * 1000)
+        msg = (
+            f"Template '{query_type}' requires at least one pod URI in params "
+            f"(must start with {_CSS_IDENTIFIER_URL}/). None found — refusing to "
+            f"execute without ACL check (SEC-2)."
+        )
+        _log("ERROR", "sparql.query.error", agent_id,
+             {"error": msg, "template": query_type, "acl_check": "skipped"}, duration_ms)
+        return {"status": "error", "error": msg}
+
+    if pod_uris:
+        try:
+            acl_ok, acl_reason = _check_acl(webid, pod_uris)
+        except ValueError as exc:
+            duration_ms = int((time.monotonic() - t_start) * 1000)
+            _log("ERROR", "sparql.query.error", agent_id,
+                 {"error": str(exc), "template": query_type, "acl_check": "skipped"},
+                 duration_ms)
+            return {"status": "error", "error": str(exc)}
+        if not acl_ok:
+            duration_ms = int((time.monotonic() - t_start) * 1000)
+            denial = {
+                "status": "denied",
+                "reason": acl_reason,
+                "agent": agent_id,
+                "requested_resources": pod_uris,
+            }
+            # P-4: acl_check only takes values "passed"/"skipped" in the schema;
+            # denial semantics are carried by event=sparql.query.denied
+            _log(
+                "WARN",
+                "sparql.query.denied",
+                agent_id,
+                {
+                    "template": query_type,
+                    "reason": acl_reason,
+                    "requested_resources": pod_uris,
+                },
+                duration_ms,
+            )
+            return denial
+        acl_status = "passed"
+    else:
+        acl_status = "skipped"
+
+    # ── Step 3: Load and parameterize template ────────────────────────────────
+    try:
+        template_content = load_template(query_type)
+        parameterized_query = parameterize_query(template_content, params)
+    except FileNotFoundError as exc:
+        duration_ms = int((time.monotonic() - t_start) * 1000)
+        _log("ERROR", "sparql.query.error", agent_id,
+             {"error": str(exc), "template": query_type, "acl_check": acl_status},
+             duration_ms)
+        return {"status": "error", "error": str(exc)}
+    except (ValueError, KeyError) as exc:
+        duration_ms = int((time.monotonic() - t_start) * 1000)
+        _log("ERROR", "sparql.query.error", agent_id,
+             {"error": str(exc), "template": query_type, "acl_check": acl_status},
+             duration_ms)
+        return {"status": "error", "error": str(exc)}
+
+    # ── Step 4: Execute against Oxigraph ─────────────────────────────────────
+    try:
+        bindings, oxigraph_latency_ms = _execute_query(parameterized_query)
+    except requests.HTTPError as exc:
+        duration_ms = int((time.monotonic() - t_start) * 1000)
+        _log("ERROR", "sparql.query.error", agent_id,
+             {"error": str(exc), "template": query_type, "acl_check": acl_status},
+             duration_ms)
+        return {"status": "error", "error": str(exc)}
+    except requests.RequestException as exc:
+        duration_ms = int((time.monotonic() - t_start) * 1000)
+        _log("ERROR", "sparql.query.error", agent_id,
+             {"error": f"Oxigraph connection error: {exc}", "template": query_type,
+              "acl_check": acl_status},
+             duration_ms)
+        return {"status": "error", "error": f"Oxigraph connection error: {exc}"}
+
+    # ── Step 5: Extract provenance ────────────────────────────────────────────
+    # Named graph URI in GRAPH <uri> {} IS the Pod resource URI (per Dev Notes).
+    # Extract from result bindings where a variable named ?g is present.
+    provenance = list({
+        v.get("value")
+        for row in bindings
+        for k, v in row.items()
+        if k == "g" and v.get("type") == "uri"
+    })
+    if not provenance:
+        provenance = pod_uris  # fall back to pod URIs used in ACL check
+
+    duration_ms = int((time.monotonic() - t_start) * 1000)
+
+    # ── Step 6: Log and return ────────────────────────────────────────────────
+    _log(
+        "INFO",
+        "sparql.query.executed",
+        agent_id,
+        {
+            "template": f"{query_type}.rq",
+            "acl_check": acl_status,
+            "oxigraph_latency_ms": oxigraph_latency_ms,
+        },
+        duration_ms,
+        result_count=len(bindings),  # P-3: top-level field per AC4 schema
+    )
+
+    return {
+        "status": "success",
+        "results": bindings,
+        "provenance": provenance,
+        "result_count": len(bindings),
+    }
+
+
+def _agent_id_from_webid(webid: str) -> str:
+    """Extract a short agent identifier from a WebID URI.
+
+    Examples:
+        http://localhost:3000/claire/profile/card#me → "claire"
+        http://localhost:3000/troll-adversary/profile/card#me → "troll-adversary"
+    """
+    if not webid:
+        return "unknown"
+    try:
+        # Strip scheme+host, take first path segment
+        path = webid.split("//", 1)[-1].split("/", 1)[-1]
+        return path.split("/")[0]
+    except (IndexError, AttributeError):
+        return webid
+
+
+# ---------------------------------------------------------------------------
+# CLI entry point
+# ---------------------------------------------------------------------------
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="SPARQL Query Skill handler — ACL-validated queries against Oxigraph"
+    )
+    parser.add_argument(
+        "--query-type",
+        required=True,
+        help="Template name (student-progress, cross-context-query, "
+             "aggregate-anonymized, parental-view, transfer-profile)",
+    )
+    parser.add_argument(
+        "--webid",
+        required=True,
+        help="Agent WebID URI (e.g. http://localhost:3000/claire/profile/card#me)",
+    )
+    parser.add_argument(
+        "--role",
+        required=True,
+        help="Agent role (tutor, admin, regional, parental, student)",
+    )
+    parser.add_argument(
+        "--params",
+        required=True,
+        help='JSON object of template parameters, e.g. \'{"student_uri": "..."}\'',
+    )
+    args = parser.parse_args()
+
+    try:
+        params = json.loads(args.params)
+    except json.JSONDecodeError as exc:
+        print(json.dumps({"status": "error", "error": f"Invalid --params JSON: {exc}"}))
+        sys.exit(1)
+
+    result = run_skill(
+        query_type=args.query_type,
+        webid=args.webid,
+        role=args.role,
+        params=params,
+    )
+
+    # Final result is the last JSON line output
+    print(json.dumps(result))
+
+    if result.get("status") in ("error", "denied"):
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

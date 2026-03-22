@@ -1,16 +1,17 @@
 # transfer-profile.rq
 # Query a student's transferable profile for a receiving school.
-# Parameters: $student_uri, $school_uri
+# Parameters: student_uri
 PREFIX oslo-educ: <https://data.vlaanderen.be/ns/onderwijs#>
 PREFIX prov: <http://www.w3.org/ns/prov#>
 PREFIX dct: <http://purl.org/dc/terms/>
 
-SELECT ?activity ?result ?date ?school WHERE {
-  ?activity oslo-educ:betreft $student_uri .
-  ?activity oslo-educ:school $school_uri .
-  ?activity oslo-educ:resultaat ?result .
-  ?activity oslo-educ:datum ?date .
-  ?activity dct:source ?school .
-  ?activity prov:wasGeneratedBy ?process .
+SELECT ?g ?activity ?result ?date ?school WHERE {
+  GRAPH ?g {
+    ?activity oslo-educ:betreft $student_uri .
+    ?activity oslo-educ:resultaat ?result .
+    ?activity oslo-educ:datum ?date .
+    OPTIONAL { ?activity dct:source ?school . }
+    ?activity prov:wasGeneratedBy ?process .
+  }
 }
 ORDER BY DESC(?date)

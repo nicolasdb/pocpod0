@@ -272,6 +272,6 @@ class TestTemplateLoading:
         for name in ["student-progress", "parental-view", "transfer-profile"]:
             template = load_template(name, TEMPLATE_DIR)
             params = extract_params(template)
-            assert len(params) >= 2, f"Template {name} has fewer than 2 parameters"
+            assert len(params) >= 1, f"Template {name} has no parameters"
             for p in params:
                 assert f"${p}" in template, f"${p} not found in {name}"

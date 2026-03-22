@@ -11,4 +11,3 @@ SELECT (COUNT(?student) AS ?count) (AVG(?score) AS ?avg_score) WHERE {
     ?activity oslo-educ:score ?score .
   }
 }
-GROUP BY $program_uri

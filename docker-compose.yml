@@ -15,7 +15,7 @@ services:
       - "-c"
       - "/config.json"
       - "--baseUrl"
-      - "http://community-solid-server:3000/"
+      - "http://localhost:3000/"
     healthcheck:
       test: ["CMD-SHELL", "node -e \"const n=require('net');const c=n.createConnection(3000,'localhost');c.on('connect',()=>{c.end();process.exit(0)});c.on('error',()=>process.exit(1))\""]
       interval: 10s

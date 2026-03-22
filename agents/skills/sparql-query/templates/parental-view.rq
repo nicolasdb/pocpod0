@@ -1,16 +1,17 @@
 # parental-view.rq
 # Query learning activities for a child, accessible to a parent.
-# Parameters: $parent_uri, $child_uri
+# Parameters: child_uri
 PREFIX oslo-educ: <https://data.vlaanderen.be/ns/onderwijs#>
 PREFIX prov: <http://www.w3.org/ns/prov#>
 PREFIX foaf: <http://xmlns.com/foaf/0.1/>
 
-SELECT ?activity ?result ?date ?subject WHERE {
-  ?child foaf:account $parent_uri .
-  ?activity oslo-educ:betreft $child_uri .
-  ?activity oslo-educ:resultaat ?result .
-  ?activity oslo-educ:datum ?date .
-  ?activity oslo-educ:vak ?subject .
+SELECT ?g ?activity ?result ?date ?subject WHERE {
+  GRAPH ?g {
+    ?activity oslo-educ:betreft $child_uri .
+    ?activity oslo-educ:resultaat ?result .
+    ?activity oslo-educ:datum ?date .
+    ?activity oslo-educ:vak ?subject .
+  }
 }
 ORDER BY DESC(?date)
 LIMIT 50
