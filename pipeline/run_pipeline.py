@@ -7,6 +7,7 @@ Usage (from repo root, with venv active):
 """
 import argparse
 import os
+import re
 import subprocess
 import sys
 import time
@@ -26,6 +27,17 @@ if _env_file.exists():
 OXIGRAPH_URL = os.environ.get("OXIGRAPH_BASE_URL", "http://localhost:7878")
 QDRANT_URL = os.environ.get("QDRANT_BASE_URL", "http://localhost:6333")
 QDRANT_COLLECTION = "pocpod0_embeddings"
+CSS_BASE_URL = os.environ.get("CSS_BASE_URL", "http://localhost:3000")
+
+POD_SLUGS = [
+    "ayoub",
+    "claire-student-1",
+    "claire-student-2",
+    "claire",
+    "fatima-child-1",
+    "fatima-child-2",
+    "school-community",
+]
 
 STAGES = [
     {
@@ -41,7 +53,8 @@ STAGES = [
     {
         "name": "ingest",
         "label": "[3/5] Ingest xAPI → CSS Pods (RDF)",
-        "cmd": [sys.executable, "-m", "pocpod0_pipeline.ingest"],
+        "cmd": [sys.executable, "-m", "pocpod0_pipeline.ingest",
+                "--input-dir", str(Path(__file__).parent.parent / "data" / "synthetic")],
     },
     {
         "name": "load-graph",
@@ -63,8 +76,147 @@ def _header(text: str) -> None:
     print(bar, flush=True)
 
 
+def _list_css_pod_slugs(css_base_url: str, provisioner_webid: str) -> list[str]:
+    """Enumerate all pod slugs by listing the CSS root container.
+
+    Fetches the CSS root as Turtle and extracts first-level path segments.
+    Falls back to POD_SLUGS if the root listing fails.
+    """
+    headers = {
+        "Authorization": f"WebID {provisioner_webid}",
+        "Accept": "text/turtle",
+    }
+    try:
+        resp = httpx.get(f"{css_base_url}/", headers=headers, timeout=10)
+    except httpx.RequestError as exc:
+        print(f"  CSS root listing failed ({exc}), falling back to known slugs")
+        return POD_SLUGS
+
+    if resp.status_code not in (200, 201):
+        print(f"  CSS root listing returned {resp.status_code}, falling back to known slugs")
+        return POD_SLUGS
+
+    # CSS root uses relative URIs like <ayoub/> — extract slug from trailing-slash entries
+    all_refs = re.findall(r"<([^>]+)>", resp.text)
+    slugs = []
+    for ref in all_refs:
+        # Relative URI with single path segment and trailing slash = pod root
+        stripped = ref.rstrip("/")
+        if stripped and "/" not in stripped and not stripped.startswith("http") and stripped not in slugs:
+            slugs.append(stripped)
+
+    if not slugs:
+        print("  CSS root listing returned no pods, falling back to known slugs")
+        return POD_SLUGS
+
+    print(f"  CSS root: found {len(slugs)} pods")
+    return slugs
+
+
+def _ldp_list_children(url: str, headers_get: dict) -> tuple[list[str], list[str]]:
+    """List direct children of an LDP container.
+
+    CSS returns relative URIs in Turtle. Returns (leaf_urls, sub_container_urls)
+    where leaves are non-container resources and sub_containers end with '/'.
+    """
+    try:
+        resp = httpx.get(url, headers=headers_get, timeout=10)
+    except httpx.RequestError:
+        return [], []
+    if resp.status_code not in (200, 201):
+        return [], []
+
+    refs = re.findall(r"<([^>]+)>", resp.text)
+    leaves, containers = [], []
+    for ref in refs:
+        if ref.startswith("http") or ref.startswith("#") or ref == "":
+            continue
+        # Relative URIs: sub-containers end with /, leaves don't
+        full = url.rstrip("/") + "/" + ref.lstrip("/") if not ref.startswith("/") else url.split("//")[0] + "//" + url.split("//")[1].split("/")[0] + ref
+        if ref.endswith("/"):
+            containers.append(full)
+        else:
+            leaves.append(full)
+    return leaves, containers
+
+
+def _recursive_delete(container_url: str, headers_get: dict, headers_delete: dict) -> int:
+    """Recursively delete all contents of an LDP container, then the container itself.
+
+    Returns total number of resources deleted.
+    """
+    deleted = 0
+    leaves, sub_containers = _ldp_list_children(container_url, headers_get)
+
+    # Recurse into sub-containers first
+    for sub in sub_containers:
+        deleted += _recursive_delete(sub, headers_get, headers_delete)
+
+    # Delete leaf resources
+    for leaf in leaves:
+        try:
+            r = httpx.delete(leaf, headers=headers_delete, timeout=10)
+            if r.status_code in (200, 204, 404):
+                deleted += 1
+        except httpx.RequestError:
+            pass
+
+    # Delete the now-empty container
+    try:
+        httpx.delete(container_url, headers=headers_delete, timeout=10)
+    except httpx.RequestError:
+        pass
+
+    return deleted
+
+
+def wipe_css_pods(css_base_url: str) -> None:
+    """Recursive DELETE of learning/ containers in ALL CSS pods.
+
+    Enumerates pods dynamically from the CSS root to catch troll-generated
+    pods (student-XXXX, admin-XXXX, etc.) in addition to scenario pods.
+    CSS LDP returns 409 on DELETE of non-empty containers, so we must
+    recursively delete leaves first (learning/ → course/ → *.ttl).
+    Tolerates 404 gracefully (already empty = OK).
+    """
+    provisioner_webid = f"{css_base_url}/provisioner/profile/card#me"
+    headers_get = {
+        "Authorization": f"WebID {provisioner_webid}",
+        "Accept": "text/turtle",
+    }
+    headers_delete = {
+        "Authorization": f"WebID {provisioner_webid}",
+    }
+
+    slugs = _list_css_pod_slugs(css_base_url, provisioner_webid)
+
+    total_deleted = 0
+    for slug in slugs:
+        container_url = f"{css_base_url}/{slug}/learning/"
+        try:
+            resp = httpx.get(container_url, headers=headers_get, timeout=10)
+        except httpx.RequestError as exc:
+            print(f"  CSS pod {slug}/learning/: connection error ({exc}), skipping")
+            continue
+
+        if resp.status_code == 404:
+            continue  # already empty, no noise
+        if resp.status_code not in (200, 201):
+            print(f"  CSS pod {slug}/learning/: unexpected GET status {resp.status_code}, skipping")
+            continue
+
+        deleted = _recursive_delete(container_url, headers_get, headers_delete)
+        total_deleted += deleted
+        if deleted > 0:
+            print(f"  CSS pod {slug}/learning/: deleted {deleted} resources")
+
+    print(f"  CSS pods wiped: {total_deleted} total resources deleted across {len(slugs)} pods")
+
+
 def wipe(oxigraph_url: str, qdrant_url: str) -> None:
     _header("Wiping existing data")
+
+    wipe_css_pods(CSS_BASE_URL)
 
     print("  Oxigraph: CLEAR ALL ... ", end="", flush=True)
     resp = httpx.post(
