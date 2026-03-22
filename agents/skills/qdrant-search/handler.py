@@ -228,7 +228,7 @@ def _format_results(points: list[dict]) -> list[dict]:
         payload = point.get("payload", {})
         result: dict[str, Any] = {
             "score": point.get("score", 0.0),
-            "content_summary": payload.get("content_text", "")[:200],
+            "content_summary": payload.get("content_text", "")[:500],
             "triple_uris": payload.get("triple_uris", []),
             "pod_resource_uri": payload.get("pod_resource_uri", ""),
             "payload": payload,

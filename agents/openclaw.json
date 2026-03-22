@@ -13,6 +13,19 @@
         "primary": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
         "fallbacks": ["openrouter/minimax/minimax-m2.5"]
       },
+      // Allowlist: only these models appear in the dropdown.
+      // Add/remove entries here to control what Nicolas can select per session.
+      // Format: "openrouter/provider/model-id": { "alias": "Label shown in UI" }
+      "models": {
+        "openrouter/nvidia/nemotron-3-super-120b-a12b:free": { "alias": "Nemotron-3 (free)" },
+        "openrouter/minimax/minimax-m2.5": { "alias": "MiniMax M2.5" },
+        "openrouter/meta-llama/llama-4-maverick": { "alias": "Llama 4 Maverick" },
+        "openrouter/meta-llama/llama-4-scout": { "alias": "Llama 4 Scout" },
+        "openrouter/google/gemini-2.0-flash-001": { "alias": "Gemini 2.0 Flash" },
+        "openrouter/deepseek/deepseek-r1": { "alias": "DeepSeek R1" },
+        "openrouter/qwen/qwen3-235b-a22b": { "alias": "Qwen3 235B" },
+        "openrouter/mistral/mistral-large": { "alias": "Mistral Large" }
+      },
       "skipBootstrap": true
     },
     "list": [
@@ -25,6 +38,11 @@
         "identity": {
           "name": "Claire",
           "emoji": "👩‍🏫"
+        },
+        // Per-agent model: strong reasoning for cross-context synthesis
+        "model": {
+          "primary": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+          "fallbacks": ["openrouter/meta-llama/llama-4-maverick"]
         }
       },
       {
@@ -75,6 +93,11 @@
         "identity": {
           "name": "Troll",
           "emoji": "🧌"
+        },
+        // Troll uses a fast model — speed matters more than depth for adversarial probing
+        "model": {
+          "primary": "openrouter/meta-llama/llama-4-scout",
+          "fallbacks": ["openrouter/minimax/minimax-m2.5"]
         }
       }
     ]

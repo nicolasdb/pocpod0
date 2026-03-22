@@ -1,0 +1,9 @@
+# Exclude large directories not needed for Docker build
+# (infra/openclaw/Dockerfile only extends the base image — no local files are COPYed)
+_bmad/
+_bmad-output/
+.claude/
+.git/
+pipeline/
+data/
+docs/

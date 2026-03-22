@@ -1,332 +1,371 @@
-# Story 3.7: [foundation] Graph-Only vs Hybrid Query Results Comparison Display
+# Story 3.7: Graph-Only vs Hybrid Comparison
 
 Status: ready-for-dev
 
 ## Story
 
-As a **demo audience member** (funder, partner, reviewer),
-I want the system to display graph-only and hybrid query results side by side with clear provenance for both,
-so that I can visually confirm the added value of semantic enrichment over structured queries alone.
+As a **researcher / funder audience**,
+I want a systematic, reproducible comparison of graph-only and hybrid query results across all students in Claire's scope,
+so that the architectural benefit of combining Oxigraph SPARQL with Qdrant vector search is measurable, not just anecdotal.
+
+## Context
+
+Story 3.4 demonstrated the "aha moment" conversationally (Claire's agent session). Story 3.7 makes it **scientific**: a standalone comparison script produces a structured report with per-student deltas and aggregate enrichment metrics, suitable for funder review. This story also closes the two data integrity issues deferred from Story 3.4.
+
+---
+
+## Pre-Requisite Fixes (carry-over from Story 3.4)
+
+> **AC-GATE:** AC-P3 verification must pass (0 mismatches) before the comparison story ACs are tested.
+
+### P1: Fix pipeline wipe — CSS pod data accumulates between `--wipe` runs
+
+**Problem:** `run_pipeline.py --wipe` clears Oxigraph (`CLEAR ALL`) and Qdrant but NOT CSS pods. CSS pods accumulate old UUID resources between runs because CSS LDP returns 409 on DELETE of non-empty containers. `load_graph.py` then re-loads both old and new RDF → stale data persists. Currently 119 success/score mismatches in Oxigraph from pre-fix troll data.
+
+**Fix — leaf-first LDP DELETE:**
+Add `wipe_css_pods(pod_slugs, css_base_url)` to `pipeline/run_pipeline.py`. Algorithm:
+1. Hard-code pod slugs from known synthetic actors: `["ayoub", "claire-student-1", "claire-student-2", "claire", "fatima-child-1", "fatima-child-2", "school-community"]`
+2. For each slug: `GET {css_base}/{slug}/learning/` with provisioner auth → parse `ldp:contains` member URIs from Turtle response body
+3. `DELETE` each member URI individually (leaf resources)
+4. `DELETE` the now-empty `{css_base}/{slug}/learning/` container
+5. Tolerate 404 gracefully (already empty = OK)
+6. Call this inside `wipe()` before the Oxigraph CLEAR ALL
+
+Auth pattern: use `provisioner_headers()` from `pipeline/src/pocpod0_pipeline/utils.py` — same Authorization WebID header used throughout the pipeline. Reference `provision_pods.py` for how CSS HTTP requests are structured.
+
+LDP member URI parsing: CSS returns Turtle; simplest parse — regex `<(http[^>]+\.ttl)>` against response body (no rdflib needed). Or use `requests` with `Accept: text/turtle` and parse the `ldp:contains` triples.
+
+### P2: Fix ingest default `--input-dir` to include troll-load data
+
+**File:** `pipeline/run_pipeline.py`, the `ingest` stage `cmd`
+**Problem:** `ingest.py` defaults to `data/synthetic/scenarios` — troll-load data in `data/synthetic/troll-load/` is never re-ingested after a wipe.
+**Fix:** Pass explicit `--input-dir` to the ingest stage:
+```python
+{
+    "name": "ingest",
+    "label": "[3/5] Ingest xAPI → CSS Pods (RDF)",
+    "cmd": [sys.executable, "-m", "pocpod0_pipeline.ingest",
+            "--input-dir", str(Path(__file__).parent / "data" / "synthetic")],
+},
+```
+`run_pipeline.py` is at repo root, so `Path(__file__).parent / "data" / "synthetic"` resolves correctly.
+`ingest.py:137` already uses `input_dir.glob("**/*.json")` (recursive) — picks up both subdirs.
+
+### P3: Verification after P1+P2 + pipeline regen
+
+Run: `python pipeline/run_pipeline.py --wipe` (full regen, ~10min)
+
+Then verify:
+```bash
+# Isolation note: runs fine on host; services exposed on localhost ports
+source pipeline/.venv/bin/activate
+python3 -c "
+import httpx, json
+resp = httpx.post('http://localhost:7878/query',
+    content='PREFIX pocpod0: <https://poc-pod0.edu/vocab/> SELECT ?sc ?s (COUNT(*) AS ?n) WHERE { GRAPH ?g { ?a pocpod0:result ?r . ?r pocpod0:scaledScore ?sc . ?r pocpod0:success ?s . } } GROUP BY ?sc ?s',
+    headers={'Content-Type':'application/sparql-query','Accept':'application/sparql-results+json'}, timeout=30)
+data = resp.json()
+mismatches = [(b['sc']['value'], b['s']['value'], b['n']['value'])
+  for b in data['results']['bindings']
+  if (float(b['sc']['value']) >= 0.5) != (b['s']['value'] == 'true')]
+print(f'Mismatches: {len(mismatches)} (expect 0)')
+for m in mismatches[:5]: print(' ', m)
+"
+```
+**Gate: must print `Mismatches: 0`.**
+
+---
 
 ## Acceptance Criteria
 
-**AC1: Side-by-side comparison output for any query**
-Given any agent executing a query that supports hybrid mode
-When the comparison formatter receives both graph-only results (SPARQL skill) and hybrid results (SPARQL skill + Qdrant skill)
-Then the output displays both result sets side by side in a clearly structured format (FR16)
-And the graph-only column shows what SPARQL alone found (structured facts)
-And the hybrid column shows what SPARQL + vector search found (semantically enriched insights)
+**AC1: Graph-only results captured per student**
+Given the pipeline has been re-run with P1+P2 fixes (clean data, 0 mismatches per P3 gate)
+When the comparison script runs a graph-only SPARQL query for each of the 3 students in Claire's scope (Ayoub, claire-student-1/Alex, claire-student-2/Jordan)
+Then structured results are captured per student: `activity_breakdown`, `score_stats`, `recent_failures`, `mastery_events` (from handler `_summarize_bindings()`)
+And results are scoped to Claire's authorized pods only (unauthorized pods return empty/403)
+And per-student SPARQL latency is < 500ms (NFR1)
 
-**AC2: Provenance displayed for both result sets**
-Given a comparison display
-When the results are rendered
-Then the graph-only results include provenance: which `.rq` template, which triples, which Pod resource URIs (`prov:wasDerivedFrom`) (FR20)
-And the hybrid results include provenance for SPARQL results AND traceability metadata for Qdrant results (`triple_uris`, `pod_resource_uri`)
-And each insight is traceable back to its source data
+**AC2: Hybrid results captured per student**
+Given the same 3-student scope
+When the comparison script runs a hybrid query (SPARQL + Qdrant, same student)
+Then hybrid results include SPARQL structured facts AND Qdrant semantic enrichments with `content_text`
+And Qdrant results are filtered to `pod_resource_uri` matching the target student's pod prefix
+And combined latency per student is < 2s (NFR2)
 
-**AC3: Reusable comparison mechanism**
-Given the comparison display capability
-When any agent (not just Claire) triggers a comparison
-Then the formatter works generically for any agent's query results
-And the output is a reusable demo artifact (can be shown to funders for any scenario)
+**AC3: Comparison report produced**
+Given both graph-only and hybrid results for all 3 students
+When the comparison script generates the report
+Then the report contains per-student sections:
+  - `graph_only`: `activity_breakdown`, `score_stats`, `mastery_events_count`, `latency_ms`
+  - `hybrid.qdrant_enrichments`: list of `{content_text, score, pod_resource_uri}` items
+  - `delta.novel_insights`: semantic content from Qdrant not captured as structured triples
+  - `delta.hybrid_adds_value`: bool
+And the report contains an `aggregate` section: students queried, students with hybrid enrichment, avg Qdrant results per student
+And the report is saved to `data/reports/graph-vs-hybrid-<timestamp>.json`
+And a human-readable Markdown summary is printed to stdout
 
-**AC4: Clear distinction between what each data source contributed**
-Given the comparison output
-When reviewed by a non-technical audience
-Then the output clearly labels: "Graph-Only (SPARQL)" vs "Hybrid (SPARQL + Semantic Search)"
-And the hybrid column visually highlights what vector search added that SPARQL alone could not surface
-And the display is self-explanatory without technical narration
+**AC4: ACL enforcement correct in comparison context**
+Given the script attempts to query a pod outside Claire's authorized scope
+When it runs both graph-only and hybrid for that pod
+Then graph-only returns 0 results (CSS returns 403 → skill converts to empty results)
+And Qdrant results for that pod_resource_uri prefix are excluded from hybrid merge
+And the report notes these students as "access denied: not in scope"
 
-**AC5: Hybrid performance within budget**
-Given a comparison query execution
-When both graph-only and hybrid queries complete
-Then the combined hybrid response time is < 2s (NFR2)
-And the comparison formatter adds negligible overhead (formatting only, no additional queries)
+**AC5: Total comparison run for 3 students completes in < 30s**
+Per-student: graph-only < 500ms + hybrid < 2s = < 2.5s × 3 students + overhead < 30s total.
+
+---
 
 ## Tasks / Subtasks
 
-### Task 1: Design comparison output data model (AC1, AC2, AC3)
-- [ ] Define a `ComparisonResult` data class in `agents/skills/comparison-formatter/formatter.py`:
+### Task 1: Fix P1 — `wipe_css_pods()` in run_pipeline.py
+
+- [ ] Add `POD_SLUGS = ["ayoub", "claire-student-1", "claire-student-2", "claire", "fatima-child-1", "fatima-child-2", "school-community"]` constant near top of `run_pipeline.py`
+- [ ] Implement `wipe_css_pods(css_base_url: str) -> None`:
+  - [ ] For each slug: GET `{css_base}/{slug}/learning/` with provisioner auth headers
+  - [ ] Parse response body for member URIs (regex `<(http[^>]+)>` on Turtle, filter `.ttl` paths)
+  - [ ] DELETE each member URI; tolerate 404
+  - [ ] DELETE empty `{css_base}/{slug}/learning/`; tolerate 404
+  - [ ] Print progress per pod: `"  CSS pod {slug}/learning/: deleted N resources"`
+- [ ] Add call to `wipe_css_pods(OXIGRAPH_URL.replace("7878", "3000"))` at start of `wipe()` function
+  - Actually: read CSS base from `.env` `CSS_BASE_URL` or default `http://localhost:3000`
+  - Add `CSS_BASE_URL = os.environ.get("CSS_BASE_URL", "http://localhost:3000")` constant
+- [ ] Test: run `python pipeline/run_pipeline.py --wipe` and verify CSS pods are wiped before Oxigraph
+
+### Task 2: Fix P2 — ingest `--input-dir`
+
+- [ ] In `run_pipeline.py` STAGES list, update `ingest` entry:
   ```python
-  @dataclass
-  class ComparisonResult:
-      query_text: str              # Original natural language query
-      agent_id: str                # Which agent triggered this comparison
-      graph_only: GraphOnlyResult  # SPARQL-only results
-      hybrid: HybridResult         # SPARQL + Qdrant results
-      metadata: ComparisonMeta     # Timing, provenance summary
+  "cmd": [sys.executable, "-m", "pocpod0_pipeline.ingest",
+          "--input-dir", str(Path(__file__).parent / "data" / "synthetic")],
   ```
-- [ ] Define `GraphOnlyResult`:
+- [ ] Verify with dry run: `python -m pocpod0_pipeline.ingest --input-dir data/synthetic --dry-run` counts both troll-load and scenarios JSON files
+
+### Task 3: Run full pipeline regen + P3 verification gate
+
+- [ ] `source pipeline/.venv/bin/activate && python pipeline/run_pipeline.py --wipe`
+- [ ] Run P3 verification script → confirm `Mismatches: 0`
+- [ ] Note final counts: expected ~5900+ Qdrant points, ~120K+ triples, 0 failures
+
+### Task 4: Implement `compare_query_modes.py`
+
+- [ ] Create `pipeline/src/pocpod0_pipeline/compare_query_modes.py`
+- [ ] Define `CLAIRE_SCOPE`:
   ```python
-  @dataclass
-  class GraphOnlyResult:
-      results: list[dict]          # Raw SPARQL results
-      template_used: str           # Which .rq template was executed
-      result_count: int
-      latency_ms: int
-      provenance: list[dict]       # List of { triple_uri, pod_resource_uri }
+  CLAIRE_SCOPE = [
+      {"name": "ayoub",           "pod_uri": "http://localhost:3000/ayoub/"},
+      {"name": "claire-student-1","pod_uri": "http://localhost:3000/claire-student-1/"},
+      {"name": "claire-student-2","pod_uri": "http://localhost:3000/claire-student-2/"},
+  ]
+  CLAIRE_WEBID = "http://localhost:3000/claire/profile/card#me"
   ```
-- [ ] Define `HybridResult`:
-  ```python
-  @dataclass
-  class HybridResult:
-      sparql_results: list[dict]   # SPARQL portion
-      vector_results: list[dict]   # Qdrant portion with similarity scores
-      merged_insights: list[dict]  # Agent-merged result set
-      sparql_provenance: list[dict]
-      vector_provenance: list[dict]  # { triple_uris, pod_resource_uri, score }
-      combined_latency_ms: int
-  ```
-- [ ] Define `ComparisonMeta`:
-  ```python
-  @dataclass
-  class ComparisonMeta:
-      timestamp: str               # ISO-8601
-      graph_only_latency_ms: int
-      hybrid_latency_ms: int
-      vector_added_count: int      # How many extra insights vector search contributed
-      provenance_summary: str      # Human-readable provenance line
-  ```
+- [ ] Implement `run_graph_only(pod_uri, agent_webid) -> dict`:
+  - Import `handle` from `agents/skills/sparql-query/handler.py` via `sys.path.insert(0, ...)`
+  - Call `handle({"pod_uri": pod_uri, "query_type": "cross-context-query", "agent_webid": agent_webid})`
+  - Record `latency_ms`; return `{summary, result_count, latency_ms}`
+- [ ] Implement `run_hybrid(pod_uri, query_text, agent_webid) -> dict`:
+  - Call `run_graph_only()` as above
+  - Import `handle` from `agents/skills/qdrant-search/handler.py`
+  - Call `handle({"query_text": query_text, "pod_uri": pod_uri, "limit": 10})`
+  - Filter Qdrant results: keep only entries where `result["pod_resource_uri"].startswith(pod_uri)`
+  - Return `{sparql_summary, qdrant_results, latency_ms}`
+- [ ] Implement `compute_delta(graph_result, hybrid_result) -> dict`:
+  - "Novel insight": Qdrant `content_text` entries where the text contains substantive content beyond what `activity_breakdown` keys describe
+  - Simplest heuristic: any Qdrant result with `score > 0.7` is a novel enrichment
+  - Return `{novel_insights: [...], hybrid_adds_value: bool}`
+- [ ] Implement `generate_report(student_results: list) -> dict` — full JSON report structure (see Dev Notes)
+- [ ] Implement `render_markdown(report: dict) -> str` — human-readable Markdown to stdout
+- [ ] Add `main()` with argparse:
+  - `--query-text` (default: `"struggling students quadratic equations"`)
+  - `--output-dir` (default: `data/reports/`)
+  - `--students` (default: `ayoub,claire-student-1,claire-student-2`)
+- [ ] Add to `pipeline/pyproject.toml` scripts: `pocpod0-compare = "pocpod0_pipeline.compare_query_modes:main"`
 
-### Task 2: Create comparison formatter skill directory (AC1, AC3)
-- [ ] Create `agents/skills/comparison-formatter/` directory
-- [ ] Create `agents/skills/comparison-formatter/skill.yaml` with:
-  - Skill name: `comparison-formatter`
-  - Description: Formats graph-only vs hybrid query results for side-by-side comparison display
-  - Input schema: `GraphOnlyResult` + `HybridResult` + agent context
-  - Output schema: `ComparisonResult` formatted for display
-- [ ] Create `agents/skills/comparison-formatter/formatter.py` — Main formatting logic
+### Task 5: Integration test
 
-### Task 3: Implement comparison formatting logic (AC1, AC4)
-- [ ] In `formatter.py`, implement `format_comparison(graph_only, hybrid, query_text, agent_id) -> ComparisonResult`:
-  1. Accept raw results from SPARQL skill (graph-only) and merged SPARQL+Qdrant results (hybrid)
-  2. Structure them into the `ComparisonResult` data model
-  3. Calculate `vector_added_count`: count of insights in hybrid that are NOT in graph-only
-  4. Generate `provenance_summary`: human-readable sentence describing data sources
-- [ ] Implement `render_text(comparison: ComparisonResult) -> str`:
-  - Render a structured text comparison with two columns
-  - Header: query text, agent ID, timestamp
-  - Left column: "GRAPH-ONLY (SPARQL)" with structured facts and provenance
-  - Right column: "HYBRID (SPARQL + SEMANTIC SEARCH)" with enriched insights and provenance
-  - Footer: "Vector search added N additional insights" summary
-  - Provenance section: list of Pod resource URIs referenced by each result set
-- [ ] Implement `render_json(comparison: ComparisonResult) -> dict`:
-  - Machine-readable JSON output for dashboard consumption (Phase 4)
-  - Same data as text render but structured as JSON
-  - Suitable for HTMX partial rendering in the mission control dashboard
+- [ ] Create `pipeline/tests/integration/test_graph_vs_hybrid.py`
+  - [ ] `test_graph_only_returns_results_for_ayoub()` — assert `result_count > 0`, `activity_breakdown` non-empty
+  - [ ] `test_hybrid_adds_qdrant_enrichments()` — assert ≥1 student has `hybrid_adds_value: True`
+  - [ ] `test_acl_scoping_excludes_fatima_children()` — assert `fatima-child-1` pod returns 0 results for Claire (not in scope)
+  - [ ] `test_latency_within_nfr()` — assert per-student SPARQL < 500ms, per-student hybrid < 2s
+  - [ ] `test_report_saved_to_disk()` — assert JSON file created with correct top-level keys
+  - [ ] `test_p3_zero_mismatches()` — the P3 mismatch query: assert 0 mismatches (guards against regression)
 
-### Task 4: Implement provenance display for both result sets (AC2)
-- [ ] For graph-only results, extract and display:
-  - Template name used (e.g., `student-progress.rq`)
-  - `prov:wasDerivedFrom` URIs from SPARQL results (which Pod resources contributed)
-  - Triple count contributing to the answer
-- [ ] For hybrid results, extract and display:
-  - Everything from graph-only provenance PLUS:
-  - Qdrant similarity scores per vector result
-  - `triple_uris` and `pod_resource_uri` from each Qdrant point payload
-  - Embedding model used (`qwen/qwen3-embedding-8b`)
-- [ ] Provenance format per result item:
-  ```
-  Source: [Pod Resource URI]
-  Via: [SPARQL template | Qdrant semantic search (score: 0.92)]
-  Triples: [count] triples from [N] pod resources
-  ```
-
-### Task 5: Implement non-technical display labels (AC4)
-- [ ] Replace technical labels with audience-friendly labels in `render_text`:
-  - "SPARQL" -> "Structured Data Query" (with "SPARQL" in parentheses for technical readers)
-  - "Qdrant" -> "Semantic Search" (with "Qdrant" in parentheses)
-  - "prov:wasDerivedFrom" -> "Data Source"
-  - "triple_uris" -> "Related Data Points"
-  - "pod_resource_uri" -> "Student Pod Source"
-- [ ] Add a "What This Means" summary line for each result set:
-  - Graph-only: "These are structured facts from the knowledge graph — precise but limited to what was explicitly recorded."
-  - Hybrid addition: "These additional insights were found by semantic similarity search — the system found related information that structured queries alone would miss."
-- [ ] Visually mark the delta: items present in hybrid but absent from graph-only should be clearly flagged as "Added by Semantic Search"
-
-### Task 6: Implement agent-agnostic comparison protocol (AC3)
-- [ ] The formatter must work with any agent's results, not just Claire's:
-  - Accept agent_id as parameter (e.g., `claire-teacher`, `fatima-parent`, `isabelle-policy`)
-  - Do not hardcode any agent-specific logic
-  - The formatter is a utility — agents call it after they've gathered their results
-- [ ] Define the comparison invocation protocol for agent configs:
-  1. Agent calls SPARQL skill with query -> receives `graph_only_results`
-  2. Agent calls SPARQL skill + Qdrant skill with same query -> receives `hybrid_results`
-  3. Agent calls comparison formatter with both result sets -> receives `ComparisonResult`
-  4. Agent presents the comparison to its audience
-- [ ] Document this protocol in `skill.yaml` so future agent story dev agents can reference it
-
-### Task 7: Implement structured JSON logging (AC5)
-- [ ] Log comparison formatting events to stdout:
-  ```json
-  {
-    "timestamp": "ISO-8601",
-    "service": "comparison-formatter",
-    "level": "INFO",
-    "event": "comparison.formatted",
-    "agent": "claire-teacher",
-    "duration_ms": 5,
-    "details": {
-      "query_text": "Which students are struggling...",
-      "graph_only_result_count": 3,
-      "hybrid_result_count": 7,
-      "vector_added_count": 4,
-      "graph_only_latency_ms": 320,
-      "hybrid_latency_ms": 1450,
-      "render_format": "text"
-    }
-  }
-  ```
-- [ ] Log to stdout so docker-compose captures it (feeds dashboard in Phase 4)
-
-### Task 8: Integration verification (AC1, AC2, AC3, AC4, AC5)
-- [ ] Verify the formatter produces correct side-by-side output for Claire's cross-context query
-- [ ] Verify the formatter works for a different agent (e.g., Fatima's parental view query) to confirm agent-agnostic design
-- [ ] Verify provenance metadata is correctly extracted and displayed for both result sets
-- [ ] Verify non-technical labels are present and comprehensible
-- [ ] Verify the "Added by Semantic Search" delta highlighting works correctly
-- [ ] Verify the JSON render output is valid JSON suitable for dashboard consumption
-- [ ] Verify the formatting adds negligible latency (< 50ms — it's string formatting, not querying)
-- [ ] Verify the formatter works from within distrobox (use `distrobox-host-exec` for podman container access)
+---
 
 ## Dev Notes
 
-### Architecture Decisions Referenced
+### Critical: Do NOT create a new skill directory
 
-- **FR16:** The system can display graph-only vs. hybrid query results side by side for comparison. This story IS the implementation of FR16.
-- **FR20:** The system can surface provenance for query results. This story ensures provenance is displayed in the comparison view.
-- **API-2:** Two separate skills (SPARQL and Qdrant). The comparison formatter is a third utility skill that consumes output from both.
-- **DA-2:** Provenance & Traceability Schema. The formatter displays `prov:wasDerivedFrom` from SPARQL and `triple_uris`/`pod_resource_uri` from Qdrant.
-- **NFR2:** Hybrid SPARQL + vector queries < 2s. The formatter itself must not add meaningful latency; the 2s budget is for the data queries.
+The original (pre-implementation) story draft proposed `agents/skills/comparison-formatter/`. **Do NOT create this.** The comparison is a standalone pipeline script (`compare_query_modes.py`), not an OpenClaw skill. OpenClaw skills are Python subprocess handlers invoked by the agent runtime — adding a formatting wrapper skill adds no value and breaks the existing clean skill architecture.
 
-### Key Design Point: Formatter Is Not a Query Skill
+### Handler invocation pattern (validated in Story 3.4 integration tests)
 
-The comparison formatter does NOT execute queries. It takes results that an agent has already gathered from the SPARQL skill and Qdrant skill, and structures them for side-by-side display. The query execution (and the 2s latency budget) belongs to the skills in Stories 3.1 and 3.2.
+```python
+import sys
+from pathlib import Path
 
-The flow is:
-```
-Agent                          Skills                       Formatter
-  |                              |                              |
-  |-- call SPARQL skill -------->|                              |
-  |<--- graph_only_results ------|                              |
-  |                              |                              |
-  |-- call SPARQL + Qdrant ----->|                              |
-  |<--- hybrid_results ----------|                              |
-  |                              |                              |
-  |-- call comparison formatter -------------------------------->|
-  |<--- formatted ComparisonResult ------------------------------|
-  |                              |                              |
-  |-- present to audience        |                              |
+# Add skill directory to path
+sys.path.insert(0, str(Path("agents/skills/sparql-query").resolve()))
+from handler import handle as sparql_handle
+
+result = sparql_handle({
+    "pod_uri": "http://localhost:3000/ayoub/",   # must end with /
+    "query_type": "cross-context-query",
+    "agent_webid": "http://localhost:3000/claire/profile/card#me"
+})
+# result["summary"] = {activity_breakdown, score_stats, recent_failures, mastery_events}
+# result["result_count"] = N
+# result["provenance"] = [pod root URIs]
 ```
 
-### Connection to Claire's Journey (Story 3.4)
+```python
+sys.path.insert(0, str(Path("agents/skills/qdrant-search").resolve()))
+from handler import handle as qdrant_handle
 
-Claire's journey (Story 3.4) is the primary consumer of this comparison display. The PRD describes the "proof moment": same question, visibly richer hybrid answer. However, this formatter is built as a reusable component so that:
-- Fatima's parental view can also show graph-only vs. hybrid
-- Isabelle's policy queries can show the comparison
-- Funder intervention points (FR38) can trigger comparisons for any agent
-- The comparison becomes a reusable demo artifact per PRD
-
-### Connection to Dashboard (Phase 4)
-
-The `render_json()` output is designed to be consumable by the FastAPI + HTMX mission control dashboard (Story 6.2). The JSON structure should be directly usable as an HTMX partial template data source.
-
-### Naming Conventions
-
-- Skill directory: `comparison-formatter` (lowercase hyphen)
-- Python file: `formatter.py` (snake_case)
-- Python classes: `ComparisonResult`, `GraphOnlyResult`, `HybridResult`, `ComparisonMeta` (PascalCase)
-- Python functions: `format_comparison`, `render_text`, `render_json` (snake_case)
-- Agent IDs: `claire-teacher`, `marc-admin`, `isabelle-policy`, `fatima-parent`, `ayoub-student` (lowercase hyphen)
-
-### Example Comparison Output (Text Render)
-
-```
-================================================================================
-QUERY COMPARISON: "Which students are struggling with quadratic equations?"
-Agent: claire-teacher | Timestamp: 2026-03-20T14:32:05Z
-================================================================================
-
-GRAPH-ONLY (Structured Data Query / SPARQL)           | HYBRID (Structured + Semantic Search / SPARQL + Qdrant)
--------------------------------------------------------+-------------------------------------------------------
-Ayoub:                                                 | Ayoub:
-  - Failed assessment: Math Test 3 (quadratic eq.)     |   - Failed assessment: Math Test 3 (quadratic eq.)
-  - Failed assessment: Math Test 4 (quadratic eq.)     |   - Failed assessment: Math Test 4 (quadratic eq.)
-  - Tutoring attendance: 8/10 sessions                 |   - Tutoring attendance: 8/10 sessions
-  - Self-study: 3 Khan Academy modules completed       |   - Self-study: 3 Khan Academy modules completed
-                                                       |   + [ADDED BY SEMANTIC SEARCH]
-                                                       |   + Tutoring notes: "Ayoub grasps quadratic equations
-                                                       |     through geometric visualization — the school
-                                                       |     assessment doesn't capture his approach"
-                                                       |     (score: 0.92, source: tutoring-session-42.ttl)
--------------------------------------------------------+-------------------------------------------------------
-Results: 4 structured facts                            | Results: 4 structured facts + 1 semantic insight
-Latency: 320ms                                         | Latency: 1,450ms (320ms SPARQL + 1,130ms semantic)
-Template: student-progress.rq                          | Template: student-progress.rq + semantic search
-
-PROVENANCE:
-  Graph-only sources: ayoub/learning/math-test-3.ttl, ayoub/learning/math-test-4.ttl,
-                      ayoub/learning/tutoring-log.ttl, ayoub/learning/khan-progress.ttl
-  Semantic sources:   ayoub/learning/tutoring-session-42.ttl (via embedding similarity)
-
-SUMMARY: Semantic search added 1 additional insight that structured queries alone could not surface.
-  - Graph-only: precise structured facts from the knowledge graph
-  - Semantic addition: related information found by meaning similarity, not explicit structure
-================================================================================
+result = qdrant_handle({
+    "query_text": "student struggling quadratic equations",
+    "pod_uri": "http://localhost:3000/ayoub/",
+    "limit": 10
+})
+# result["results"] = [{content_text, score, triple_uris, pod_resource_uri}, ...]
 ```
 
-### Project Structure Notes
+### Critical: `prov:wasDerivedFrom` is WRONG — use named graphs
 
-Directories/files to create:
+The old story draft mentioned `prov:wasDerivedFrom`. **This was invalidated in Story 2.6.** The correct provenance model is:
+- Named graph URI == Pod resource URI (e.g., `http://localhost:3000/ayoub/learning/abc.ttl`)
+- `GRAPH <uri> { ?s ?p ?o }` scoping — NOT `prov:wasDerivedFrom`
+- Provenance in SPARQL handler returns `pod_uri` root (not individual named graph URIs — IG-1 from Story 3.4 code review accepted pod-level)
+- Qdrant payload: `pod_resource_uri` (individual TTL file URI) + `triple_uris` list
+
+### pod_uri must end with "/"
+
+The SPARQL handler has a P-4 normalization fix (Story 3.4 code review):
+```python
+if "pod_uri" in params and not params["pod_uri"].endswith("/"):
+    params = {**params, "pod_uri": params["pod_uri"] + "/"}
+```
+Pass pod URIs with trailing slash in `CLAIRE_SCOPE` to be explicit.
+
+### CLAIRE_WEBID canonical value
+
+`http://localhost:3000/claire/profile/card#me` — this was fixed in Story 3.4 (SOUL.md had wrong hostname; ACLs use `claire` not `claire-teacher`). The comparison script runs on host (not in Docker), so use `localhost:3000` not `community-solid-server:3000`.
+
+### Report JSON structure
+
+```json
+{
+  "generated_at": "2026-03-22T14:00:00Z",
+  "query": "struggling students quadratic equations",
+  "students": {
+    "ayoub": {
+      "pod_uri": "http://localhost:3000/ayoub/",
+      "graph_only": {
+        "result_count": 82,
+        "activity_breakdown": {"failed": 60, "attempted": 22},
+        "score_stats": {"avg": 0.31, "min": 0.0, "max": 0.85},
+        "mastery_events_count": 12,
+        "latency_ms": 312
+      },
+      "hybrid": {
+        "sparql_summary": {"result_count": 82, "activity_breakdown": {...}},
+        "qdrant_enrichments": [
+          {"content_text": "...", "score": 0.87, "pod_resource_uri": "..."}
+        ],
+        "qdrant_result_count": 5,
+        "latency_ms": 1450
+      },
+      "delta": {
+        "novel_insights": ["tutoring notes: geometric visualization approach"],
+        "hybrid_adds_value": true
+      }
+    }
+  },
+  "aggregate": {
+    "students_queried": 3,
+    "students_with_hybrid_enrichment": 2,
+    "avg_qdrant_results_per_student": 3.7,
+    "total_latency_ms": 8200
+  }
+}
+```
+
+### Markdown stdout example
+
+```markdown
+# Graph-Only vs Hybrid Comparison Report
+Generated: 2026-03-22 | Query: "struggling students quadratic equations"
+
+## Ayoub (ayoub/)
+**Graph-only:** 82 activities — 60 failures, avg score 0.31, 12 mastery events
+**Hybrid enrichment:** 5 Qdrant results (e.g. "tutoring notes: geometric visualization")
+**Delta:** ✓ Hybrid adds semantic context invisible in school data
+
+## claire-student-1 / Alex (claire-student-1/)
+...
+
+## Aggregate
+- 3 students queried, 2 with hybrid enrichment (67%)
+- Avg 3.7 Qdrant enrichments per student
+- Total elapsed: 8.2s
+```
+
+### Files to Create/Modify
+
+| File | Change |
+|------|--------|
+| `pipeline/run_pipeline.py` | Add `wipe_css_pods()` + P2 ingest `--input-dir` fix |
+| `pipeline/src/pocpod0_pipeline/compare_query_modes.py` | New — comparison script |
+| `pipeline/pyproject.toml` | Add `pocpod0-compare` script entry |
+| `pipeline/tests/integration/test_graph_vs_hybrid.py` | New integration tests |
+| `data/reports/.gitkeep` | New — create dir, gitkeep |
+
+**Do NOT modify:**
+- `agents/skills/sparql-query/handler.py` — correct from Story 3.4 review
+- `agents/skills/qdrant-search/handler.py` — correct from Story 3.4 review
+- `agents/skills/sparql-query/templates/cross-context-query.rq` — correct
+- Any agent SOUL.md or agent.yaml files
+- Do NOT create `agents/skills/comparison-formatter/`
+
+### Service Endpoints (host-side)
 
 ```
-agents/
-└── skills/
-    └── comparison-formatter/           # NEW - Comparison display utility
-        ├── skill.yaml                  # NEW - Skill definition
-        └── formatter.py               # NEW - Formatting logic + data models
+Oxigraph: http://localhost:7878  (env: OXIGRAPH_BASE_URL)
+Qdrant:   http://localhost:6333  (env: QDRANT_BASE_URL)
+CSS:      http://localhost:3000  (env: CSS_BASE_URL)
 ```
 
-Files that must already exist (from Stories 3.1, 3.2):
+Isolation note: `distrobox-host-exec` not needed for HTTP calls from host — all services expose ports on localhost. Only needed for `podman` commands (e.g., `podman logs`). The comparison script runs on host with venv: `source pipeline/.venv/bin/activate`.
 
-```
-agents/
-├── openclaw.config.yaml                # Created in Story 3.1
-└── skills/
-    ├── sparql-query/                    # Created in Story 3.1
-    │   ├── skill.yaml
-    │   ├── handler.py
-    │   └── templates/*.rq
-    └── qdrant-search/                   # Created in Story 3.2
-        ├── skill.yaml
-        └── handler.py
-```
+### Previous Story Intelligence (Story 3.4)
 
-### Dependencies
-
-- **Depends on Story 3.1:** SPARQL skill must exist — the formatter consumes its output format (`{ status, results, provenance }`)
-- **Depends on Story 3.2:** Qdrant skill must exist — the formatter consumes its output format (`{ status, results: [{ score, triple_uris, pod_resource_uri }] }`)
-- **Depends on Story 3.3:** Agent configs must exist — at least one agent must be able to invoke skills and pass results to the formatter
-- **Depends on Epic 2:** Data must be loaded in Oxigraph and Qdrant for meaningful comparison results
-- **Consumed by Story 3.4:** Claire's journey uses this formatter for the "proof moment"
-- **Consumed by Phase 4:** Dashboard renders the JSON output from this formatter
-
-### Isolation Notes
-
-- Use `distrobox-host-exec` for accessing podman containers from within the distrobox environment
-- Example: `distrobox-host-exec podman logs community-solid-server`
+1. **`_summarize_bindings()`** in `sparql-query/handler.py` already returns `activity_breakdown`, `score_stats`, `recent_failures`, `mastery_events` — reuse directly.
+2. **`content_text` populated in Qdrant** — Bug 5 fixed in Story 3.4. After clean regen (P1+P2), all points have `content_text`.
+3. **BCP 47 lang tags fixed** — oslo_mapper.py no longer strips hyphens from `"en-US"`. Valid after regen.
+4. **troll success/score correlation fixed** — generate_troll_load.py now uses `scaled >= 0.5`. Valid after regen.
+5. **CSS three-var model** — comparison script runs on host, use `CSS_BASE_URL=http://localhost:3000`. `CSS_CONNECT_URL` is for container-to-container (not needed here).
 
 ### References
 
-- Architecture: `_bmad-output/planning-artifacts/architecture.md` (DA-2, API-2, NFR2, Agent Query Protocol)
-- PRD: `_bmad-output/planning-artifacts/prd.md` (FR16, FR20, NFR Performance — hybrid < 2s, Claire Journey "Beat 1" and "Beat 2")
-- Epics: `_bmad-output/planning-artifacts/epics.md` (Story 3.3 AC for side-by-side display, FR16 mapping)
-- Story 3.1: `_bmad-output/implementation-artifacts/3-1-shared-sparql-skill-foundation.md` (SPARQL skill output format)
-- Story 3.2: `_bmad-output/implementation-artifacts/3-2-shared-qdrant-skill-foundation.md` (Qdrant skill output format, hybrid query protocol)
+- Architecture DA-2: named graph provenance, `triple_uris` in Qdrant payload [Source: architecture.md]
+- Architecture API-2: Two shared skills, hybrid = compose both [Source: architecture.md]
+- FR16: Graph-only vs hybrid side-by-side [Source: epics.md]
+- FR20: Provenance navigable from result to source [Source: epics.md]
+- NFR1: SPARQL < 500ms; NFR2: Hybrid < 2s [Source: architecture.md]
+- Story 3.4: Bug 2 (CSS env vars), Bug 5 (content_text), P-4 (trailing slash), IG-1 (pod-level provenance) [Source: 3-4-claire-cross-context-insight-discovery.md]
+- Memory: `story_3_4_integration_patterns.md` — all 7 bugs, P3 fix deferred, CSS accumulation issue
+
+---
 
 ## Dev Agent Record
 
 ### Agent Model Used
+
+claude-sonnet-4-6
+
 ### Debug Log References
+
 ### Completion Notes List
+
 ### File List

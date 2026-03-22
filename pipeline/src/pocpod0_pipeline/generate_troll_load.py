@@ -127,9 +127,10 @@ def _gen_statement(tier: str, rng: random.Random) -> Dict:
 
     # Some statements have result/score (~40%)
     if rng.random() < 0.40:
+        scaled = round(rng.uniform(0.0, 1.0), 2)
         stmt["result"] = {
-            "score": {"scaled": round(rng.uniform(0.0, 1.0), 2)},
-            "success": rng.choice([True, False]),
+            "score": {"scaled": scaled},
+            "success": scaled >= 0.5,
             "completion": rng.choice([True, False]),
         }
 

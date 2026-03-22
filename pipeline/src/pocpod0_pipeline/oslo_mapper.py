@@ -80,7 +80,7 @@ def xapi_to_rdf(stmt: Dict, pod_resource_uri: Optional[str] = None) -> Graph:
     g.add((stmt_uri, POCPOD0.verb, verb_uri))
     g.add((verb_uri, RDF.type, POCPOD0.LearningVerb))
     for lang, label in (verb.get("display") or {}).items():
-        g.add((verb_uri, RDFS.label, Literal(label, lang=lang.replace("-", ""))))
+        g.add((verb_uri, RDFS.label, Literal(label, lang=lang)))
 
     # --- Object (Activity) ---
     obj = stmt.get("object", {})
@@ -90,7 +90,7 @@ def xapi_to_rdf(stmt: Dict, pod_resource_uri: Optional[str] = None) -> Graph:
 
     defn = obj.get("definition", {})
     for lang, label in (defn.get("name") or {}).items():
-        g.add((obj_uri, RDFS.label, Literal(label, lang=lang.replace("-", ""))))
+        g.add((obj_uri, RDFS.label, Literal(label, lang=lang)))
     obj_type = defn.get("type", "")
     if obj_type:
         g.add((obj_uri, RDF.type, URIRef(obj_type)))

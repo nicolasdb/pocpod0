@@ -33,7 +33,7 @@ development_status:
   story-3-1-shared-sparql-skill-foundation: done
   story-3-2-shared-qdrant-skill-foundation: done
   story-3-3-openClaw-agent-infrastructure: done
-  story-3-4-claire-cross-context-insight-discovery: ready-for-dev
+  story-3-4-claire-cross-context-insight-discovery: done
   story-3-5-fatima-unified-parental-view: ready-for-dev
   story-3-6-isabelle-evidence-based-policy: ready-for-dev
   story-3-7-graph-only-vs-hybrid-comparison: ready-for-dev

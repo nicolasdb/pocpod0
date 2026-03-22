@@ -1,6 +1,6 @@
 # Story 3.4: [must-ship] Claire — Cross-Context Insight Discovery
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -197,7 +197,96 @@ And the access denial is logged in structured JSON format
 - [ ] Test from within distrobox using `distrobox-host-exec` for podman container access
 - [ ] Document any issues or findings in completion notes
 
+## Completion Notes (2026-03-22)
+
+### What was built
+- `agents/claire-teacher/SOUL.md` — full query orchestration: graph-only pass, hybrid pass, three-state output (full/partial/honest gap), provenance display, ACL boundaries, WebID
+- `agents/skills/sparql-query/templates/cross-context-query.rq` — rewritten: `pocpod0:` vocab, `strstarts` prefix filter, all learning statement fields
+- `agents/skills/sparql-query/handler.py` — `_summarize_bindings()`: aggregates 700+ raw rows → compact summary (verb counts, content breakdown, score stats, failures, mastery events); provenance → pod roots only
+- `agents/skills/qdrant-search/handler.py` — `content_summary` truncation bumped to 500 chars
+- `pipeline/src/pocpod0_pipeline/embed.py` — `content_text` added to Qdrant payload so semantic match text is returned to agent
+- `infra/openclaw/Dockerfile` — new: extends OpenClaw image with `python3-requests` + `python3-httpx`
+- `docker-compose.yml` — openclaw-gateway: `image:` → `build:`, CSS three-var env vars wired
+- `.env` — added `CSS_IDENTIFIER_URL`, `CSS_CONNECT_URL`, `CSS_IDENTIFIER_HOST`, `OXIGRAPH_URL`, `QDRANT_URL`
+- `.dockerignore` — new: build context 93MB → ~2MB
+- `pipeline/tests/integration/test_claire_cross_context.py` — e2e test scaffold for all ACs
+
+### Bugs fixed during launch
+1. **OpenClaw missing Python deps** — Dockerfile with apt-get as root at image build time
+2. **CSS env vars missing from container** — `.env` additions via `env_file:`
+3. **SPARQL template wrong vocab + wrong graph selector** — `oslo-educ:` → `pocpod0:`, `GRAPH $pod_uri` → `strstarts` prefix filter; `str($pod_uri)` in FILTER context (parameterize.py wraps URIs in `<>`)
+4. **Claire WebID mismatch** — SOUL.md had `claire-teacher`; ACLs and pod-config.yaml use `claire`
+5. **529KB SPARQL result bloat** — summary aggregation in handler (529KB → ~1KB)
+6. **Qdrant `content_summary` empty** — `content_text` now stored in payload; embed re-run required after schema change
+
+### Verified working
+- ACL: claire→ayoub ✓, claire→student-1 ✓, claire→student-2 ✓, claire→fatima-child-1 → 403 ✓
+- SPARQL summary for Alex: `82 failures + 12 mastery_events on gemeente-tutoring` — aha moment in data
+- Qdrant: 5617 points; top semantic hit "students struggling fractions" → claire-student-1 assessment (score 0.79) ✓
+- Claire answered in French with three-state output (GRAPH-ONLY / HYBRID / HONEST GAP for Ayoub) ✓
+
+### Post-review fixes applied (2026-03-22)
+- **Code review patches** applied (12 patches): mastery_events float guard, timestamp None guard, pod_uri trailing-slash normalization, embed.py chunk.get guard, pod_uri_param multi-pod fix, SOUL.md hostname consistency, test vocab fix (oslo-educ→pocpod0), NFR1/NFR2 assertions, ACL test assertion, Qdrant health path, .dockerignore
+- **BCP 47 lang tag bug** fixed in `oslo_mapper.py` — `lang.replace("-", "")` removed (was corrupting all RDF labels: `"en-US"` → `"enUS"`)
+- **`generate_troll_load.py` success/score fix** — `rng.choice([True, False])` → `scaled >= 0.5` (was producing 115/239 random success flags for claire-student-1)
+- **Full pipeline regen** — `pipeline/run_pipeline.py --wipe` added as orchestrator with tqdm progress in embed step; pipeline ran clean: 5917 resources, 124,611 triples, 5916 Qdrant points
+- **`content_text` payload** now populated in Qdrant (embed re-run completed)
+- **IG-1 resolved** — pod-level provenance accepted for demo (AC1/AC4 amended)
+- **BS-1 resolved** — `$agent_role` SPARQL filter removed; role scoping via CSS ACL checks
+
+### Known gap → deferred to Story 3.7
+**CSS pod data accumulation between pipeline runs**: `run_pipeline.py --wipe` clears Oxigraph and Qdrant, but CSS pods accumulate old resources (each statement gets a deterministic UUID path via `ingest.py`; DELETE on non-empty LDP containers returns 409). On re-run, `load_graph.py` fetches both old and new troll data from CSS pods → Oxigraph contains stale records. Confirmed: 119 ADL-verb success/score mismatches remain in Oxigraph from pre-fix troll data.
+
+Story 3.7 pre-requisites:
+1. **Fix pipeline wipe** to clear CSS pod `*/learning/` containers (leaf-first LDP DELETE sequence) OR use SPARQL UPDATE `DELETE/INSERT` to correct `pocpod0:success` from `pocpod0:scaledScore` at Oxigraph level
+2. **Fix ingest stage** in `run_pipeline.py` to point at `data/synthetic/` (parent dir) so both troll-load and scenario data are ingested on regen
+3. **Verify** 0 mismatches after fix: `SELECT ?scaledScore ?success (COUNT(*) AS ?n) WHERE { GRAPH ?g { ?a pocpod0:result ?r . ?r pocpod0:scaledScore ?scaledScore . ?r pocpod0:success ?success . } } GROUP BY ?scaledScore ?success`
+
+Performance baseline: `content_breakdown` has duplicate subject keys (cosmetic, not blocking).
+
 ## Dev Notes
+
+### Pre-Implementation Decisions (2026-03-22)
+
+**Decision 1 — Ayoub's missing tutor data is intentional, not a seed gap.**
+Ayoub has no tutoring records in his pod. The reason is unknown — tutor access not requested, data not yet shared, provider not connected, or simply no tutoring context exists. The system does NOT assert a cause. It surfaces the gap and proposes the most probable next action given available context. Do NOT seed tutoring data for Ayoub. Preserve the negative space.
+
+**Decision 2 — Three-state output required (not two).**
+The side-by-side comparison (Task 4) must support three distinct output states:
+1. **Full hybrid insight** (Alex / `claire-student-1`): school failure + tutoring mastery + semantic enrichment → "struggling differently" narrative
+2. **Partial / structured only** (Jordan / `claire-student-2`): average school data + sparse gemeente tutoring → structured facts, limited semantic depth
+3. **Negative space with call-to-action** (Ayoub): school records present, tutoring context absent → explicit gap acknowledgment + "Request Ayoub's tutor to share access" prompt
+
+This third state is the trust argument: the system knows what it doesn't know and tells you.
+
+**Decision 3 — SPARQL is broad (Design A confirmed), Qdrant adds context richness.**
+The `cross-context-query.rq` template returns all authorized facts for the agent role across a pod — no topic filter. Topic-specificity lives in the Qdrant semantic query. The agent merges both. This is intentional: SPARQL answers "what happened?", Qdrant answers "what does it mean?".
+The current template only takes `$agent_role` and `$pod_uri`. This is correct for Design A. Do not add a `$subject` topic filter to the SPARQL template.
+
+**Decision 4 — Multilingual is a Qdrant value, not a translation table.**
+The semantic layer collapses multilingual vocabulary gaps natively (NL `breuken` ≈ FR `fractions` ≈ EN `fractions` via embedding space). Do NOT implement keyword translation. The agent's job is synthesis and presentation in Claire's language. Provenance output should note when insights were synthesized from cross-language sources (e.g., "synthesized from a French tutoring note and a Flemish school assessment record").
+
+**Decision 5 — Demo student mapping.**
+- **Alex** (`claire-student-1`): the "aha moment" student — seeded with school failure + tutoring mastery contrast
+- **Jordan** (`claire-student-2`): the control — average, sparse tutoring
+- **Ayoub**: the "honest gap" student — school + robotics + Khan Academy, no tutor access → call-to-action
+- **Sam** (`fatima-child-1`, NL school): ACL boundary test — must be denied (Fatima's child, not Claire's student)
+- **Léa** (`fatima-child-2`, FR school): ACL boundary test — must be denied (Fatima's child, not Claire's student)
+
+**Decision 6 — Negative space output format.**
+When SPARQL returns data but Qdrant returns zero semantic context for a student:
+```
+=== HONEST GAP ===
+Student: Ayoub
+School data: [structured facts from SPARQL]
+Tutoring context: NOT AVAILABLE
+→ No tutoring context found in Ayoub's authorized data.
+→ Possible reasons: tutor access not yet requested, provider not connected, or no tutoring context exists.
+→ Suggested next action: [Request Ayoub's tutoring context] — ask Ayoub or his guardian to share tutor access.
+```
+The agent proposes the most probable next action; it does not assert a cause for the gap.
+
+---
 
 ### This Is the Emotional Core of the Demo
 
@@ -351,6 +440,15 @@ Files this story may modify:
 - Story 3-2: `_bmad-output/implementation-artifacts/3-2-shared-qdrant-skill-foundation.md` (Qdrant skill, hybrid query protocol, result correlation)
 - Story 3-3: `_bmad-output/implementation-artifacts/3-3-openClaw-agent-infrastructure.md` (Claire's agent config, all agent configs)
 - Sprint status: `_bmad-output/implementation-artifacts/sprint-status.yaml` (story-3-4-claire-cross-context-insight-discovery)
+
+## Code Review Decisions (2026-03-22)
+
+**IG-1 resolved: Pod-level provenance is acceptable for the demo.**
+AC1/AC4 spec language referencing individual named-graph URIs is superseded by this decision.
+Provenance returns pod root URIs (e.g. `http://community-solid-server:3000/ayoub/`) — sufficient for demo traceability. Individual TTL graph URIs are not surfaced to avoid 529KB token bloat.
+
+**BS-1 resolved: `$agent_role` query filter removed — role scoping is at the CSS ACL layer.**
+The SPARQL template no longer includes a `$agent_role` filter. Role enforcement happens via pod-level CSS ACL checks (HTTP 403) before any query executes. The template parameter has been removed from the template header and handler call sites.
 
 ## Dev Agent Record
 

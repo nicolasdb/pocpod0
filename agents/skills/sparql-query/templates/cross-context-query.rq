@@ -1,15 +1,29 @@
 # cross-context-query.rq
-# Query activities accessible to a given agent role across a pod.
-# Parameters: $agent_role, $pod_uri
-PREFIX oslo-educ: <https://data.vlaanderen.be/ns/onderwijs#>
-PREFIX prov: <http://www.w3.org/ns/prov#>
-PREFIX acl: <http://www.w3.org/ns/auth/acl#>
+# Query all learning activities in a pod accessible to a given agent role.
+# Parameters: $pod_uri (pod base URI prefix — MUST end with "/")
+#
+# Role scoping is enforced upstream via CSS ACL check (HTTP 403 before this query runs).
+# No in-query role filter is needed; the pod_uri prefix already limits scope to authorized pods.
+#
+# Uses pocpod0: vocabulary (matches oslo_mapper.py output).
+# Iterates over all named graphs whose URI starts with $pod_uri.
+PREFIX pocpod0: <https://poc-pod0.edu/vocab/>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 
-SELECT ?activity ?subject ?result WHERE {
-  GRAPH $pod_uri {
-    ?activity oslo-educ:betreft ?subject .
-    ?activity oslo-educ:resultaat ?result .
-    ?activity oslo-educ:rolBetrokken $agent_role .
+SELECT ?g ?activity ?verb ?object ?scaledScore ?success ?timestamp WHERE {
+  GRAPH ?g {
+    ?activity rdf:type pocpod0:LearningStatement .
+    ?activity pocpod0:actor ?actor .
+    ?activity pocpod0:verb ?verb .
+    ?activity pocpod0:object ?object .
+    OPTIONAL {
+      ?activity pocpod0:result ?result .
+      OPTIONAL { ?result pocpod0:scaledScore ?scaledScore . }
+      OPTIONAL { ?result pocpod0:success ?success . }
+    }
+    OPTIONAL { ?activity pocpod0:timestamp ?timestamp . }
   }
+  FILTER(strstarts(str(?g), str($pod_uri)))
 }
-ORDER BY ?subject
+ORDER BY ?timestamp

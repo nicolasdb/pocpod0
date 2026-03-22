@@ -24,6 +24,7 @@ import uuid
 from typing import Dict, List, Optional, Tuple
 
 import httpx
+from tqdm import tqdm
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
     Distance,
@@ -334,6 +335,7 @@ class QdrantWriter:
                     payload={
                         "triple_uris": chunk["triple_uris"],
                         "pod_resource_uri": chunk["pod_resource_uri"],
+                        "content_text": chunk.get("text") or "",
                     },
                 )
             )
@@ -524,7 +526,10 @@ def run_embedding_pipeline(
         all_vectors: List[Optional[List[float]]] = []
         texts = [c["text"] for c in chunks]
 
-        for i in range(0, len(texts), batch_size):
+        total_batches = (len(texts) + batch_size - 1) // batch_size
+        for i in tqdm(range(0, len(texts), batch_size),
+                      desc="Embedding batches", unit="batch", total=total_batches,
+                      file=sys.stderr):
             batch_texts = texts[i : i + batch_size]
             log_event("embed.batch_start", "INFO", {
                 "batch_size": len(batch_texts),

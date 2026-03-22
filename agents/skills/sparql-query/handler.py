@@ -38,8 +38,10 @@ Security:
 import argparse
 import json
 import os
+import re
 import sys
 import time
+from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -238,6 +240,112 @@ def _execute_query(sparql_query: str) -> tuple[list[dict], int]:
 
 
 # ---------------------------------------------------------------------------
+# Result summarization (prevents token bloat when results fed to LLM)
+# ---------------------------------------------------------------------------
+
+_VERB_LABELS = {
+    "http://adlnet.gov/expapi/verbs/attempted":   "attempted",
+    "http://adlnet.gov/expapi/verbs/completed":   "completed",
+    "http://adlnet.gov/expapi/verbs/passed":      "passed",
+    "http://adlnet.gov/expapi/verbs/failed":      "failed",
+    "http://adlnet.gov/expapi/verbs/scored":      "scored",
+    "http://adlnet.gov/expapi/verbs/attended":    "attended",
+    "http://adlnet.gov/expapi/verbs/progressed":  "progressed",
+    "https://poc-pod0.edu/vocab/verb-mastered":      "mastered",
+    "https://poc-pod0.edu/vocab/verb-struggled-with": "struggled",
+    "https://poc-pod0.edu/vocab/verb-sought-help":    "sought-help",
+    "https://poc-pod0.edu/vocab/verb-demonstrated":   "demonstrated",
+}
+
+_OBJECT_LABELS = {
+    "https://poc-pod0.edu/vocab/activity-math-assessment-fractions": "math-assessment-fractions",
+    "https://poc-pod0.edu/vocab/activity-gemeente-tutoring":         "gemeente-tutoring",
+    "https://poc-pod0.edu/vocab/activity-khan-academy-session":      "khan-academy-self-study",
+    "https://poc-pod0.edu/vocab/activity-robotics-workshop":         "robotics-workshop",
+    "https://poc-pod0.edu/vocab/activity-school-transfer-nl":        "school-transfer-NL",
+}
+
+
+def _summarize_bindings(bindings: list[dict], pod_uri: str) -> dict:
+    """Aggregate raw SPARQL bindings into a compact per-student summary.
+
+    Returns a dict suitable for LLM consumption — far smaller than raw bindings.
+    Preserves provenance (graph URIs) separately.
+    """
+    verb_counts: dict[str, int] = defaultdict(int)
+    object_counts: dict[str, int] = defaultdict(int)
+    scores: list[float] = []
+    failures: list[dict] = []
+    mastery_events: list[dict] = []
+    graphs: set[str] = set()
+
+    for row in bindings:
+        g_val = row.get("g", {}).get("value", "")
+        if g_val:
+            graphs.add(g_val)
+
+        verb_uri = row.get("verb", {}).get("value", "")
+        verb_label = _VERB_LABELS.get(verb_uri, verb_uri.rsplit("/", 1)[-1])
+        verb_counts[verb_label] += 1
+
+        obj_uri = row.get("object", {}).get("value", "")
+        obj_label = _OBJECT_LABELS.get(obj_uri, obj_uri.rsplit("/", 1)[-1])
+        # Normalize label: strip trailing -hexhash suffixes (e.g. "dutch-language-726d2179" → "dutch-language")
+        obj_label = re.sub(r"-[0-9a-f]{8}(-[0-9a-f]{4}){0,3}(-[0-9a-f]{12})?$", "", obj_label)
+        # Skip pure UUID fragments
+        if obj_label and not re.fullmatch(r"[0-9a-f\-]{8,36}", obj_label):
+            object_counts[obj_label] += 1
+
+        score_val = row.get("scaledScore", {}).get("value")
+        success_val = row.get("success", {}).get("value")
+        ts = row.get("timestamp", {}).get("value") or ""
+
+        is_meaningful_label = bool(obj_label) and not re.fullmatch(r"[0-9a-f\-]{8,36}", obj_label)
+
+        if score_val is not None:
+            try:
+                score = float(score_val)
+                scores.append(score)
+                if success_val == "false" and is_meaningful_label:
+                    failures.append({"object": obj_label, "score": score, "timestamp": ts})
+            except ValueError:
+                pass
+
+        if verb_label == "mastered" and is_meaningful_label:
+            try:
+                mastery_score = float(score_val) if score_val else None
+            except ValueError:
+                mastery_score = None
+            mastery_events.append({"object": obj_label, "score": mastery_score, "timestamp": ts})
+
+    summary: dict[str, Any] = {
+        "pod_uri": pod_uri,
+        "total_activities": len(bindings),
+        "graphs_count": len(graphs),
+        "activity_breakdown": dict(verb_counts),
+        "content_breakdown": dict(object_counts),
+    }
+
+    if scores:
+        summary["score_stats"] = {
+            "count": len(scores),
+            "avg": round(sum(scores) / len(scores), 2),
+            "min": round(min(scores), 2),
+            "max": round(max(scores), 2),
+        }
+
+    if failures:
+        # Keep top 5 most recent failures
+        failures_sorted = sorted(failures, key=lambda x: x["timestamp"], reverse=True)
+        summary["recent_failures"] = failures_sorted[:5]
+
+    if mastery_events:
+        summary["mastery_events"] = mastery_events[:5]
+
+    return summary
+
+
+# ---------------------------------------------------------------------------
 # Main skill execution
 # ---------------------------------------------------------------------------
 
@@ -331,6 +439,11 @@ def run_skill(
         acl_status = "skipped"
 
     # ── Step 3: Load and parameterize template ────────────────────────────────
+    # Normalize pod_uri to always have a trailing slash.
+    # strstarts() prefix filter in SPARQL templates requires this to avoid
+    # matching sibling pods (e.g. /ayoub/ must not match /ayoub-evil/).
+    if "pod_uri" in params and not params["pod_uri"].endswith("/"):
+        params = {**params, "pod_uri": params["pod_uri"] + "/"}
     try:
         template_content = load_template(query_type)
         parameterized_query = parameterize_query(template_content, params)
@@ -365,16 +478,22 @@ def run_skill(
         return {"status": "error", "error": f"Oxigraph connection error: {exc}"}
 
     # ── Step 5: Extract provenance ────────────────────────────────────────────
-    # Named graph URI in GRAPH <uri> {} IS the Pod resource URI (per Dev Notes).
-    # Extract from result bindings where a variable named ?g is present.
-    provenance = list({
-        v.get("value")
-        for row in bindings
-        for k, v in row.items()
-        if k == "g" and v.get("type") == "uri"
-    })
-    if not provenance:
-        provenance = pod_uris  # fall back to pod URIs used in ACL check
+    # Provenance = pod root URIs (not individual graph URIs — those can be 100s).
+    # Pod root is derived by taking the first 3 path segments of each graph URI.
+    # e.g. http://localhost:3000/ayoub/learning/course/uuid.ttl → http://localhost:3000/ayoub/
+    _id_base = _CSS_IDENTIFIER_URL.rstrip("/")
+    provenance_pods: set[str] = set()
+    for row in bindings:
+        for k, v in row.items():
+            if k == "g" and v.get("type") == "uri":
+                g = v["value"]
+                if g.startswith(_id_base + "/"):
+                    # Extract pod name: first path segment after base
+                    rest = g[len(_id_base) + 1:]
+                    pod_name = rest.split("/")[0]
+                    if pod_name:
+                        provenance_pods.add(f"{_id_base}/{pod_name}/")
+    provenance = sorted(provenance_pods) or pod_uris
 
     duration_ms = int((time.monotonic() - t_start) * 1000)
 
@@ -392,9 +511,15 @@ def run_skill(
         result_count=len(bindings),  # P-3: top-level field per AC4 schema
     )
 
+    # Summarize results to prevent LLM token bloat.
+    # The summary is the primary content for agent consumption.
+    # Raw bindings are truncated to 20 rows for provenance/spot-checking only.
+    pod_uri_param = params.get("pod_uri") or (pod_uris[0] if pod_uris else "")
+    summary = _summarize_bindings(bindings, pod_uri_param)
+
     return {
         "status": "success",
-        "results": bindings,
+        "summary": summary,
         "provenance": provenance,
         "result_count": len(bindings),
     }
