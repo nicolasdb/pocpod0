@@ -28,3 +28,4 @@ SELECT ?g ?actor ?verb ?object ?scaledScore ?success ?timestamp WHERE {
   FILTER(strstarts(str(?g), str(?childPod)))
 }
 ORDER BY ?childPod ?timestamp
+LIMIT 500

@@ -266,6 +266,21 @@ _OBJECT_LABELS = {
 }
 
 
+def _normalise_pod_uri(pod: str) -> str:
+    """Normalise a pod URI to identifier-space (CSS_IDENTIFIER_URL).
+
+    Oxigraph stores graph URIs under CSS_IDENTIFIER_URL. When callers pass
+    pod URIs using CSS_CONNECT_URL (Docker-internal hostname), the prefix
+    match would fail silently. Swapping the prefix here ensures grouping
+    works regardless of which CSS URL variant the caller used.
+    """
+    pod = pod.rstrip("/") + "/"
+    if _CSS_CONNECT_URL and _CSS_CONNECT_URL != _CSS_IDENTIFIER_URL:
+        if pod.startswith(_CSS_CONNECT_URL.rstrip("/") + "/"):
+            pod = _CSS_IDENTIFIER_URL.rstrip("/") + "/" + pod[len(_CSS_CONNECT_URL.rstrip("/")) + 1:]
+    return pod
+
+
 def _summarize_parental_view(bindings: list[dict], child_pods: list[str]) -> dict:
     """Build a unified parental view from multi-child bindings.
 
@@ -273,25 +288,17 @@ def _summarize_parental_view(bindings: list[dict], child_pods: list[str]) -> dic
     detects structural gaps:
       - Activities with attendance but no scored outcome (platform gap)
       - Success flags that contradict the default 60% threshold (threshold signal)
+      - Attendance anomalies: different session counts across children, or
+        an activity present for only one child (unexpected asymmetry)
 
     Returns a dict with 'children' (list of per-child summaries) and 'gaps'.
     """
-    _id_base = _CSS_IDENTIFIER_URL.rstrip("/")
+    # Normalise all pod URIs to identifier-space so prefix matching against
+    # Oxigraph graph URIs works regardless of which CSS URL variant was passed.
+    normalised_pods = [_normalise_pod_uri(p) for p in child_pods]
 
-    def _pod_for_graph(g_uri: str) -> str:
-        """Return the child pod root matching this graph URI, or empty string."""
-        for pod in child_pods:
-            # Normalise identifier URL prefix: swap connect URL back to identifier URL
-            pod_id = pod
-            if pod_id.startswith(_CSS_IDENTIFIER_URL):
-                pass  # already identifier-space
-            canonical = pod_id.rstrip("/") + "/"
-            if g_uri.startswith(canonical):
-                return canonical
-        return ""
-
-    # Group bindings by child pod
-    by_pod: dict[str, list[dict]] = {p.rstrip("/") + "/": [] for p in child_pods}
+    # Group bindings by child pod (identifier-space keys)
+    by_pod: dict[str, list[dict]] = {p: [] for p in normalised_pods}
     ungrouped: list[dict] = []
     for row in bindings:
         g = row.get("g", {}).get("value", "")
@@ -304,6 +311,16 @@ def _summarize_parental_view(bindings: list[dict], child_pods: list[str]) -> dic
         if not matched:
             ungrouped.append(row)
 
+    if ungrouped:
+        import json as _json
+        print(_json.dumps({
+            "timestamp": _now_iso(),
+            "service": SERVICE_NAME,
+            "level": "WARN",
+            "event": "sparql.parental_view.ungrouped_rows",
+            "details": {"count": len(ungrouped), "sample_graph": ungrouped[0].get("g", {}).get("value", "")},
+        }), flush=True)
+
     children = []
     all_gaps: list[dict] = []
 
@@ -314,7 +331,7 @@ def _summarize_parental_view(bindings: list[dict], child_pods: list[str]) -> dic
         # Gap 1: attended with no score outcome
         attended_no_score = sum(
             1 for r in rows
-            if r.get("scaledScore") is None
+            if "scaledScore" not in r
             and r.get("verb", {}).get("value", "").endswith("attended")
         )
         if attended_no_score > 0:
@@ -337,10 +354,16 @@ def _summarize_parental_view(bindings: list[dict], child_pods: list[str]) -> dic
                     pass
         if low_score_success:
             child_summary["below_60_marked_success"] = low_score_success[:5]
+            if len(low_score_success) > 5:
+                child_summary["below_60_marked_success_truncated"] = True
 
         children.append(child_summary)
 
-    # Gap: cross-child attendance discrepancy on same activity
+    # Gap: attendance anomalies across children for the same activity.
+    # Flags two signals:
+    #   - attendance_discrepancy: same activity, different session counts (≥2 children)
+    #   - one_sided_activity: activity present for only one child (unexpected asymmetry)
+    # The system surfaces unexpected patterns; it does not diagnose causes.
     activity_counts: dict[str, dict[str, int]] = {}
     for pod_uri, rows in by_pod.items():
         for r in rows:
@@ -352,16 +375,23 @@ def _summarize_parental_view(bindings: list[dict], child_pods: list[str]) -> dic
                 activity_counts[obj][pod_uri] = activity_counts[obj].get(pod_uri, 0) + 1
 
     for activity, counts in activity_counts.items():
-        if len(counts) == len(child_pods):  # activity appears for all children
+        child_labels = {p.split("/")[-2]: n for p, n in counts.items()}
+        if len(counts) >= 2:
             values = list(counts.values())
-            if max(values) != min(values):  # different session counts
+            if max(values) != min(values):
                 all_gaps.append({
                     "type": "attendance_discrepancy",
                     "activity": activity,
-                    "counts_by_child": {
-                        p.split("/")[-2]: n for p, n in counts.items()
-                    },
+                    "counts_by_child": child_labels,
                 })
+        elif len(counts) == 1:
+            # Activity visible for only one child — may indicate access asymmetry
+            # or genuine participation difference. Surface for Fatima to interpret.
+            all_gaps.append({
+                "type": "one_sided_activity",
+                "activity": activity,
+                "counts_by_child": child_labels,
+            })
 
     result: dict[str, Any] = {"children": children}
     if all_gaps:
@@ -480,9 +510,10 @@ def run_skill(
     """
     t_start = time.monotonic()
 
-    # Derive a short agent identifier for logging
-    # WebID example: http://localhost:3000/claire/profile/card#me → "claire"
-    agent_id = _agent_id_from_webid(webid)
+    # Derive a short agent identifier for logging.
+    # Callers may pass `agent_id` in params to override the WebID-derived name
+    # (e.g. "fatima-parent" instead of "fatima" when the WebID is personal).
+    agent_id = params.get("agent_id") or _agent_id_from_webid(webid)
 
     # ── Step 1: Extract pod URIs for ACL check ──────────────────────────────
     pod_uris = _extract_pod_uris(params)
@@ -618,14 +649,19 @@ def run_skill(
     # parental-view gets per-child summaries with gap detection.
     # All other templates get single-pod summary.
     if query_type == "parental-view":
-        # Normalise child pod params: child_pod_1 / child_pod_2
+        # Require both child pod params; fallback to pod_uris only if neither is set.
         child_pods = []
         for key in ("child_pod_1", "child_pod_2"):
-            val = params.get(key, "")
+            val = params.get(key, "").strip()
             if val:
                 child_pods.append(val if val.endswith("/") else val + "/")
-        if not child_pods:
-            child_pods = pod_uris
+        if len(child_pods) == 0:
+            child_pods = pod_uris  # legacy fallback (no child_pod_* in params)
+        elif len(child_pods) < 2:
+            return {
+                "status": "error",
+                "error": "parental-view requires both child_pod_1 and child_pod_2 params",
+            }
         summary = _summarize_parental_view(bindings, child_pods)
     else:
         pod_uri_param = params.get("pod_uri") or (pod_uris[0] if pod_uris else "")

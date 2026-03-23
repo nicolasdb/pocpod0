@@ -112,13 +112,14 @@ The handler emits structured JSON log lines first, then a final result JSON:
 {
   "status": "success",
   "summary": {
-    "children": {
-      "http://community-solid-server:3000/fatima-child-1/": {"total_activities": 24, ...},
-      "http://community-solid-server:3000/fatima-child-2/": {"total_activities": 18, ...}
-    },
+    "children": [
+      {"pod_uri": "http://community-solid-server:3000/fatima-child-1/", "total_activities": 24, "...": "..."},
+      {"pod_uri": "http://community-solid-server:3000/fatima-child-2/", "total_activities": 18, "...": "..."}
+    ],
     "gaps": [
-      {"type": "attendance_discrepancy", "activity": "robotics-workshop", "counts_by_child": {...}},
-      {"type": "below_60_marked_success", "child": "...", "activity": "...", "scaledScore": 0.56}
+      {"type": "attendance_discrepancy", "activity": "robotics-workshop", "counts_by_child": {"fatima-child-1": 18, "fatima-child-2": 15}},
+      {"type": "one_sided_activity", "activity": "stem-club", "counts_by_child": {"fatima-child-1": 6}},
+      {"type": "below_60_marked_success", "object": "math-assessment-fractions", "score": 0.55}
     ]
   },
   "provenance": ["http://community-solid-server:3000/fatima-child-1/", "http://community-solid-server:3000/fatima-child-2/"],

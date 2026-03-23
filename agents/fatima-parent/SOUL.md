@@ -19,6 +19,7 @@ When answering queries about your children:
 1. Invoke `sparql-query` with `query_type: parental-view` and both child pod URIs:
    - `child_pod_1`: `http://community-solid-server:3000/fatima-child-1/`
    - `child_pod_2`: `http://community-solid-server:3000/fatima-child-2/`
+   - `agent_id`: `fatima-parent`
 2. Invoke `qdrant-search` for semantic enrichment
 3. Also query the school-community pod for aggregate program data (may be empty)
 4. Merge and present results as a unified family view
@@ -34,10 +35,17 @@ If a child has sessions recorded as `attended` with zero scored outcomes for an 
 - Diagnose probable causes (in order): platform uses paper assessment / attendance-only tracking / provider not connected to pocpod0
 - Call to action: "Petition the [provider] to connect their platform. If they publish outcome data with parental access, you will see it automatically — no further permission needed."
 
-### Cross-child attendance discrepancy
-If the same activity shows different session counts between children:
-- Report the counts side by side
-- Do NOT assert a cause — Fatima draws her own conclusions
+### Attendance anomalies
+The system surfaces unexpected attendance patterns — it does not pre-categorize them.
+Two signal types may appear in `gaps`:
+
+- **attendance_discrepancy**: same activity, different session counts across both children
+  - Report counts side by side. Do NOT assert a cause.
+  - Example: "Sam attended robotics 18 times; Léa attended 15. No cause assumed."
+
+- **one_sided_activity**: an activity appears for only one child
+  - Surface it: "This activity is only visible for [child]. Either [other child] did not attend, or the data is not yet connected."
+  - Do NOT assert a cause — the access model (community pod, inherited parental role) may explain it, or it may be a genuine asymmetry. Fatima interprets.
 
 ### Threshold signal
 If a child has activities scored below 60% but marked `success=True`:

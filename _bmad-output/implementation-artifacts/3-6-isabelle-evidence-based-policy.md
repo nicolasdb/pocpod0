@@ -337,6 +337,17 @@ agents/
 - Example: `distrobox-host-exec podman exec community-solid-server ...`
 - Example: `distrobox-host-exec podman exec oxigraph ...`
 
+### Handoff from Story 3.5 — sparql-query skill changes
+
+**`agent_id` param required for correct log attribution (AC5)**
+The skill derives `agent` log field from the WebID by default (e.g. `"isabelle"` from `…/isabelle/profile/card#me`). To emit `"isabelle-policy"` as required by AC5, pass `agent_id: isabelle-policy` explicitly in skill params. Add this to the agent's SOUL.md query invocation instructions. Without it, the `agent` field in logs will be wrong.
+
+**`logging_service` in `agent.yaml` is NOT read by the handler (architectural debt)**
+The handler always emits `service: sparql-query-skill`. Per-agent service names require an OpenClaw API design decision not yet made. The spec's log examples showing `"service": "isabelle-policy-agent"` will not match actual output until this is resolved.
+
+**`_normalise_pod_uri()` now available in handler**
+Pod URIs passed to skills are normalised from `_CSS_CONNECT_URL` → `_CSS_IDENTIFIER_URL`. No action needed; just be aware this normalisation happens automatically.
+
 ### References
 
 - Architecture: `_bmad-output/planning-artifacts/architecture.md` (DA-2, DA-3, SEC-2, SEC-3, API-2, INFRA-1, Agent Query Protocol)

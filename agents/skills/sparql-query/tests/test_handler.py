@@ -278,6 +278,7 @@ class TestParentalView:
         return {
             "child_pod_1": CHILD1_POD,
             "child_pod_2": CHILD2_POD,
+            "agent_id": "fatima-parent",
         }
 
     def test_both_pod_uris_extracted_from_params(self):
@@ -354,6 +355,7 @@ class TestParentalView:
         params = {
             "child_pod_1": CHILD1_POD,
             "child_pod_2": AYOUB_POD,  # unauthorized
+            "agent_id": "fatima-parent",
         }
         with patch("handler.requests.head", return_value=_mock_css_denied()):
             result = handler.run_skill("parental-view", FATIMA_WEBID, "parental", params)
@@ -366,6 +368,7 @@ class TestParentalView:
         params = {
             "child_pod_1": CHILD1_POD,
             "child_pod_2": AYOUB_POD,
+            "agent_id": "fatima-parent",
         }
         with patch("handler.requests.head", return_value=_mock_css_denied()), \
              patch("sys.stdout", buf):
@@ -374,7 +377,7 @@ class TestParentalView:
         denied = [l for l in logs if l.get("event") == "sparql.query.denied"]
         assert denied
         assert denied[0]["level"] == "WARN"
-        assert denied[0]["agent"] == "fatima"
+        assert denied[0]["agent"] == "fatima-parent"
 
     def test_parental_view_success_logged_with_agent_fatima(self):
         """AC5: successful query produces INFO log with agent=fatima."""
@@ -388,7 +391,7 @@ class TestParentalView:
         logs = [json.loads(l) for l in buf.getvalue().strip().splitlines() if l]
         executed = [l for l in logs if l.get("event") == "sparql.query.executed"]
         assert executed
-        assert executed[0]["agent"] == "fatima"
+        assert executed[0]["agent"] == "fatima-parent"
         assert executed[0]["level"] == "INFO"
         assert "result_count" in executed[0]
 
