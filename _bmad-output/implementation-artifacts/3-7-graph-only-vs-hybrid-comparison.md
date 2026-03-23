@@ -1,6 +1,6 @@
 # Story 3.7: Graph-Only vs Hybrid Comparison
 
-Status: review
+Status: done
 
 ## Story
 
