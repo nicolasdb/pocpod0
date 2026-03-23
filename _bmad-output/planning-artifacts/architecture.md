@@ -373,6 +373,9 @@ mkdir -p pocpod0/{infra,pipeline,agents,dashboard,scripts,data/{synthetic,schema
 3. **Semantic path:** Agent calls Qdrant skill → similarity search → returns results with triple/pod URI metadata
 4. **Hybrid path:** Agent calls both skills, merges results itself (the agent has context to judge relevance)
 5. Agent formats results for its persona's narrative
+6. **Negative-space detection (mandatory for all agents):** Agents must surface gaps, not just successes. Handler-level gap detection (attended-with-no-outcome, threshold discrepancy, cross-entity attendance discrepancy) is automatic. Agent-level gap detection (Qdrant divergence from SPARQL, empty community pod) is persona behavior. For every detected gap: name it, diagnose probable causes in order of likelihood, propose the most probable next action — do NOT assert a cause.
+
+**Governance model for community pods:** Access to community/shared pods is declarative, not request-based. If a provider (school, workshop) creates a Solid pod and grants a role (e.g., `parental`) read access, all agents with that role inherit access automatically — no additional permission needed from the agent. Petitions go to the PROVIDER, not to the system.
 
 ### Enforcement Guidelines
 

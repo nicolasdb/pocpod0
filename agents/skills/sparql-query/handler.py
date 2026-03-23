@@ -266,6 +266,109 @@ _OBJECT_LABELS = {
 }
 
 
+def _summarize_parental_view(bindings: list[dict], child_pods: list[str]) -> dict:
+    """Build a unified parental view from multi-child bindings.
+
+    Splits bindings by child pod prefix, produces per-child summaries, and
+    detects structural gaps:
+      - Activities with attendance but no scored outcome (platform gap)
+      - Success flags that contradict the default 60% threshold (threshold signal)
+
+    Returns a dict with 'children' (list of per-child summaries) and 'gaps'.
+    """
+    _id_base = _CSS_IDENTIFIER_URL.rstrip("/")
+
+    def _pod_for_graph(g_uri: str) -> str:
+        """Return the child pod root matching this graph URI, or empty string."""
+        for pod in child_pods:
+            # Normalise identifier URL prefix: swap connect URL back to identifier URL
+            pod_id = pod
+            if pod_id.startswith(_CSS_IDENTIFIER_URL):
+                pass  # already identifier-space
+            canonical = pod_id.rstrip("/") + "/"
+            if g_uri.startswith(canonical):
+                return canonical
+        return ""
+
+    # Group bindings by child pod
+    by_pod: dict[str, list[dict]] = {p.rstrip("/") + "/": [] for p in child_pods}
+    ungrouped: list[dict] = []
+    for row in bindings:
+        g = row.get("g", {}).get("value", "")
+        matched = False
+        for pod_key in by_pod:
+            if g.startswith(pod_key):
+                by_pod[pod_key].append(row)
+                matched = True
+                break
+        if not matched:
+            ungrouped.append(row)
+
+    children = []
+    all_gaps: list[dict] = []
+
+    for pod_uri, rows in by_pod.items():
+        child_summary = _summarize_bindings(rows, pod_uri)
+        child_summary["pod_uri"] = pod_uri
+
+        # Gap 1: attended with no score outcome
+        attended_no_score = sum(
+            1 for r in rows
+            if r.get("scaledScore") is None
+            and r.get("verb", {}).get("value", "").endswith("attended")
+        )
+        if attended_no_score > 0:
+            child_summary["attended_no_outcome_count"] = attended_no_score
+
+        # Gap 2: success=True with scaledScore < 0.6 (threshold signal)
+        low_score_success = []
+        for r in rows:
+            score_val = r.get("scaledScore", {}).get("value") if r.get("scaledScore") else None
+            success_val = r.get("success", {}).get("value") if r.get("success") else None
+            obj_val = r.get("object", {}).get("value", "").rsplit("/", 1)[-1]
+            if score_val and success_val == "true":
+                try:
+                    if float(score_val) < 0.6:
+                        low_score_success.append({
+                            "object": obj_val,
+                            "score": float(score_val),
+                        })
+                except ValueError:
+                    pass
+        if low_score_success:
+            child_summary["below_60_marked_success"] = low_score_success[:5]
+
+        children.append(child_summary)
+
+    # Gap: cross-child attendance discrepancy on same activity
+    activity_counts: dict[str, dict[str, int]] = {}
+    for pod_uri, rows in by_pod.items():
+        for r in rows:
+            obj = r.get("object", {}).get("value", "").rsplit("/", 1)[-1]
+            # Skip pure UUID/hash fragments (8-36 hex chars with dashes)
+            if obj and not re.fullmatch(r"[0-9a-f\-]{8,36}", obj):
+                if obj not in activity_counts:
+                    activity_counts[obj] = {}
+                activity_counts[obj][pod_uri] = activity_counts[obj].get(pod_uri, 0) + 1
+
+    for activity, counts in activity_counts.items():
+        if len(counts) == len(child_pods):  # activity appears for all children
+            values = list(counts.values())
+            if max(values) != min(values):  # different session counts
+                all_gaps.append({
+                    "type": "attendance_discrepancy",
+                    "activity": activity,
+                    "counts_by_child": {
+                        p.split("/")[-2]: n for p, n in counts.items()
+                    },
+                })
+
+    result: dict[str, Any] = {"children": children}
+    if all_gaps:
+        result["gaps"] = all_gaps
+    return result
+
+
 def _summarize_bindings(bindings: list[dict], pod_uri: str) -> dict:
     """Aggregate raw SPARQL bindings into a compact per-student summary.
 
@@ -512,10 +615,21 @@ def run_skill(
     )
 
     # Summarize results to prevent LLM token bloat.
-    # The summary is the primary content for agent consumption.
-    # Raw bindings are truncated to 20 rows for provenance/spot-checking only.
-    pod_uri_param = params.get("pod_uri") or (pod_uris[0] if pod_uris else "")
-    summary = _summarize_bindings(bindings, pod_uri_param)
+    # parental-view gets per-child summaries with gap detection.
+    # All other templates get single-pod summary.
+    if query_type == "parental-view":
+        # Normalise child pod params: child_pod_1 / child_pod_2
+        child_pods = []
+        for key in ("child_pod_1", "child_pod_2"):
+            val = params.get(key, "")
+            if val:
+                child_pods.append(val if val.endswith("/") else val + "/")
+        if not child_pods:
+            child_pods = pod_uris
+        summary = _summarize_parental_view(bindings, child_pods)
+    else:
+        pod_uri_param = params.get("pod_uri") or (pod_uris[0] if pod_uris else "")
+        summary = _summarize_bindings(bindings, pod_uri_param)
 
     return {
         "status": "success",

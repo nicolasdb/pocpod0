@@ -1,17 +1,30 @@
 # parental-view.rq
-# Query learning activities for a child, accessible to a parent.
-# Parameters: child_uri
-PREFIX oslo-educ: <https://data.vlaanderen.be/ns/onderwijs#>
-PREFIX prov: <http://www.w3.org/ns/prov#>
-PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+# Query learning activities for two children (unified parental view).
+# Parameters: $child_pod_1 (pod root URI), $child_pod_2 (pod root URI)
+#
+# Both pod URIs must end with "/" (trailing slash enforced by handler).
+# ACL enforcement upstream: parent WebID must have read access to both pods.
+# Scopes to both pod namespaces via FILTER(strstarts(str(?g), str(?childPod))).
+#
+# Uses pocpod0: vocabulary (matches oslo_mapper.py output).
+# Returns actor URI so caller can distinguish child-1 vs child-2 by pod prefix.
+PREFIX pocpod0: <https://poc-pod0.edu/vocab/>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
 
-SELECT ?g ?activity ?result ?date ?subject WHERE {
+SELECT ?g ?actor ?verb ?object ?scaledScore ?success ?timestamp WHERE {
+  VALUES ?childPod { $child_pod_1 $child_pod_2 }
   GRAPH ?g {
-    ?activity oslo-educ:betreft $child_uri .
-    ?activity oslo-educ:resultaat ?result .
-    ?activity oslo-educ:datum ?date .
-    ?activity oslo-educ:vak ?subject .
+    ?activity rdf:type pocpod0:LearningStatement .
+    ?activity pocpod0:actor ?actor .
+    ?activity pocpod0:verb ?verb .
+    ?activity pocpod0:object ?object .
+    OPTIONAL {
+      ?activity pocpod0:result ?result .
+      OPTIONAL { ?result pocpod0:scaledScore ?scaledScore . }
+      OPTIONAL { ?result pocpod0:success ?success . }
+    }
+    OPTIONAL { ?activity pocpod0:timestamp ?timestamp . }
   }
+  FILTER(strstarts(str(?g), str(?childPod)))
 }
-ORDER BY DESC(?date)
-LIMIT 50
+ORDER BY ?childPod ?timestamp

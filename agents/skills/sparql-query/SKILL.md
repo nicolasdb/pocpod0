@@ -66,13 +66,23 @@ Aggregate statistics for a program within a community (no individual records).
 ```
 
 ### parental-view
-Query a child's learning activities (all named graphs scanned by child WebID).
+Query learning activities for two children, returning a unified parental view with per-child summaries and negative-space gap detection.
 
 ```json
 {
-  "child_uri": "http://localhost:3000/fatima-child-1/profile/card#me"
+  "child_pod_1": "http://community-solid-server:3000/fatima-child-1/",
+  "child_pod_2": "http://community-solid-server:3000/fatima-child-2/"
 }
 ```
+
+Both pod URIs must end with `/` (trailing slash enforced by handler). The query scopes to both pod namespaces using `FILTER(strstarts(str(?g), str(?childPod)))`.
+
+The handler returns a `summary` object (not raw `results`) with:
+- `children`: per-child activity summaries keyed by pod URI
+- `gaps`: list of detected negative-space signals:
+  - `attendance_discrepancy`: same activity with different session counts across children
+  - `attended_no_outcome`: sessions marked attended with no `scaledScore` recorded
+  - `below_60_marked_success`: activities scored below 60% but marked `success=True`
 
 ### transfer-profile
 Query a student's complete learning profile across all contexts.
@@ -87,12 +97,31 @@ Query a student's complete learning profile across all contexts.
 
 The handler emits structured JSON log lines first, then a final result JSON:
 
-**Success:**
+**Success (single-pod templates):**
 ```json
 {
   "status": "success",
-  "results": [{"activity": {"type": "uri", "value": "..."}, ...}],
-  "provenance": ["http://localhost:3000/ayoub/learning/course/UUID.ttl"],
+  "summary": {"total_activities": 42, "verbs": {...}, "activities_by_object": {...}},
+  "provenance": ["http://localhost:3000/ayoub/"],
+  "result_count": 42
+}
+```
+
+**Success (parental-view):**
+```json
+{
+  "status": "success",
+  "summary": {
+    "children": {
+      "http://community-solid-server:3000/fatima-child-1/": {"total_activities": 24, ...},
+      "http://community-solid-server:3000/fatima-child-2/": {"total_activities": 18, ...}
+    },
+    "gaps": [
+      {"type": "attendance_discrepancy", "activity": "robotics-workshop", "counts_by_child": {...}},
+      {"type": "below_60_marked_success", "child": "...", "activity": "...", "scaledScore": 0.56}
+    ]
+  },
+  "provenance": ["http://community-solid-server:3000/fatima-child-1/", "http://community-solid-server:3000/fatima-child-2/"],
   "result_count": 42
 }
 ```

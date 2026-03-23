@@ -161,7 +161,8 @@ class TestRunSkillAclDenied:
 
 
 class TestRunSkillSuccess:
-    def test_success_returns_results(self):
+    def test_success_returns_summary(self):
+        """Success path returns 'summary' dict (not raw 'results' — Story 3.4 token-bloat fix)."""
         params = {
             "student_uri": f"{CSS_BASE}/ayoub/profile/card#me",
             "context_uri": f"{CSS_BASE}/ayoub/learning/course/abc.ttl",
@@ -171,9 +172,11 @@ class TestRunSkillSuccess:
             result = handler.run_skill("student-progress", CLAIRE_WEBID, "tutor", params)
         assert result["status"] == "success"
         assert result["result_count"] == 1
-        assert len(result["results"]) == 1
+        assert "summary" in result
+        assert "results" not in result  # raw bindings never returned
 
-    def test_provenance_extracted_from_graph_variable(self):
+    def test_provenance_reduced_to_pod_root(self):
+        """Provenance is collapsed to pod root URI, not individual document URIs."""
         params = {
             "student_uri": f"{CSS_BASE}/ayoub/profile/card#me",
             "context_uri": f"{CSS_BASE}/ayoub/learning/course/abc.ttl",
@@ -182,7 +185,9 @@ class TestRunSkillSuccess:
              patch("handler.requests.post", return_value=_mock_oxigraph_results(MOCK_BINDINGS)):
             result = handler.run_skill("student-progress", CLAIRE_WEBID, "tutor", params)
         assert result["status"] == "success"
-        assert f"{CSS_BASE}/ayoub/learning/course/abc.ttl" in result["provenance"]
+        # Provenance is pod root, not individual graph URI
+        assert f"{CSS_BASE}/ayoub/" in result["provenance"]
+        assert f"{CSS_BASE}/ayoub/learning/course/abc.ttl" not in result["provenance"]
 
     def test_no_css_uris_skips_acl(self):
         """When no CSS URIs in params, ACL check is skipped (acl_status=skipped)."""
@@ -227,6 +232,176 @@ class TestRunSkillErrors:
             result = handler.run_skill("student-progress", CLAIRE_WEBID, "tutor", params)
         assert result["status"] == "error"
         assert "connection" in result["error"].lower()
+
+
+# ---------------------------------------------------------------------------
+# Parental view tests (Story 3.5)
+# ---------------------------------------------------------------------------
+
+FATIMA_WEBID = f"{CSS_BASE}/fatima/profile/card#me"
+CHILD1_POD = f"{CSS_BASE}/fatima-child-1/"
+CHILD2_POD = f"{CSS_BASE}/fatima-child-2/"
+
+MOCK_PARENTAL_BINDINGS_CHILD1 = [
+    {
+        "g": {"type": "uri", "value": f"{CSS_BASE}/fatima-child-1/learning/course/abc.ttl"},
+        "actor": {"type": "uri", "value": f"{CSS_BASE}/fatima-child-1/profile/card#me"},
+        "verb": {"type": "uri", "value": "http://adlnet.gov/expapi/verbs/attended"},
+        "object": {"type": "uri", "value": "https://poc-pod0.edu/vocab/activity-robotics-workshop"},
+    },
+    {
+        "g": {"type": "uri", "value": f"{CSS_BASE}/fatima-child-1/learning/course/def.ttl"},
+        "actor": {"type": "uri", "value": f"{CSS_BASE}/fatima-child-1/profile/card#me"},
+        "verb": {"type": "uri", "value": "http://adlnet.gov/expapi/verbs/completed"},
+        "object": {"type": "uri", "value": "https://poc-pod0.edu/vocab/activity-course-mathematics-nl"},
+        "scaledScore": {"type": "literal", "value": "0.55"},
+        "success": {"type": "literal", "value": "true"},
+    },
+]
+
+MOCK_PARENTAL_BINDINGS_CHILD2 = [
+    {
+        "g": {"type": "uri", "value": f"{CSS_BASE}/fatima-child-2/learning/course/ghi.ttl"},
+        "actor": {"type": "uri", "value": f"{CSS_BASE}/fatima-child-2/profile/card#me"},
+        "verb": {"type": "uri", "value": "http://adlnet.gov/expapi/verbs/attended"},
+        "object": {"type": "uri", "value": "https://poc-pod0.edu/vocab/activity-robotics-workshop"},
+    },
+]
+
+MOCK_PARENTAL_BINDINGS = MOCK_PARENTAL_BINDINGS_CHILD1 + MOCK_PARENTAL_BINDINGS_CHILD2
+
+
+class TestParentalView:
+    """Story 3.5: Fatima's unified parental view."""
+
+    def _parental_params(self) -> dict:
+        return {
+            "child_pod_1": CHILD1_POD,
+            "child_pod_2": CHILD2_POD,
+        }
+
+    def test_both_pod_uris_extracted_from_params(self):
+        """ACL check fires on both child pods."""
+        params = self._parental_params()
+        pod_uris = handler._extract_pod_uris(params)
+        assert CHILD1_POD in pod_uris
+        assert CHILD2_POD in pod_uris
+        assert len(pod_uris) == 2
+
+    def test_parental_view_success_returns_children_summaries(self):
+        """AC1/AC2: success returns per-child summaries."""
+        params = self._parental_params()
+        with patch("handler.requests.head", return_value=_mock_css_allowed()), \
+             patch("handler.requests.post",
+                   return_value=_mock_oxigraph_results(MOCK_PARENTAL_BINDINGS)):
+            result = handler.run_skill("parental-view", FATIMA_WEBID, "parental", params)
+        assert result["status"] == "success"
+        assert "summary" in result
+        assert "children" in result["summary"]
+        assert len(result["summary"]["children"]) == 2
+
+    def test_parental_view_threshold_signal_detected(self):
+        """AC1: score < 0.6 but success=True is flagged per child."""
+        params = self._parental_params()
+        with patch("handler.requests.head", return_value=_mock_css_allowed()), \
+             patch("handler.requests.post",
+                   return_value=_mock_oxigraph_results(MOCK_PARENTAL_BINDINGS)):
+            result = handler.run_skill("parental-view", FATIMA_WEBID, "parental", params)
+        assert result["status"] == "success"
+        child1 = next(
+            c for c in result["summary"]["children"]
+            if CHILD1_POD in c["pod_uri"]
+        )
+        assert "below_60_marked_success" in child1
+        assert child1["below_60_marked_success"][0]["score"] == 0.55
+
+    def test_parental_view_attended_no_outcome_detected(self):
+        """AC1: attended-only sessions (no score) are counted as gaps."""
+        params = self._parental_params()
+        with patch("handler.requests.head", return_value=_mock_css_allowed()), \
+             patch("handler.requests.post",
+                   return_value=_mock_oxigraph_results(MOCK_PARENTAL_BINDINGS)):
+            result = handler.run_skill("parental-view", FATIMA_WEBID, "parental", params)
+        assert result["status"] == "success"
+        # Both children have attended robotics workshop with no score
+        for child in result["summary"]["children"]:
+            assert child.get("attended_no_outcome_count", 0) >= 1
+
+    def test_parental_view_attendance_discrepancy_detected(self):
+        """AC2: different session counts for same activity are flagged."""
+        # Child-1 has 2 attended robotics rows, child-2 has 1
+        bindings_extra = MOCK_PARENTAL_BINDINGS_CHILD1 + [
+            {
+                "g": {"type": "uri", "value": f"{CSS_BASE}/fatima-child-1/learning/course/xyz.ttl"},
+                "actor": {"type": "uri", "value": f"{CSS_BASE}/fatima-child-1/profile/card#me"},
+                "verb": {"type": "uri", "value": "http://adlnet.gov/expapi/verbs/attended"},
+                "object": {"type": "uri", "value": "https://poc-pod0.edu/vocab/activity-robotics-workshop"},
+            }
+        ] + MOCK_PARENTAL_BINDINGS_CHILD2
+        params = self._parental_params()
+        with patch("handler.requests.head", return_value=_mock_css_allowed()), \
+             patch("handler.requests.post",
+                   return_value=_mock_oxigraph_results(bindings_extra)):
+            result = handler.run_skill("parental-view", FATIMA_WEBID, "parental", params)
+        assert result["status"] == "success"
+        gaps = result["summary"].get("gaps", [])
+        discrepancy = [g for g in gaps if g["type"] == "attendance_discrepancy"]
+        assert discrepancy, "Expected attendance discrepancy gap to be reported"
+        assert "activity-robotics-workshop" in discrepancy[0]["activity"]
+
+    def test_parental_view_acl_denied_fatima_cannot_access_ayoub(self):
+        """AC3: fatima's agent is denied access to ayoub's pod."""
+        params = {
+            "child_pod_1": CHILD1_POD,
+            "child_pod_2": AYOUB_POD,  # unauthorized
+        }
+        with patch("handler.requests.head", return_value=_mock_css_denied()):
+            result = handler.run_skill("parental-view", FATIMA_WEBID, "parental", params)
+        assert result["status"] == "denied"
+        assert "403" in result["reason"]
+
+    def test_parental_view_denial_logged_as_warn(self):
+        """AC5: denial produces WARN log with sparql.query.denied event."""
+        buf = StringIO()
+        params = {
+            "child_pod_1": CHILD1_POD,
+            "child_pod_2": AYOUB_POD,
+        }
+        with patch("handler.requests.head", return_value=_mock_css_denied()), \
+             patch("sys.stdout", buf):
+            handler.run_skill("parental-view", FATIMA_WEBID, "parental", params)
+        logs = [json.loads(l) for l in buf.getvalue().strip().splitlines() if l]
+        denied = [l for l in logs if l.get("event") == "sparql.query.denied"]
+        assert denied
+        assert denied[0]["level"] == "WARN"
+        assert denied[0]["agent"] == "fatima"
+
+    def test_parental_view_success_logged_with_agent_fatima(self):
+        """AC5: successful query produces INFO log with agent=fatima."""
+        buf = StringIO()
+        params = self._parental_params()
+        with patch("handler.requests.head", return_value=_mock_css_allowed()), \
+             patch("handler.requests.post",
+                   return_value=_mock_oxigraph_results(MOCK_PARENTAL_BINDINGS)), \
+             patch("sys.stdout", buf):
+            handler.run_skill("parental-view", FATIMA_WEBID, "parental", params)
+        logs = [json.loads(l) for l in buf.getvalue().strip().splitlines() if l]
+        executed = [l for l in logs if l.get("event") == "sparql.query.executed"]
+        assert executed
+        assert executed[0]["agent"] == "fatima"
+        assert executed[0]["level"] == "INFO"
+        assert "result_count" in executed[0]
+
+    def test_parental_view_provenance_covers_both_children(self):
+        """AC2: provenance includes both child pod roots."""
+        params = self._parental_params()
+        with patch("handler.requests.head", return_value=_mock_css_allowed()), \
+             patch("handler.requests.post",
+                   return_value=_mock_oxigraph_results(MOCK_PARENTAL_BINDINGS)):
+            result = handler.run_skill("parental-view", FATIMA_WEBID, "parental", params)
+        assert result["status"] == "success"
+        assert CHILD1_POD in result["provenance"]
+        assert CHILD2_POD in result["provenance"]
 
 
 class TestLogging:
@@ -353,7 +528,7 @@ class TestIntegration:
         }
         result = handler.run_skill("student-progress", CLAIRE_WEBID, "tutor", params)
         assert result["status"] == "success"
-        assert "results" in result
+        assert "summary" in result
         assert "provenance" in result
 
     def test_cross_context_query_template_executes(self):
@@ -382,16 +557,45 @@ class TestIntegration:
         assert result["status"] in ("success", "denied"), f"Unexpected: {result}"
         # If denied (school-community ACL), that's a valid result for this test
         if result["status"] == "success":
-            assert "results" in result
+            assert "summary" in result
 
     def test_parental_view_template_executes(self):
-        """AC2: parental-view template runs against real Oxigraph (with fatima's WebID)."""
+        """AC1/AC2: parental-view queries both children's pods with fatima's WebID."""
         fatima_webid = f"{CSS_BASE}/fatima/profile/card#me"
         params = {
-            "child_uri": f"{CSS_BASE}/fatima-child-1/profile/card#me",
+            "child_pod_1": f"{CSS_BASE}/fatima-child-1/",
+            "child_pod_2": f"{CSS_BASE}/fatima-child-2/",
         }
         result = handler.run_skill("parental-view", fatima_webid, "parental", params)
         assert result["status"] == "success"
+        assert "summary" in result
+        assert "children" in result["summary"]
+        assert len(result["summary"]["children"]) == 2
+
+    def test_parental_view_gap_detection_real_data(self):
+        """AC1: gap detection runs on real Oxigraph data (attended without scores)."""
+        fatima_webid = f"{CSS_BASE}/fatima/profile/card#me"
+        params = {
+            "child_pod_1": f"{CSS_BASE}/fatima-child-1/",
+            "child_pod_2": f"{CSS_BASE}/fatima-child-2/",
+        }
+        result = handler.run_skill("parental-view", fatima_webid, "parental", params)
+        assert result["status"] == "success"
+        # With real data: robotics workshop sessions are attended-only
+        # At least one child should have attended_no_outcome_count > 0
+        children = result["summary"]["children"]
+        any_gap = any(c.get("attended_no_outcome_count", 0) > 0 for c in children)
+        assert any_gap, f"Expected robotics workshop gap; children: {children}"
+
+    def test_parental_view_acl_denied_fatima_cannot_access_ayoub(self):
+        """AC3: fatima is denied access to ayoub's pod."""
+        fatima_webid = f"{CSS_BASE}/fatima/profile/card#me"
+        params = {
+            "child_pod_1": f"{CSS_BASE}/fatima-child-1/",
+            "child_pod_2": f"{CSS_BASE}/ayoub/",  # unauthorized
+        }
+        result = handler.run_skill("parental-view", fatima_webid, "parental", params)
+        assert result["status"] == "denied", f"Expected denial, got: {result}"
 
     def test_transfer_profile_template_executes(self):
         """AC2: transfer-profile template runs against real Oxigraph."""

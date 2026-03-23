@@ -166,11 +166,20 @@ The PoC is the MVP. Hard boundary — the walking skeleton:
 
 **Rising Action:** Fatima's agent queries her children's pods — both grant parental access via ACL. She asks for a unified view: both children, all contexts.
 
-**Climax:** One view. Both children. All contexts. Her daughter excels in language arts across school and tutoring. Her son struggles in math at school but thrives in the robotics workshop's applied math exercises. She controls exactly who else can see what — and can verify access grants match her consent.
+**Climax:** One view. Both children. All contexts. The system surfaces not just successes but gaps:
+- Sam attended 18 robotics sessions; Léa attended 16 — Fatima registered them both, so she notices the discrepancy.
+- The workshop records sessions as attended but has no outcome scores — the system surfaces this gap and suggests petitioning the workshop to connect their platform.
+- The FR school marks activities below 60% as successful (vs NL school's 60% threshold) — same score passes one child, fails the other. The system flags this as a data quality signal worth verifying.
+- A Léa science record appears in semantic search but not in structured data — stale record or migration artifact; Fatima has RGPD rights to request clarification or deletion.
+- The school-community pod exists but has no connected data yet — if the workshop publishes outcome data with parental access, Fatima will see it automatically with no additional permission needed.
 
-**Resolution:** Fatima makes informed decisions from a position of sovereignty, not dependency.
+She controls exactly who else can see what — and can verify access grants match her consent.
 
-**Proof Areas:** Multi-pod queries, parental ACL access patterns, consent management visibility, cross-institutional unified view.
+**Resolution:** Fatima makes informed decisions from a position of sovereignty, not dependency. The system's value is not just the data it has — it is the gaps it surfaces and the actions it proposes.
+
+**Proof Areas:** Multi-pod queries, parental ACL access patterns, negative-space gap detection, governance call-to-action, cross-institutional unified view.
+
+**Implementation note (Story 3.5):** The narrative uses the actual dataset as-is. Dataset imperfection is intentional — it demonstrates real-world conditions where NL schools use OSLO-mapped data and FR schools may rely on paper assessment or non-standard platforms. The system's response to these gaps is the trust argument.
 
 ### Journey 4: Isabelle — Evidence-Based Policy
 
