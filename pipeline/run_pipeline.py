@@ -6,6 +6,7 @@ Usage (from repo root, with venv active):
 --wipe clears Oxigraph (CLEAR ALL) and deletes the Qdrant collection before running.
 """
 import argparse
+import json
 import os
 import re
 import subprocess
@@ -38,6 +39,17 @@ POD_SLUGS = [
     "fatima-child-2",
     "school-community",
 ]
+
+_JSONL_LOG = Path(__file__).parent.parent / "data" / "pipeline-run.jsonl"
+
+
+def _emit(event_type: str, **data) -> None:
+    """Append a JSONL event line to data/pipeline-run.jsonl."""
+    event = {"timestamp": time.time(), "event_type": event_type, **data}
+    _JSONL_LOG.parent.mkdir(parents=True, exist_ok=True)
+    with _JSONL_LOG.open("a") as f:
+        f.write(json.dumps(event) + "\n")
+
 
 STAGES = [
     {
@@ -222,6 +234,7 @@ def wipe_css_pods(css_base_url: str) -> None:
 
 def wipe(oxigraph_url: str, qdrant_url: str) -> None:
     _header("Wiping existing data")
+    _emit("pipeline.wipe.start")
 
     wipe_css_pods(CSS_BASE_URL)
 
@@ -236,6 +249,7 @@ def wipe(oxigraph_url: str, qdrant_url: str) -> None:
         print("done")
     else:
         print(f"FAILED ({resp.status_code})")
+        _emit("pipeline.done", total_elapsed=0.0, failed="wipe-oxigraph")
         sys.exit(1)
 
     print(f"  Qdrant: delete collection '{QDRANT_COLLECTION}' ... ", end="", flush=True)
@@ -244,17 +258,27 @@ def wipe(oxigraph_url: str, qdrant_url: str) -> None:
         print("done" if resp.status_code == 200 else "not found (ok)")
     else:
         print(f"FAILED ({resp.status_code})")
+        _emit("pipeline.done", total_elapsed=0.0, failed="wipe-qdrant")
         sys.exit(1)
 
+    _emit("pipeline.wipe.done")
 
-def run_stage(stage: dict) -> None:
+
+def run_stage(stage: dict, dry_run: bool = False) -> None:
     _header(stage["label"])
     t0 = time.monotonic()
-    result = subprocess.run(stage["cmd"], env=os.environ.copy())
-    elapsed = time.monotonic() - t0
-    if result.returncode != 0:
-        print(f"\n✗ Stage '{stage['name']}' failed (exit {result.returncode}). Aborting.", flush=True)
-        sys.exit(result.returncode)
+    _emit("stage.start", stage=stage["name"], label=stage["label"])
+    if dry_run:
+        time.sleep(1.5)
+        elapsed = time.monotonic() - t0
+    else:
+        result = subprocess.run(stage["cmd"], env=os.environ.copy())
+        elapsed = time.monotonic() - t0
+        if result.returncode != 0:
+            _emit("stage.failed", stage=stage["name"], elapsed=elapsed, returncode=result.returncode)
+            print(f"\n✗ Stage '{stage['name']}' failed (exit {result.returncode}). Aborting.", flush=True)
+            sys.exit(result.returncode)
+    _emit("stage.done", stage=stage["name"], elapsed=elapsed)
     print(f"\n  Completed in {elapsed:.1f}s", flush=True)
 
 
@@ -262,17 +286,49 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run the full pocpod0 data pipeline")
     parser.add_argument("--wipe", action="store_true",
                         help="Clear Oxigraph and Qdrant before running")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Emit JSONL events with fake 1.5s stages — no real work, for dashboard testing")
+    parser.add_argument("--with-dashboard", action="store_true",
+                        help="Launch the TUI dashboard automatically; pipeline stdout goes to data/pipeline.log")
     args = parser.parse_args()
 
-    if args.wipe:
+    # Truncate JSONL log at start of each run
+    _JSONL_LOG.parent.mkdir(parents=True, exist_ok=True)
+    _JSONL_LOG.write_text("")
+
+    _log_file = None
+    _dashboard_proc = None
+    if args.with_dashboard:
+        _log_path = _JSONL_LOG.parent / "pipeline.log"
+        _dashboard_proc = subprocess.Popen(
+            [sys.executable, "-m", "pocpod0_pipeline.pipeline_dashboard"],
+            env=os.environ.copy(),
+        )
+        _log_file = open(_log_path, "w")
+        sys.stdout = _log_file
+        sys.stderr = _log_file
+
+    if args.wipe and not args.dry_run:
         wipe(OXIGRAPH_URL, QDRANT_URL)
 
+    if args.dry_run:
+        print("[DRY RUN] Emitting fake events — no real pipeline work will run.", flush=True)
+
     pipeline_start = time.monotonic()
+    _emit("pipeline.start", stages=[s["name"] for s in STAGES], wipe=args.wipe)
     for stage in STAGES:
-        run_stage(stage)
+        run_stage(stage, dry_run=args.dry_run)
 
     total = time.monotonic() - pipeline_start
+    _emit("pipeline.done", total_elapsed=total)
     _header(f"Pipeline complete — {total:.1f}s total")
+
+    if _dashboard_proc is not None:
+        _dashboard_proc.wait()
+    if _log_file is not None:
+        sys.stdout = sys.__stdout__
+        sys.stderr = sys.__stderr__
+        _log_file.close()
 
 
 if __name__ == "__main__":

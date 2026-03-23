@@ -82,6 +82,26 @@ See `.env.example` for all available configuration options:
 - `VOLUME_FLAGS`: SELinux volume mounting (`:Z` on Fedora, empty on Ubuntu)
 - Service ports (customizable)
 
+## Running the Pipeline
+
+```bash
+# Full run (appends to existing data)
+python pipeline/run_pipeline.py
+
+# Full run with live TUI dashboard (single terminal)
+python pipeline/run_pipeline.py --with-dashboard
+
+# Wipe all data first, then rebuild from scratch
+python pipeline/run_pipeline.py --wipe --with-dashboard
+
+# Dry run — test the dashboard without touching any data (~8s)
+python pipeline/run_pipeline.py --dry-run --with-dashboard
+```
+
+Pipeline Python-level stdout is saved to `data/pipeline.log` when `--with-dashboard` is used. Stage subprocess output still appears in the terminal.
+
+> ⚠️ `--wipe` permanently deletes all CSS pod data, Oxigraph triples, and Qdrant embeddings before rebuilding. Takes ~10 minutes.
+
 ## Development Workflow
 
 1. Make changes in code directories (`pipeline/`, `agents/`, `dashboard/`)
