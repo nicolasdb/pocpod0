@@ -97,12 +97,18 @@ def _list_css_pod_slugs(css_base_url: str, provisioner_webid: str) -> list[str]:
         return POD_SLUGS
 
     # CSS root uses relative URIs like <ayoub/> — extract slug from trailing-slash entries
+    # Skip CSS system paths that are not user pods
+    _CSS_SYSTEM_SLUGS = {".well-known", ".internal", ".oidc", "idp", ".account"}
     all_refs = re.findall(r"<([^>]+)>", resp.text)
     slugs = []
     for ref in all_refs:
         # Relative URI with single path segment and trailing slash = pod root
         stripped = ref.rstrip("/")
-        if stripped and "/" not in stripped and not stripped.startswith("http") and stripped not in slugs:
+        if (stripped and "/" not in stripped
+                and not stripped.startswith("http")
+                and not stripped.startswith(".")
+                and stripped not in _CSS_SYSTEM_SLUGS
+                and stripped not in slugs):
             slugs.append(stripped)
 
     if not slugs:
@@ -156,8 +162,9 @@ def _recursive_delete(container_url: str, headers_get: dict, headers_delete: dic
     for leaf in leaves:
         try:
             r = httpx.delete(leaf, headers=headers_delete, timeout=10)
-            if r.status_code in (200, 204, 404):
+            if r.status_code in (200, 204):
                 deleted += 1
+            # 404 = already gone, tolerate silently
         except httpx.RequestError:
             pass
 

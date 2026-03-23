@@ -51,17 +51,34 @@ _QDRANT_SKILL_DIR = _REPO_ROOT / "agents" / "skills" / "qdrant-search"
 
 import importlib.util as _ilu
 
-# Both handlers export `run_skill` — use importlib to avoid sys.path collision
-_sparql_spec = _ilu.spec_from_file_location("sparql_handler", _SPARQL_SKILL_DIR / "handler.py")
-_sparql_mod = _ilu.module_from_spec(_sparql_spec)  # type: ignore[arg-type]
-sys.path.insert(0, str(_SPARQL_SKILL_DIR))
-_sparql_spec.loader.exec_module(_sparql_mod)  # type: ignore[union-attr]
+
+def _load_skill(skill_dir: Path, module_name: str) -> Any:
+    """Load a skill handler via importlib without sys.path pollution.
+
+    Pre-loads sibling .py modules into sys.modules so the handler's own
+    imports (e.g. ``from parameterize import ...``) resolve without
+    inserting skill directories into sys.path.
+    """
+    for sibling in skill_dir.glob("*.py"):
+        if sibling.stem == module_name or sibling.stem.startswith("__"):
+            continue
+        sib_spec = _ilu.spec_from_file_location(sibling.stem, sibling)
+        if sib_spec and sib_spec.loader and sibling.stem not in sys.modules:
+            sib_mod = _ilu.module_from_spec(sib_spec)
+            sys.modules[sibling.stem] = sib_mod
+            sib_spec.loader.exec_module(sib_mod)
+
+    spec = _ilu.spec_from_file_location(module_name, skill_dir / f"{module_name}.py")
+    mod = _ilu.module_from_spec(spec)  # type: ignore[arg-type]
+    sys.modules[module_name] = mod
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    return mod
+
+
+_sparql_mod = _load_skill(_SPARQL_SKILL_DIR, "handler")
 _sparql_run_skill = _sparql_mod.run_skill
 
-_qdrant_spec = _ilu.spec_from_file_location("qdrant_handler", _QDRANT_SKILL_DIR / "handler.py")
-_qdrant_mod = _ilu.module_from_spec(_qdrant_spec)  # type: ignore[arg-type]
-sys.path.insert(0, str(_QDRANT_SKILL_DIR))
-_qdrant_spec.loader.exec_module(_qdrant_mod)  # type: ignore[union-attr]
+_qdrant_mod = _load_skill(_QDRANT_SKILL_DIR, "handler")
 _qdrant_run_skill = _qdrant_mod.run_skill
 
 # ---------------------------------------------------------------------------
@@ -234,7 +251,6 @@ def generate_report(
         total_latency += go.get("latency_ms", 0) + hy.get("latency_ms", 0)
 
         go_summary = go.get("summary", {})
-        hy_summary = go_summary  # sparql_summary mirrors graph_only summary
 
         students_section[name] = {
             "pod_uri": pod_uri,
@@ -303,7 +319,7 @@ def render_markdown(report: dict[str, Any]) -> str:
         breakdown = go.get("activity_breakdown", {})
         score_stats = go.get("score_stats", {})
         score_str = (
-            f"avg score {score_stats['avg']}" if score_stats else "no scores"
+            f"avg score {score_stats.get('avg', 'N/A')}" if score_stats else "no scores"
         )
         lines.append(
             f"**Graph-only:** {go['result_count']} activities — "

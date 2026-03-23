@@ -7,18 +7,14 @@ Run with venv active: source pipeline/.venv/bin/activate && pytest tests/integra
 
 import json
 import os
-import sys
 import time
 from pathlib import Path
 
 import httpx
 import pytest
 
-# Add skill paths for handler imports
-_REPO_ROOT = Path(__file__).parents[4]
-sys.path.insert(0, str(_REPO_ROOT / "agents" / "skills" / "sparql-query"))
-sys.path.insert(0, str(_REPO_ROOT / "agents" / "skills" / "qdrant-search"))
-
+# Skill handler imports are handled by compare_query_modes._load_skill() —
+# no sys.path manipulation needed here.
 from pocpod0_pipeline.compare_query_modes import (
     CLAIRE_SCOPE,
     CLAIRE_WEBID,
