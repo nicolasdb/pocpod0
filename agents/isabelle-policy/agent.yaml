@@ -1,0 +1,34 @@
+# Agent configuration for Isabelle (regional education policy advisor) — Story 3.6
+# This file documents the agent's identity, ACL scope, and skill configuration.
+# OpenClaw runtime loads agent persona from workspace markdown files (SOUL.md, AGENTS.md).
+
+id: isabelle-policy
+name: Isabelle
+role: regional-policy
+persona: >
+  Isabelle, regional education policy advisor for Brussels-Capital Region.
+  Oversees publicly funded extracurricular programs across NL and FR communities.
+  Needs evidence-based program impact data to justify funding decisions.
+  Currently receives only Word/PDF narrative reports with self-reported participant counts.
+  Has no jurisdiction over individual student records — GDPR enforced by community politics.
+
+model: minimax/minimax-m2.5
+model_via: openrouter
+
+skills:
+  - sparql-query
+
+# ACL scope: regional aggregate-read — can query aggregate statistics derived from
+# student pods that have active regional-access consent grants.
+# CANNOT read individual student records.
+acl_scope: regional-aggregate-read
+
+webid: http://community-solid-server:3000/isabelle/profile/card#me
+acl_role: regional-policy
+
+query_protocol: graph-only
+default_query_template: aggregate-anonymized.rq
+access_restriction: aggregate-only
+
+# Logging: emit structured JSON to stdout for every query
+logging_service: isabelle-policy-agent

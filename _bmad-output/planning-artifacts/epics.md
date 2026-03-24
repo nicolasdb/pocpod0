@@ -578,6 +578,10 @@ So that I can make informed decisions from a position of sovereignty, not depend
 
 ### Story 3.5: [journey] [target] Isabelle — Evidence-Based Policy
 
+**Persona context:** Isabelle is a regional education policy advisor for Brussels-Capital Region. Education is a community competence (VGC/COCOF) — Isabelle funds cross-community extracurricular programs but has no jurisdiction over schools and cannot compel communities to share student outcome data. Her contractual leverage (grant conventions with rapportage obligations) produces Word/PDF self-reported narratives, not auditable data. Her demo moment is not being impressed by numbers — it is **relief**: seeing cross-community impact data for the first time after years of making funding decisions blind. EU alignment: the EU Data Governance Act (in force 2023) is designed for exactly this — federated consent-based aggregation across institutional boundaries. This system is DGA-forward infrastructure.
+
+**Query approach (B' — cross-context aggregate):** The aggregate does not query robotics scores (none exist in the data). Instead it finds students who attended the funded robotics program and aggregates their scores across ALL their activities. This is the architecturally correct question: "did students who participated in the funded program show improvement across their broader learning?" This requires no synthetic data and demonstrates the system's cross-pod, cross-context capability — impossible with Word documents even if both communities cooperated. Vocabulary: all predicates use `poc-pod0.edu/vocab/` (NOT oslo-educ, which is not present in the data).
+
 As **Isabelle** (regional education policy advisor, Brussels-Capital),
 I want to query aggregate anonymized program impact across communities,
 So that I can justify funding decisions with evidence-based data instead of self-reported narratives.
@@ -586,17 +590,19 @@ So that I can justify funding decisions with evidence-based data instead of self
 
 **Given** Isabelle's agent is configured with regional aggregate-read ACL access
 **When** Isabelle queries "What is the measurable impact of funded STEM programs on participating students?"
-**Then** the system returns aggregate results across both NL and FR communities (FR19)
-**And** no individual student data is exposed — results are anonymized at the aggregate level
+**Then** the system returns cross-context aggregate results: participant count + avg scores across ALL activities for students who attended the robotics program, spanning both NL and FR communities (FR19)
+**And** no individual student data is exposed — results are anonymized via GROUP BY at the aggregate level
+**And** anonymization is structural (GROUP BY makes individual retrieval impossible by query construction, not by policy)
 
 **Given** aggregate query results
 **When** Isabelle inspects provenance
-**Then** the system shows: "this aggregate is derived from N triples across M student pods, all with active regional-access consent grants"
-**And** anonymization guarantees are displayed alongside results
+**Then** the system shows: "this aggregate is derived from N named graphs across M student pods, all with active regional-access consent grants"
+**And** anonymization guarantee statement is displayed: "No individual student data was accessed or returned. All results are aggregated across all learning activities."
 
 **Given** Isabelle attempts a query that would return individual student data
 **When** the query executes
 **Then** the system enforces aggregate-only access — no individual records returned
+**And** the denial is logged with structured JSON including reason and allowed templates
 
 ### Story 3.6: [foundation] Troll Cross-Inference Validation
 
@@ -728,6 +734,48 @@ So that I have honest evidence of how quickly erasure propagates — including a
 **When** the troll test suite for Epic 5 finishes
 **Then** results are deterministic and reproducible across runs (NFR12)
 **And** a summary is produced with pass/partial/fail per layer and timing metrics
+
+### Story 5.4: [backlog] Access Receipt Written to Pod
+
+_Discovered during Story 3.6 deep dive. Implements BP-1 (Bidirectional Accountability) from architecture.md._
+
+As **Ayoub** (data sovereign),
+I want every query that accesses my pod's data to generate a readable receipt stored in my pod,
+So that I can audit who accessed what, when, and why — without asking anyone.
+
+**Acceptance Criteria:**
+
+**Given** any agent query executes against data derived from Ayoub's pod
+**When** the query completes (success or denial)
+**Then** a receipt is written to `/ayoub/access-log/[timestamp].ttl` containing: who queried (agent WebID), when, which consent grant authorized it, result shape (not raw data), which named graphs contributed
+
+**Given** the receipt is written
+**When** Ayoub (or the troll on Ayoub's behalf) queries the access log
+**Then** the receipt is human-legible and machine-readable (Turtle format)
+**And** the troll can answer "why does Isabelle have my data?" by dereferencing the consent grant URI in the receipt
+
+### Story 5.5: [backlog] Consent Grant as RDF Resource
+
+_Discovered during Story 3.6 deep dive. Implements BP-3 (Consent Grant as RDF Resource) from architecture.md._
+
+As **Ayoub** (data sovereign),
+I want the consent I give to institutional actors to be a dereferenceable, inspectable document — not a boolean flag,
+So that I can understand, at any time, exactly what I agreed to and why.
+
+**Acceptance Criteria:**
+
+**Given** an institutional actor (e.g. Isabelle) requests aggregate access
+**When** consent is granted
+**Then** a consent grant resource is created at a dereferenceable URI carrying: requestedBy, purpose, scope (what they will see), excluded (what they will NOT see), consequenceOfRefusal, grantedAt, revokedAt (tombstone), expiresAt
+
+**Given** the consent grant resource exists
+**When** Ayoub or the troll queries "why does Isabelle have access?"
+**Then** the troll dereferences the consent grant URI and returns the purpose and scope in plain language — no human intermediary required
+
+**Given** Ayoub revokes consent
+**When** the revocation executes
+**Then** the `revokedAt` field is populated (tombstone), the ACL grant is removed, and future aggregate queries automatically exclude Ayoub's data
+**And** historical aggregates computed before revocation remain immutable
 
 ## Epic 6: Adversarial Trust Report & Mission Control
 

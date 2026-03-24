@@ -48,6 +48,41 @@ Apply the same pod sovereignty + data silo architecture to a healthcare domain i
 
 ---
 
+## Idea: Immutable Aggregate Publication via IPFS+IPLD
+
+**Captured:** 2026-03-24
+**Status:** backlog — pilot-phase architecture evolution
+
+### Concept
+
+Once an aggregate crosses the trust circle boundary (anonymized via GROUP BY), it ceases to be personal data and becomes a **public good**. Today it lives only in service logs. In the pilot, it should be published as immutable, content-addressed, append-only linked data.
+
+**Protocol:** IPFS + IPLD
+- IPLD is compatible with RDF via JSON-LD serialization — semantic data stored with Merkle DAG integrity
+- Content-addressed: the aggregate is identified by its hash, not by a URL someone controls
+- Append-only: historical records cannot be retroactively edited — the Word document is replaced by a hash
+- Cryptographically verifiable: any external auditor can verify that "32 students, March 2026" is the exact record published without trusting the publisher
+
+### The Temporal Civic Signal
+
+Tombstone revocation (consent withdrawal) produces a measurable time series on aggregate pipelines. If revocations spike in a territory, the aggregate count drops without any individual being identifiable. This is a civic signal — a community expressing distrust through data sovereignty choices rather than surveys or votes.
+
+Historical immutable aggregates (IPFS-anchored) provide the baseline for trend analysis: "participation was 32 in Q1, 28 in Q2, 19 in Q3 — what happened in Q2?" This is **liquid democracy at the data layer**: continuous preference expression, observable at aggregate level, untraceable at individual level.
+
+### Reuse from PoC
+
+- Oxigraph SPARQL aggregates: the query output is already JSON-LD-serializable
+- Consent grant URIs: link directly from the IPFS record as provenance
+- Tombstone revocation: already planned — IPFS publication happens *before* revocation check (aggregate was valid at publication time)
+
+### Notes
+
+- Requires IPFS node in pilot infrastructure (not in PoC docker-compose scope)
+- IPLD + Solid convergence is active research area — Authenticated RDF on IPLD project relevant
+- Connects to EU DGA "data altruism" framing: anonymized aggregates as public-interest datasets
+
+---
+
 ## Idea: Personal PodGraphRAG — Shippable Container with BYOK OpenClaw
 
 **Captured:** 2026-03-21 (Epic 2 Retrospective)

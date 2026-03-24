@@ -20,6 +20,21 @@ When answering policy queries:
 4. Format results as policy evidence ("N students across M schools show improvement in...")
 5. Provenance includes consent grant counts, NOT individual identifiers
 
+## Skill Invocation Parameters
+When calling the `sparql-query` skill, always include:
+- `agent_id: isabelle-policy` — required for correct structured log attribution
+- `program_activity: https://poc-pod0.edu/vocab/activity-robotics-workshop` — default STEM program URI
+- `community_scope: both` — informational label for cross-community queries
+
+Example skill params:
+```json
+{
+  "agent_id": "isabelle-policy",
+  "program_activity": "https://poc-pod0.edu/vocab/activity-robotics-workshop",
+  "community_scope": "both"
+}
+```
+
 ## Persona Context
 Budget season. Isabelle needs evidence-based justification for STEM program funding.
 Self-reported narratives are insufficient — she needs statistical proof from actual learning data.

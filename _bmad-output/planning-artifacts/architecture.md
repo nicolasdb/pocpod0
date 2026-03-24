@@ -248,6 +248,67 @@ mkdir -p pocpod0/{infra,pipeline,agents,dashboard,scripts,data/{synthetic,schema
 - Displays: live attack results, query monitoring, pod ACL status
 - **Rationale:** FR39 requires a mission control dashboard. FastAPI+HTMX is the simplest stack that delivers live updates without a frontend build step. Nicolas already uses Python for the pipeline.
 
+---
+
+## Design Principles: Bidirectional Accountability & Trust Architecture
+
+_Discovered during Story 3.6 deep dive (2026-03-24). These principles extend the security decisions above and inform pilot-phase evolution._
+
+### Principle BP-1: Bidirectional Accountability
+
+> **Every data flow that serves an institution must generate a readable receipt for the person whose data flowed.**
+
+- Institutional queries (e.g. Isabelle's aggregate) must produce an access receipt stored in the data subject's pod at `/[pod]/access-log/[timestamp].ttl`
+- The receipt contains: who queried, when, consent grant URI, result shape (not raw data), which named graphs contributed
+- The troll can index and query these receipts for audit
+- **PoC:** structured logs capture execution (service-side only). **Pilot:** receipts written back to pods.
+
+### Principle BP-2: Trustless Anonymization (Structural, Not Policy)
+
+- The `GROUP BY` clause in aggregate SPARQL is **structural anonymization** — individual records are unretrievable by query construction, not by policy promise
+- Data subjects do not need to trust that Isabelle "only sees counts" — the query architecture makes individual retrieval impossible
+- This is the distinction between *hope-based trust* (policy) and *trustless guarantee* (mathematics)
+- GDPR Article 7(3) consent withdrawal is implemented as ACL revocation: the SPARQL filter automatically excludes revoked pods — no admin action, no ticket, no bilateral agreement
+
+### Principle BP-3: Consent Grant as RDF Resource
+
+The boolean ACL flag evolves into a dereferenceable RDF resource carrying the full consent contract:
+
+```turtle
+<consent-grant-uri> a poc:ConsentGrant ;
+  poc:requestedBy   <agent-webid> ;
+  poc:purpose       "Justify funding renewal for robotics program to Brussels-Capital parliament" ;
+  poc:scope         "Aggregate participant count, avg session attendance, community distribution" ;
+  poc:excluded      "Individual names, scores, school identifiers, addresses" ;
+  poc:consequenceOfRefusal "Data excluded from aggregate; decision made on remaining N-1 participants" ;
+  poc:grantedAt     "..."^^xsd:dateTime ;
+  poc:revokedAt     ""^^xsd:dateTime ;   # tombstone — filled on revocation
+  poc:expiresAt     "..."^^xsd:dateTime .
+```
+
+The troll can dereference `poc:purpose` to answer a data subject's "why does X have access to my data?" — without human intermediary.
+
+- **PoC:** ACL is a boolean flag (current state). **Pilot:** consent grant becomes a dereferenceable URI linked from the ACL resource.
+
+### Principle BP-4: Tombstone Revocation & Temporal Civic Signals
+
+- Consent revocation does not delete named graphs — it applies a tombstone (`consent-revoked` flag) that SPARQL filters respect going forward
+- Historical aggregates remain immutable — they record what was true *at the time* with full provenance
+- **Civic signal:** if consent revocations spike in a territory, the aggregate pipeline "goes dry" — a measurable signal of community distrust, visible to policy actors without exposing individual decisions
+- This is liquid democracy at the data layer: continuous preference expression through data sovereignty choices
+
+### 5-Star Linked Data Evolution Path
+
+| Stage | State | ACL Chain | Consent |
+|---|---|---|---|
+| **PoC (now)** | Simulated URIs (`localhost:3000`) | HEAD request, local CSS | Boolean ACL flag |
+| **Pilot** | Real dereferenceable URIs | Walkable RDF graph: GET pod → ACL → WebID → role → scope | Consent grant as RDF resource (BP-3) |
+| **Post-pilot** | IPFS+IPLD for immutable aggregates | Content-addressed Merkle DAG | Cryptographically verified triples (JSON-LD via IPLD) |
+
+IPLD is compatible with RDF via JSON-LD serialization. Aggregated anonymized results published as IPFS content-addressed records are retroactively tamper-proof — the Word document is replaced by a hash. Authenticated RDF on IPLD enables cryptographic verification of triples without centralized authority.
+
+---
+
 ### Decision Impact Analysis
 
 **Implementation Sequence (Vertical Slices per Phase):**

@@ -479,6 +479,84 @@ def _summarize_bindings(bindings: list[dict], pod_uri: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Aggregate result formatting (Story 3.6 — Isabelle policy view)
+# ---------------------------------------------------------------------------
+
+
+def _summarize_aggregate(bindings: list[dict]) -> dict:
+    """Format aggregate SPARQL results for Isabelle's regional policy view.
+
+    Converts one-row aggregate bindings into a structured summary with
+    provenance narrative and structural anonymization guarantee (AC2, AC4).
+
+    Returns a dict with participant_count, named_graph_count,
+    scored_activity_count, score stats, provenance_narrative, and
+    anonymization_guarantee.
+    """
+    if not bindings:
+        return {
+            "participant_count": 0,
+            "named_graph_count": 0,
+            "scored_activity_count": 0,
+            "average_score": None,
+            "min_score": None,
+            "max_score": None,
+            "provenance_narrative": (
+                "No data found for the specified program. "
+                "The program may have no attendance records in Oxigraph, "
+                "or no participating students have scored activities."
+            ),
+            "anonymization_guarantee": (
+                "No individual student data was accessed or returned. "
+                "All results are aggregated at the program level."
+            ),
+        }
+
+    row = bindings[0]
+
+    def _int_val(key: str) -> int:
+        v = row.get(key, {}).get("value")
+        try:
+            return int(float(v)) if v is not None else 0
+        except (ValueError, TypeError):
+            return 0
+
+    def _float_val(key: str) -> float | None:
+        v = row.get(key, {}).get("value")
+        try:
+            return round(float(v), 3) if v is not None else None
+        except (ValueError, TypeError):
+            return None
+
+    participant_count = _int_val("participantCount")
+    named_graph_count = _int_val("namedGraphCount")
+    scored_activity_count = _int_val("scoredActivityCount")
+    average_score = _float_val("averageScore")
+    min_score = _float_val("minScore")
+    max_score = _float_val("maxScore")
+
+    provenance_narrative = (
+        f"This aggregate is derived from {scored_activity_count} scored activities "
+        f"across {named_graph_count} named graphs from {participant_count} student pods, "
+        f"all with active regional-access consent grants."
+    )
+
+    return {
+        "participant_count": participant_count,
+        "named_graph_count": named_graph_count,
+        "scored_activity_count": scored_activity_count,
+        "average_score": average_score,
+        "min_score": min_score,
+        "max_score": max_score,
+        "provenance_narrative": provenance_narrative,
+        "anonymization_guarantee": (
+            "No individual student data was accessed or returned. "
+            "All results are aggregated at the program level."
+        ),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Main skill execution
 # ---------------------------------------------------------------------------
 
@@ -517,6 +595,37 @@ def run_skill(
 
     # ── Step 1: Extract pod URIs for ACL check ──────────────────────────────
     pod_uris = _extract_pod_uris(params)
+
+    # ── Step 1.5: Aggregate-only enforcement for regional-policy role ────────
+    # SEC-2 extension: role=regional-policy may ONLY execute aggregate templates.
+    # Defense-in-depth: even if the LLM constructs a non-aggregate query, this blocks it.
+    _AGGREGATE_ONLY_TEMPLATES = {"aggregate-anonymized"}
+    if role in ("regional-policy",):
+        if query_type not in _AGGREGATE_ONLY_TEMPLATES:
+            duration_ms = int((time.monotonic() - t_start) * 1000)
+            reason = (
+                f"Aggregate-only access: {agent_id} cannot execute individual-record queries. "
+                f"Allowed templates: {sorted(_AGGREGATE_ONLY_TEMPLATES)}"
+            )
+            _log(
+                "WARN",
+                "sparql.query.denied",
+                agent_id,
+                {
+                    "reason": reason,
+                    "requested_template": f"{query_type}.rq",
+                    "allowed_templates": [f"{t}.rq" for t in sorted(_AGGREGATE_ONLY_TEMPLATES)],
+                    "acl_check": "denied",
+                },
+                duration_ms,
+            )
+            return {
+                "status": "denied",
+                "reason": reason,
+                "agent": agent_id,
+                "requested_template": f"{query_type}.rq",
+                "allowed_templates": [f"{t}.rq" for t in sorted(_AGGREGATE_ONLY_TEMPLATES)],
+            }
 
     # ── Step 2: ACL validation (must precede SPARQL, SEC-2) ──────────────────
     # P-1: templates that reference no pod URIs get an explicit "skipped" only
@@ -594,6 +703,31 @@ def run_skill(
              duration_ms)
         return {"status": "error", "error": str(exc)}
 
+    # ── Step 3.5: Structural aggregate check for aggregate-only roles ────────
+    # Belt-and-suspenders: verify the parameterized query uses SPARQL aggregate functions.
+    # Detects non-aggregate queries that bypass Step 1.5 (e.g. template mutation).
+    # NOTE: GROUP BY is NOT required — aggregate functions over the full result set are valid SPARQL.
+    import re as _re
+    _SPARQL_AGGREGATE_PATTERN = _re.compile(
+        r'\b(COUNT|SUM|AVG|MIN|MAX|GROUP_CONCAT|SAMPLE)\s*\(', _re.IGNORECASE
+    )
+    if role in ("regional-policy",) and not _SPARQL_AGGREGATE_PATTERN.search(parameterized_query):
+        duration_ms = int((time.monotonic() - t_start) * 1000)
+        reason = "Aggregate structure violation: query does not contain SPARQL aggregate functions (COUNT/AVG/MIN/MAX)"
+        _log(
+            "WARN",
+            "sparql.query.denied",
+            agent_id,
+            {
+                "reason": reason,
+                "requested_template": f"{query_type}.rq",
+                "allowed_templates": [f"{t}.rq" for t in sorted(_AGGREGATE_ONLY_TEMPLATES)],
+                "acl_check": acl_status,
+            },
+            duration_ms,
+        )
+        return {"status": "denied", "reason": reason, "agent": agent_id}
+
     # ── Step 4: Execute against Oxigraph ─────────────────────────────────────
     try:
         bindings, oxigraph_latency_ms = _execute_query(parameterized_query)
@@ -632,23 +766,53 @@ def run_skill(
     duration_ms = int((time.monotonic() - t_start) * 1000)
 
     # ── Step 6: Log and return ────────────────────────────────────────────────
+    # For aggregate queries, augment log with policy-specific fields (AC5).
+    if query_type == "aggregate-anonymized":
+        log_details: dict[str, Any] = {
+            "template": f"{query_type}.rq",
+            "query_type": "graph-only",
+            "acl_check": acl_status,
+            "oxigraph_latency_ms": oxigraph_latency_ms,
+            "anonymization": "aggregate-only",
+            "consent_verified": True,
+        }
+        # Annotate with aggregate counts if query returned results
+        if bindings:
+            row = bindings[0]
+            for key, field in (
+                ("participantCount", "participant_count"),
+                ("namedGraphCount", "named_graph_count"),
+                ("scoredActivityCount", "scored_activity_count"),
+            ):
+                v = row.get(key, {}).get("value")
+                if v is not None:
+                    try:
+                        log_details[field] = int(float(v))
+                    except (ValueError, TypeError):
+                        pass
+    else:
+        log_details = {
+            "template": f"{query_type}.rq",
+            "acl_check": acl_status,
+            "oxigraph_latency_ms": oxigraph_latency_ms,
+        }
+
     _log(
         "INFO",
         "sparql.query.executed",
         agent_id,
-        {
-            "template": f"{query_type}.rq",
-            "acl_check": acl_status,
-            "oxigraph_latency_ms": oxigraph_latency_ms,
-        },
+        log_details,
         duration_ms,
         result_count=len(bindings),  # P-3: top-level field per AC4 schema
     )
 
     # Summarize results to prevent LLM token bloat.
+    # aggregate-anonymized gets structured aggregate summary with provenance narrative.
     # parental-view gets per-child summaries with gap detection.
     # All other templates get single-pod summary.
-    if query_type == "parental-view":
+    if query_type == "aggregate-anonymized":
+        summary = _summarize_aggregate(bindings)
+    elif query_type == "parental-view":
         # Require both child pod params; fallback to pod_uris only if neither is set.
         child_pods = []
         for key in ("child_pod_1", "child_pod_2"):

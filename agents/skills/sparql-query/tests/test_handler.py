@@ -191,8 +191,7 @@ class TestRunSkillSuccess:
 
     def test_no_css_uris_skips_acl(self):
         """When no CSS URIs in params, ACL check is skipped (acl_status=skipped)."""
-        params = {"program_uri": "http://example.com/program",
-                  "community_uri": "http://example.com/community"}
+        params = {"program_activity": "https://poc-pod0.edu/vocab/activity-robotics-workshop"}
         with patch("handler.requests.post", return_value=_mock_oxigraph_results([])):
             result = handler.run_skill("aggregate-anonymized", CLAIRE_WEBID, "regional", params)
         assert result["status"] == "success"
@@ -547,20 +546,19 @@ class TestIntegration:
         assert result["status"] == "success"
 
     def test_aggregate_anonymized_template_executes(self):
-        """AC2: aggregate-anonymized template runs against real Oxigraph."""
-        doc_uri = _get_first_document_uri("school-community")
+        """AC2: aggregate-anonymized B' template runs against real Oxigraph."""
+        # Use the real robotics workshop URI — B' cross-context query
         params = {
-            "program_uri": "http://example.com/stem-program",
-            "community_uri": doc_uri or "http://localhost:3000/school-community/",
+            "program_activity": "https://poc-pod0.edu/vocab/activity-robotics-workshop",
+            "agent_id": "isabelle-policy",
         }
-        # Aggregate query doesn't target personal pods — no ACL check needed
-        # Use provisioner-equivalent agent that has school-community access
-        result = handler.run_skill("aggregate-anonymized", CLAIRE_WEBID, "tutor", params)
-        # Success even with 0 results (template executed, ACL skipped for non-CSS program URI)
-        assert result["status"] in ("success", "denied"), f"Unexpected: {result}"
-        # If denied (school-community ACL), that's a valid result for this test
-        if result["status"] == "success":
-            assert "summary" in result
+        # Aggregate query has no personal pod URIs — ACL check skipped
+        result = handler.run_skill("aggregate-anonymized", ISABELLE_WEBID, "regional-policy", params)
+        assert result["status"] == "success", f"Unexpected: {result}"
+        assert "summary" in result
+        # B' query: may return 0 or more participants depending on Oxigraph state
+        assert "participant_count" in result["summary"]
+        assert "provenance_narrative" in result["summary"]
 
     def test_parental_view_template_executes(self):
         """AC1/AC2: parental-view queries both children's pods with fatima's WebID."""
@@ -667,3 +665,276 @@ class TestIntegration:
         denied = [l for l in log_lines if l.get("event") == "sparql.query.denied"]
         assert denied, "Expected sparql.query.denied log entry"
         assert denied[0]["level"] == "WARN"
+
+
+# ---------------------------------------------------------------------------
+# Isabelle aggregate-only enforcement tests (Story 3.6)
+# ---------------------------------------------------------------------------
+
+ISABELLE_WEBID = f"{CSS_BASE}/isabelle/profile/card#me"
+
+MOCK_AGGREGATE_BINDINGS = [
+    {
+        "participantCount": {"type": "literal", "value": "3",
+                             "datatype": "http://www.w3.org/2001/XMLSchema#integer"},
+        "namedGraphCount": {"type": "literal", "value": "6",
+                            "datatype": "http://www.w3.org/2001/XMLSchema#integer"},
+        "scoredActivityCount": {"type": "literal", "value": "42",
+                                "datatype": "http://www.w3.org/2001/XMLSchema#integer"},
+        "averageScore": {"type": "literal", "value": "0.72",
+                         "datatype": "http://www.w3.org/2001/XMLSchema#decimal"},
+        "minScore": {"type": "literal", "value": "0.45",
+                     "datatype": "http://www.w3.org/2001/XMLSchema#decimal"},
+        "maxScore": {"type": "literal", "value": "0.95",
+                     "datatype": "http://www.w3.org/2001/XMLSchema#decimal"},
+    }
+]
+
+
+class TestIsabelleAggregateOnlyEnforcement:
+    """Story 3.6: AC3 — aggregate-only access enforcement for regional-policy role."""
+
+    def _isabelle_params(self) -> dict:
+        return {
+            "program_activity": "https://poc-pod0.edu/vocab/activity-robotics-workshop",
+            "agent_id": "isabelle-policy",
+        }
+
+    def test_regional_policy_denied_for_student_progress_template(self):
+        """AC3, Task 6 Scenario A: regional-policy cannot use student-progress template."""
+        params = {
+            "student_uri": f"{CSS_BASE}/ayoub/profile/card#me",
+            "context_uri": f"{CSS_BASE}/ayoub/",
+            "agent_id": "isabelle-policy",
+        }
+        result = handler.run_skill("student-progress", ISABELLE_WEBID, "regional-policy", params)
+        assert result["status"] == "denied"
+        assert "aggregate" in result["reason"].lower()
+        assert result["agent"] == "isabelle-policy"
+        assert "aggregate-anonymized.rq" in result["allowed_templates"]
+
+    def test_regional_policy_denied_for_parental_view_template(self):
+        """AC3, Task 6 Scenario B: regional-policy cannot use parental-view template."""
+        params = {
+            "child_pod_1": f"{CSS_BASE}/fatima-child-1/",
+            "child_pod_2": f"{CSS_BASE}/fatima-child-2/",
+            "agent_id": "isabelle-policy",
+        }
+        result = handler.run_skill("parental-view", ISABELLE_WEBID, "regional-policy", params)
+        assert result["status"] == "denied"
+        assert "aggregate" in result["reason"].lower()
+        assert "aggregate-anonymized.rq" in result["allowed_templates"]
+
+    def test_regional_policy_allowed_for_aggregate_anonymized(self):
+        """AC1: regional-policy role can use aggregate-anonymized template."""
+        params = self._isabelle_params()
+        with patch("handler.requests.post",
+                   return_value=_mock_oxigraph_results(MOCK_AGGREGATE_BINDINGS)):
+            result = handler.run_skill(
+                "aggregate-anonymized", ISABELLE_WEBID, "regional-policy", params
+            )
+        assert result["status"] == "success"
+        assert "summary" in result
+
+    def test_regional_policy_denial_logged_as_warn(self):
+        """AC3/AC5: aggregate-only denial produces WARN log with sparql.query.denied."""
+        buf = StringIO()
+        params = {
+            "student_uri": f"{CSS_BASE}/ayoub/profile/card#me",
+            "context_uri": f"{CSS_BASE}/ayoub/",
+            "agent_id": "isabelle-policy",
+        }
+        with patch("sys.stdout", buf):
+            handler.run_skill("student-progress", ISABELLE_WEBID, "regional-policy", params)
+        logs = [json.loads(l) for l in buf.getvalue().strip().splitlines() if l]
+        denied = [l for l in logs if l.get("event") == "sparql.query.denied"]
+        assert denied, "Expected sparql.query.denied log entry"
+        assert denied[0]["level"] == "WARN"
+        assert denied[0]["agent"] == "isabelle-policy"
+        assert "student-progress.rq" in denied[0]["details"].get("requested_template", "")
+        assert "allowed_templates" in denied[0]["details"]
+
+    def test_non_regional_role_not_restricted_to_aggregate(self):
+        """AC3: other roles are not subject to aggregate-only restriction."""
+        params = {
+            "student_uri": f"{CSS_BASE}/ayoub/profile/card#me",
+            "context_uri": f"{CSS_BASE}/ayoub/learning/course/abc.ttl",
+        }
+        with patch("handler.requests.head", return_value=_mock_css_allowed()), \
+             patch("handler.requests.post",
+                   return_value=_mock_oxigraph_results(MOCK_BINDINGS)):
+            result = handler.run_skill("student-progress", CLAIRE_WEBID, "tutor", params)
+        assert result["status"] == "success"
+
+
+class TestSummarizeAggregate:
+    """Story 3.6: AC2 — aggregate summary formatting with provenance narrative."""
+
+    def test_aggregate_summary_has_participant_count(self):
+        summary = handler._summarize_aggregate(MOCK_AGGREGATE_BINDINGS)
+        assert summary["participant_count"] == 3
+
+    def test_aggregate_summary_has_named_graph_count(self):
+        summary = handler._summarize_aggregate(MOCK_AGGREGATE_BINDINGS)
+        assert summary["named_graph_count"] == 6
+
+    def test_aggregate_summary_has_scored_activity_count(self):
+        summary = handler._summarize_aggregate(MOCK_AGGREGATE_BINDINGS)
+        assert summary["scored_activity_count"] == 42
+
+    def test_aggregate_summary_has_score_stats(self):
+        summary = handler._summarize_aggregate(MOCK_AGGREGATE_BINDINGS)
+        assert summary["average_score"] == 0.72
+        assert summary["min_score"] == 0.45
+        assert summary["max_score"] == 0.95
+
+    def test_aggregate_summary_has_provenance_narrative(self):
+        """AC2: provenance narrative is present with aggregate counts."""
+        summary = handler._summarize_aggregate(MOCK_AGGREGATE_BINDINGS)
+        assert "provenance_narrative" in summary
+        narrative = summary["provenance_narrative"]
+        assert "3" in narrative  # participant count
+        assert "42" in narrative  # scored activity count
+        assert "regional-access" in narrative.lower()
+
+    def test_aggregate_summary_has_anonymization_guarantee(self):
+        """AC2: anonymization guarantee statement is present."""
+        summary = handler._summarize_aggregate(MOCK_AGGREGATE_BINDINGS)
+        assert "anonymization_guarantee" in summary
+        assert "individual" in summary["anonymization_guarantee"].lower()
+
+    def test_empty_bindings_returns_zero_counts(self):
+        """Zero-result case: all counts zero, scores None."""
+        summary = handler._summarize_aggregate([])
+        assert summary["participant_count"] == 0
+        assert summary["average_score"] is None
+        assert "provenance_narrative" in summary
+        assert "anonymization_guarantee" in summary
+
+    def test_run_skill_aggregate_returns_structured_summary(self):
+        """AC1/AC2: aggregate-anonymized query result includes full structured summary."""
+        params = {
+            "program_activity": "https://poc-pod0.edu/vocab/activity-robotics-workshop",
+            "agent_id": "isabelle-policy",
+        }
+        with patch("handler.requests.post",
+                   return_value=_mock_oxigraph_results(MOCK_AGGREGATE_BINDINGS)):
+            result = handler.run_skill(
+                "aggregate-anonymized", ISABELLE_WEBID, "regional-policy", params
+            )
+        assert result["status"] == "success"
+        assert "summary" in result
+        summary = result["summary"]
+        assert "participant_count" in summary
+        assert "provenance_narrative" in summary
+        assert "anonymization_guarantee" in summary
+
+
+class TestIsabelleAggregateLogging:
+    """Story 3.6: AC5 — structured logging for Isabelle's aggregate queries."""
+
+    def _capture_logs(self, *args, **kwargs) -> list[dict]:
+        buf = StringIO()
+        with patch("sys.stdout", buf):
+            handler.run_skill(*args, **kwargs)
+        lines = [l for l in buf.getvalue().strip().splitlines() if l]
+        return [json.loads(l) for l in lines]
+
+    def test_aggregate_success_log_has_anonymization_field(self):
+        """AC5: aggregate success log includes anonymization=aggregate-only."""
+        params = {
+            "program_activity": "https://poc-pod0.edu/vocab/activity-robotics-workshop",
+            "agent_id": "isabelle-policy",
+        }
+        with patch("handler.requests.post",
+                   return_value=_mock_oxigraph_results(MOCK_AGGREGATE_BINDINGS)):
+            logs = self._capture_logs(
+                "aggregate-anonymized", ISABELLE_WEBID, "regional-policy", params
+            )
+        executed = [l for l in logs if l.get("event") == "sparql.query.executed"]
+        assert executed
+        log = executed[0]
+        assert log["level"] == "INFO"
+        assert log["agent"] == "isabelle-policy"
+        assert log["details"].get("anonymization") == "aggregate-only"
+        assert log["details"].get("consent_verified") is True
+        assert log["details"].get("query_type") == "graph-only"
+
+    def test_aggregate_success_log_has_participant_count(self):
+        """AC5: aggregate success log includes participant_count from results."""
+        params = {
+            "program_activity": "https://poc-pod0.edu/vocab/activity-robotics-workshop",
+            "agent_id": "isabelle-policy",
+        }
+        with patch("handler.requests.post",
+                   return_value=_mock_oxigraph_results(MOCK_AGGREGATE_BINDINGS)):
+            logs = self._capture_logs(
+                "aggregate-anonymized", ISABELLE_WEBID, "regional-policy", params
+            )
+        executed = [l for l in logs if l.get("event") == "sparql.query.executed"]
+        assert executed
+        assert executed[0]["details"].get("participant_count") == 3
+        assert executed[0]["details"].get("named_graph_count") == 6
+
+    def test_aggregate_denial_log_schema(self):
+        """AC3/AC5: denial log has required fields per story spec."""
+        params = {
+            "student_uri": f"{CSS_BASE}/ayoub/profile/card#me",
+            "context_uri": f"{CSS_BASE}/ayoub/",
+            "agent_id": "isabelle-policy",
+        }
+        logs = self._capture_logs("student-progress", ISABELLE_WEBID, "regional-policy", params)
+        denied = [l for l in logs if l.get("event") == "sparql.query.denied"]
+        assert denied
+        log = denied[0]
+        assert "timestamp" in log
+        assert "service" in log
+        assert log["service"] == "sparql-query-skill"
+        assert "duration_ms" in log
+        assert log["details"]["requested_template"] == "student-progress.rq"
+        assert log["details"]["allowed_templates"] == ["aggregate-anonymized.rq"]
+        assert log["details"]["acl_check"] == "denied"
+
+
+class TestIsabelleStep35StructuralCheck:
+    """Story 3.6: Task 6 Scenario C — Step 3.5 structural aggregate check."""
+
+    def test_non_aggregate_query_denied_at_step35(self):
+        """Scenario C: aggregate-anonymized template mutated to remove aggregate functions is denied."""
+        non_aggregate_body = (
+            "PREFIX poc: <https://poc-pod0.edu/vocab/>\n"
+            "SELECT ?student ?score WHERE { ?s poc:actor ?student ; poc:scaledScore ?score . }\n"
+        )
+        params = {
+            "program_activity": "https://poc-pod0.edu/vocab/activity-robotics-workshop",
+            "agent_id": "isabelle-policy",
+        }
+        with patch("handler.load_template", return_value=non_aggregate_body):
+            result = handler.run_skill(
+                "aggregate-anonymized", ISABELLE_WEBID, "regional-policy", params
+            )
+        assert result["status"] == "denied"
+        assert "aggregate" in result["reason"].lower()
+
+    def test_step35_denial_log_schema(self):
+        """Scenario C: Step 3.5 denial log has required schema fields."""
+        non_aggregate_body = (
+            "PREFIX poc: <https://poc-pod0.edu/vocab/>\n"
+            "SELECT ?student WHERE { ?s poc:actor ?student . }\n"
+        )
+        params = {
+            "program_activity": "https://poc-pod0.edu/vocab/activity-robotics-workshop",
+            "agent_id": "isabelle-policy",
+        }
+        buf = StringIO()
+        with patch("handler.load_template", return_value=non_aggregate_body), \
+             patch("sys.stdout", buf):
+            handler.run_skill("aggregate-anonymized", ISABELLE_WEBID, "regional-policy", params)
+        logs = [json.loads(l) for l in buf.getvalue().strip().splitlines() if l]
+        denied = [l for l in logs if l.get("event") == "sparql.query.denied"]
+        assert denied
+        log = denied[0]
+        assert log["level"] == "WARN"
+        assert "requested_template" in log["details"]
+        assert "allowed_templates" in log["details"]
+        assert "acl_check" in log["details"]

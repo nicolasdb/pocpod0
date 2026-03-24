@@ -41,6 +41,8 @@ The audience is funders and strategic partners (Athumi, EU programme officers, E
 
 5. **Honest evidence over perfection claims.** An adversarial troll agent attacks categorized surfaces (ACL enforcement, SPARQL injection, cross-inference, vector privacy, deletion timing). Each surface rated pass/partial/fail. The troll report is a deliverable — structured for non-technical funders.
 
+6. **Tracking works in both directions.** Every data flow serving an institution generates a readable receipt for the person whose data flowed. Ayoub can ask "who has my data and why?" and get a machine-readable, human-legible answer. Institutions see aggregate impact; data subjects see what institutions saw. This is the anti-bossware guarantee — and it aligns the system with the EU Data Governance Act's data intermediary and data altruism frameworks, making the PoC DGA-forward infrastructure.
+
 **Core insight:** The Pod is a platform primitive — like a passport (yours, portable, recognized everywhere, you control who sees it) or like S3 to AWS (the foundational data layer upon which an ecosystem composes). The PoC validates the primitive. The ecosystem builds on top.
 
 ## Project Classification

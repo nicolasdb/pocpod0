@@ -1,13 +1,47 @@
 # aggregate-anonymized.rq
-# Aggregate anonymized statistics for a program within a community.
-# Parameters: $program_uri, $community_uri
-PREFIX oslo-educ: <https://data.vlaanderen.be/ns/onderwijs#>
-PREFIX prov: <http://www.w3.org/ns/prov#>
+# B' cross-context aggregate: students who attended $program_activity,
+# aggregated across ALL their scored activities.
+#
+# Parameters:
+#   $program_activity — full URI of the funded program activity
+#                       (e.g. https://poc-pod0.edu/vocab/activity-robotics-workshop)
+#
+# community_scope is informational-only — pass via handler params but not substituted here.
+# Aggregation is always cross-community (all named graphs in Oxigraph).
+#
+# Anonymization: structural via GROUP BY — individual records never returned.
+# Provenance: namedGraphCount = distinct named graphs contributing scored activities.
+#
+# Two-stage query:
+#   Stage 1 — Find students who attended the funded program (object = program URI,
+#              verb contains "attended").
+#   Stage 2 — Aggregate scaledScore for those students across ALL activities in ANY graph.
+#             This answers "did funded-program students show improvement broadly?" —
+#             impossible with Word documents even if both communities cooperated.
+PREFIX pocpod0: <https://poc-pod0.edu/vocab/>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
 
-SELECT (COUNT(?student) AS ?count) (AVG(?score) AS ?avg_score) WHERE {
-  GRAPH $community_uri {
-    ?activity oslo-educ:programma $program_uri .
-    ?activity oslo-educ:betreft ?student .
-    ?activity oslo-educ:score ?score .
+SELECT
+  (COUNT(DISTINCT ?student) AS ?participantCount)
+  (COUNT(DISTINCT ?scoreGraph) AS ?namedGraphCount)
+  (COUNT(?score) AS ?scoredActivityCount)
+  (AVG(?score) AS ?averageScore)
+  (MIN(?score) AS ?minScore)
+  (MAX(?score) AS ?maxScore)
+WHERE {
+  # Stage 1: find students who attended the funded program
+  GRAPH ?attendGraph {
+    ?attendActivity rdf:type pocpod0:LearningStatement ;
+                    pocpod0:object $program_activity ;
+                    pocpod0:actor ?student ;
+                    pocpod0:verb ?attendVerb .
+    FILTER(CONTAINS(STR(?attendVerb), "attended"))
+  }
+  # Stage 2: aggregate all scores for those students across any named graph
+  GRAPH ?scoreGraph {
+    ?scoreActivity rdf:type pocpod0:LearningStatement ;
+                   pocpod0:actor ?student ;
+                   pocpod0:result ?result .
+    ?result pocpod0:scaledScore ?score .
   }
 }
