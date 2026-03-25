@@ -1,7 +1,7 @@
 ---
 project_name: pocpod0
 sprint_generated: 2026-03-18
-last_updated: 2026-03-25
+last_updated: 2026-03-25  # stories 5-1 through 5-6 contexted
 tracking_system: file-system
 project_key: NOKEY
 communication_language: English
@@ -49,14 +49,14 @@ development_status:
   # Anagnorisis narrative enriches consent mechanics (consent-as-architecture, access receipts,
   # tombstone revocation, civic signal). Build consent machinery first.
   # Epic 5 stories need review against consent-as-architecture before implementation.
-  epic-5: backlog
-  story-5-1-ayoub-governance-transition: backlog
-  story-5-2-deletion-cascade-propagation: backlog
-  story-5-3-troll-deletion-timing-validation: backlog
+  epic-5: in-progress
+  story-5-1-ayoub-governance-transition: ready-for-dev
+  story-5-2-deletion-cascade-propagation: ready-for-dev
+  story-5-3-troll-deletion-timing-validation: ready-for-dev
   # Anagnorisis backlog stories (added 2026-03-25 — consent-as-architecture principles)
-  story-5-4-access-receipt-written-to-pod: backlog
-  story-5-5-consent-grant-as-rdf-resource: backlog
-  story-5-6-ephemeral-time-scoped-consent: backlog
+  story-5-4-access-receipt-written-to-pod: ready-for-dev
+  story-5-5-consent-grant-as-rdf-resource: ready-for-dev
+  story-5-6-ephemeral-time-scoped-consent: ready-for-dev
   epic-5-retrospective: optional
 
   # Epic 6: Adversarial Trust Report & Mission Control (RESEQUENCED: was last, now before Epic 4)
