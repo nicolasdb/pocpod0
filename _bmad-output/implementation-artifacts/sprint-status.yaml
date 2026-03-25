@@ -37,7 +37,8 @@ development_status:
   story-3-5-fatima-unified-parental-view: done
   story-3-6-isabelle-evidence-based-policy: done
   story-3-7-graph-only-vs-hybrid-comparison: done
-  story-3-8-troll-cross-inference-validation: ready-for-dev
+  story-3-8-troll-cross-inference-validation: review
+  # NOTE (2026-03-25): Story 3.8 enables OpenClaw chatCompletions API — prerequisite for Epic 5/6 agent interaction
   epic-3-retrospective: optional
 
   # Epic 4: Student Transfer & Data Portability
@@ -47,6 +48,9 @@ development_status:
   epic-4-retrospective: optional
 
   # Epic 5: Data Sovereignty Lifecycle
+  # NOTE (2026-03-25): Epic 5 enriched with acl-manage skill requirement (Story 5.1)
+  # This is the wiring epic — agents must be able to mutate ACLs for the demo narrative
+  # Prerequisite for Epic 6 funder intervention (consent lifecycle visible on TUI)
   epic-5: backlog
   story-5-1-ayoub-governance-transition: backlog
   story-5-2-deletion-cascade-propagation: backlog
