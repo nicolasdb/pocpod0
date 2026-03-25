@@ -663,6 +663,12 @@ So that the student's data follows them seamlessly across the NL→FR community 
 
 Governance contracts execute (age-based sovereignty transition), deletion cascades propagate across all three data layers, and the system honestly reports its deletion timing — proving the architecture handles the full data lifecycle. [must-ship] — Ayoub's journey.
 
+**Epic 5 is the wiring epic.** This is where agent-driven ACL mutation, consent lifecycle, and the observable impact of sovereignty decisions come together. The demo narrative depends on agents being able to act on data — not just read it. Key capability gap identified (2026-03-25 party mode review): no agent currently has a skill to write ACL changes. Story 1.4 built grant/revoke as pipeline scripts; Epic 5 must expose this as an agent-callable skill so the demo narrative works end-to-end (user talks to agent → agent mutates ACL → dashboard shows consent state change → downstream queries reflect new boundaries).
+
+**Critical path for Epic 6:** The mission control TUI (Story 6.1) needs to show consent state changes live. This means Epic 5 must emit JSONL events for every ACL mutation, and the acl-manage skill must be agent-invocable. Without this, the funder demo has no interactive consent lifecycle.
+
+**OpenClaw chat completions API prerequisite:** The `/v1/chat/completions` endpoint must be enabled in `openclaw.json` (Story 3.8 enables this for troll probes; Epic 5 benefits from it for agent interaction scripting).
+
 ### Story 5.1: [must-ship] Ayoub — Age-Based Sovereignty Transition
 
 As **Ayoub** (16-year-old student, Brussels),
@@ -686,6 +692,20 @@ So that my data sovereignty is structurally guaranteed by the architecture, not 
 **When** a former guardian attempts to modify Ayoub's pod governance
 **Then** the request is denied — Ayoub is now sole governor
 
+**AC-NEW: Agent-callable ACL management skill** _(added 2026-03-25)_
+
+**Given** an agent with appropriate pod ownership (e.g., Ayoub for his own pod)
+**When** the agent invokes the `acl-manage` skill with a grant or revoke action
+**Then** the CSS ACL on the target pod is updated accordingly
+**And** a structured JSONL event is emitted: `{"event_type": "acl.grant|acl.revoke", "timestamp": ..., "pod": "...", "identity": "...", "action": "grant|revoke"}`
+**And** the mission control TUI can display the change live
+
+**Given** an agent without pod ownership (e.g., Claire trying to modify Ayoub's ACL)
+**When** the agent invokes the `acl-manage` skill
+**Then** the skill refuses with an authorization error — only pod owners can mutate their own ACLs
+
+**Implementation note:** The `acl-manage` skill wraps the grant/revoke logic from Story 1.4 (`scripts/seed-pods.sh` / pipeline ACL functions) as an OpenClaw skill with a `SKILL.md` file. It must enforce scope: each agent can only modify ACLs on pods they own. The skill emits JSONL events to `data/consent-events.jsonl` for dashboard consumption.
+
 ### Story 5.2: [must-ship] Deletion Cascade & Verification
 
 As **Ayoub** (data sovereign),
@@ -697,7 +717,7 @@ So that my right to erasure is architecturally enforced, not a manual process wi
 **Given** a Pod resource with derived triples in Oxigraph and embeddings in Qdrant
 **When** a soft-delete request is issued on the Pod resource
 **Then** the resource is marked with `pocpod0:deletedAt` triple (step 1)
-**And** all derived triples are removed from Oxigraph matching `prov:wasDerivedFrom <pod-resource-uri>` (step 2)
+**And** all derived triples are removed from Oxigraph by dropping the named graph: `DROP GRAPH <pod-resource-uri>` (step 2) _(corrected 2026-03-25: uses named graph pattern per Story 2.6, NOT prov:wasDerivedFrom)_
 **And** all Qdrant points with matching `pod_resource_uri` in payload are removed (step 3)
 **And** the entire cascade completes in a single execution of the propagation routine (NFR3)
 
@@ -779,60 +799,66 @@ So that I can understand, at any time, exactly what I agreed to and why.
 
 ## Epic 6: Adversarial Trust Report & Mission Control
 
-The comprehensive troll run generates a funder-readable categorized report, the mission control dashboard surfaces all evidence from Epics 1-5, and intervention points let funders shift from audience to participant. Dashboard UX design spike precedes implementation, informed by component backlog from Epics 1-5.
+The comprehensive troll run generates a funder-readable categorized report, the mission control TUI surfaces all evidence from Epics 1-5, and intervention points let funders shift from audience to participant. The TUI extends the proven pipeline dashboard (Story 3.7.1) with multi-tab mission control. _(amended 2026-03-25: Rich TUI replaces FastAPI+HTMX — simpler, terminal-native, proven pattern)_
 
-### Story 6.1: Mission Control Dashboard
+**Demo model — two terminals:**
+- **Terminal 1: Mission Control TUI** — passive multi-tab Rich Live display reading JSONL events. Shows health, pods, consent gate, troll results, query monitor.
+- **Terminal 2: OpenClaw browser** (localhost:18789) — interactive. User picks an agent, talks to them in NL. Agent actions (queries, ACL changes) emit JSONL events consumed by the TUI live.
+
+**Narrative:** The demo tells the consent lifecycle story. Before: Isabelle gets Word/PDF reports with self-reported counts. After: data flows from beneficiaries through consent gate → aggregate engine → Isabelle, with clear anonymization boundaries visible on the TUI. Revocations propagate live. The troll attacks the system and results appear in real-time.
+
+### Story 6.1: Mission Control TUI
 
 As a **funder** (demo audience),
-I want a mission control dashboard showing live attack results, query monitoring, and Pod status,
+I want a mission control TUI showing live attack results, query monitoring, and Pod/consent status,
 So that I can follow the PoC demo narrative visually without needing technical explanation.
 
 **Acceptance Criteria:**
 
-**Given** the dashboard component backlog collected from Epics 1-5 (pod status, ACL state, pipeline ingestion, provenance navigation, query monitor, agent activity, transfer workflow, governance events, deletion cascade, troll test results)
-**When** a lightweight UX design spike is completed
-**Then** the dashboard layout and component list are defined based on actual evidence from prior phases
+**Given** the dashboard component backlog collected from Epics 1-5 (pod status, ACL state, pipeline ingestion, query monitor, agent activity, governance events, deletion cascade, troll test results)
+**When** the pipeline dashboard (`pipeline/src/pocpod0_pipeline/pipeline_dashboard.py`) is extended into a multi-tab mission control TUI
+**Then** it reads JSONL event streams from `data/pipeline-run.jsonl`, `data/troll-run.jsonl`, and `data/consent-events.jsonl`
+**And** it displays multi-tab views: [HEALTH] service status, [PODS] pod ACL/consent state, [CONSENT] consent gate active/revoked counts, [TROLL] attack results per category, [QUERY] agent query monitor
 
-**Given** the UX design is defined
-**When** the dashboard (`dashboard/src/pocpod0_dashboard/`) is implemented with FastAPI + HTMX
-**Then** it reads from structured JSON observability logs (docker logs or shared log volume)
-**And** it displays live-updating views for: query monitoring, pod ACL status, troll activity results, deletion cascade status
+**Given** a troll probe completes and emits a JSONL event
+**When** the TUI is running
+**Then** the [TROLL] tab updates live with the new result (probe ID, target agent, pass/partial/fail)
 
-**Given** the dashboard is running
-**When** any service emits a structured JSON log entry
-**Then** the dashboard reflects the event without manual refresh (HTMX live updates)
+**Given** an ACL change occurs (via acl-manage skill from Story 5.1)
+**When** the consent-events.jsonl is updated
+**Then** the [CONSENT] tab shows the updated consent gate counts and the [PODS] tab reflects the new ACL state
 
-**Given** a non-technical reviewer
-**When** they view the dashboard during a demo
-**Then** the display is understandable without technical explanation
+**Given** a non-technical reviewer watching the TUI during a demo
+**When** they see the multi-tab display
+**Then** the display is understandable without technical explanation — each tab has a clear label and uses color-coded status indicators (green=pass/active, yellow=partial, red=fail/revoked)
 
 ### Story 6.2: Funder Intervention Points
 
 As a **funder** (demo participant),
-I want interactive intervention points where I can select queries, trigger transfers, and choose attack vectors,
+I want interactive intervention points where I can talk to agents, trigger consent changes, and observe attack results,
 So that I shift from passive audience to active participant in the demo — building conviction through direct interaction.
+
+_(amended 2026-03-25: interventions happen via OpenClaw browser, not via dashboard buttons. The TUI is the observation terminal; OpenClaw is the interaction terminal.)_
 
 **Acceptance Criteria:**
 
-**Given** the mission control dashboard is running
-**When** a funder views the intervention panel
-**Then** they see selectable options: role-based query menu, transfer scenario trigger, troll attack vector menu
+**Given** the mission control TUI is running in Terminal 1 and OpenClaw is open in Terminal 2
+**When** a funder talks to an agent in OpenClaw (e.g., asks Claire a cross-context question)
+**Then** the query executes through the agent layer and results display in the TUI [QUERY] tab
 
-**Given** a funder selects a role-based query (e.g., Claire's cross-context query)
-**When** the query executes
-**Then** both graph-only and hybrid results display on the dashboard in real-time
+**Given** a funder talks to Ayoub's agent and asks to revoke consent for a specific access
+**When** Ayoub's agent invokes the acl-manage skill
+**Then** the ACL change is visible on the TUI [CONSENT] and [PODS] tabs in real-time
 
-**Given** a funder triggers the transfer scenario
-**When** the transfer protocol executes
-**Then** ACL grant/revocation is visible on the dashboard in real-time
-
-**Given** a funder selects a troll attack vector
-**When** the attack executes
-**Then** the result (pass/partial/fail) displays on the dashboard in real-time with details
+**Given** a funder wants to see a troll attack
+**When** a specific troll probe is triggered (via CLI: `python cross-inference.py --probe ci-001`)
+**Then** the result (pass/partial/fail) displays on the TUI [TROLL] tab in real-time with details
 
 **Given** any intervention
 **When** the funder does nothing (observes passively)
 **Then** the demo narrative continues — the system runs end-to-end whether funders intervene or not
+
+**Implementation note:** The funder doesn't need technical skills. The demo facilitator (Nicolas) operates both terminals, explaining the narrative while the funder watches the TUI. Advanced funders can interact with OpenClaw directly.
 
 ### Story 6.3: Comprehensive Troll Run & Categorized Report
 
@@ -842,10 +868,10 @@ So that I see exactly where the architecture holds, where it needs investment, a
 
 **Acceptance Criteria:**
 
-**Given** the mission control dashboard is running and all prior epic capabilities are deployed
+**Given** the mission control TUI is running and all prior epic capabilities are deployed
 **When** the comprehensive troll run executes (`scripts/run-troll.sh`)
 **Then** all 5 attack categories are tested: ACL enforcement, SPARQL injection, cross-inference, vector privacy, deletion timing
-**And** results display live on the mission control dashboard as each test completes
+**And** results display live on the mission control TUI [TROLL] tab as each test completes
 
 **Given** all attack categories have been tested
 **When** the report generator (`agents/troll-adversary/report/generator.py`) executes
@@ -860,4 +886,4 @@ So that I see exactly where the architecture holds, where it needs investment, a
 
 **Given** the comprehensive run
 **When** compared to individual troll tests from Epics 1, 2, 3, and 5
-**Then** results are consistent — the comprehensive run exercises the same tests with the addition of the unified report and live dashboard display
+**Then** results are consistent — the comprehensive run exercises the same tests with the addition of the unified report and live TUI display

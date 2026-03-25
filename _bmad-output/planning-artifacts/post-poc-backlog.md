@@ -174,3 +174,43 @@ curl -s http://localhost:6333/collections/pocpod0_embeddings \
 - Total chunks extracted is logged at pipeline start (`embed.extract` event) — dashboard can use that as the denominator
 - Same pattern applies to load_graph: Oxigraph triple count is already queryable mid-run via SPARQL COUNT — just needs surfacing in the dashboard
 - Matches the mission control UX note: "pipeline jobs are long-running black boxes; needs live progress indicators"
+
+---
+
+## Idea: Stakeholder Simulation System — Autonomous Multi-Agent Scenario Runner
+
+**Captured:** 2026-03-25 (Story 3.8 party mode review)
+**Status:** backlog — post-POC phase
+**Depends on:** Epics 1-6 complete
+
+### Concept
+
+A true simulation system where agents act autonomously over simulated time periods (e.g., 6-week school term + 2-week holiday). Each role generates realistic activities, writes data to their own pod, and responds to events. The system models a full semester of stakeholder interaction.
+
+### What it does
+
+- **Scenario runner:** Configurable time-compressed simulation (8 weeks → minutes). Each agent acts according to their role: Claire generates learning observations, Ayoub submits assessments, Fatima checks parental views, Marc processes transfers, Isabelle pulls aggregate reports.
+- **Agent-generated data:** Agents write xAPI events to their own pods using an `xapi-write` skill. Data flows through the pipeline (RDF conversion → Oxigraph → Qdrant) and becomes queryable by other agents.
+- **Interactive inspection:** Pause the simulation at any point. Talk to any agent in isolation. Ask questions. Introduce new queries. See how data propagation affects each perspective. Watch how Isabelle's aggregate view changes when Fatima revokes consent for one child.
+- **Troll as benevolent guardian:** The troll runs on a heartbeat (using `HEARTBEAT.md`), periodically poking boundaries. Tries new attack approaches between probes. Reports successes and especially failures with full detail. Can even suggest patches.
+
+### Why this matters
+
+- Accelerates testing: run a semester of stakeholder interactions in minutes
+- Surfaces emergent behavior: what happens when 3 agents write to the same pod simultaneously?
+- Demonstrates data sovereignty at scale: consent changes propagate through the simulation, affecting all downstream views
+- Provides a playground for exploring new scenarios without manual setup
+
+### Reuse from POC
+
+- 100% of Epics 1-6 infrastructure
+- OpenClaw `/v1/chat/completions` API for programmatic agent interaction
+- JSONL event streams for dashboard observation
+- Troll attack modules as the guardian heartbeat
+- New: `xapi-write` skill (agents generating data), scenario configuration YAML, time-compression engine
+
+### Notes
+
+- The two-terminal model (TUI + OpenClaw) scales directly: TUI shows simulation progress, OpenClaw allows intervention at any point
+- Could be the research tool that makes the POC investable: "we built a system that can simulate a semester of educational data flow in 5 minutes"
+- Connects to the consortium pitch (Syntonie/OpenFab/Politype): each partner could run their own simulation with domain-specific agents

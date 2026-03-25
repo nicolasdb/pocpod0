@@ -241,12 +241,20 @@ mkdir -p pocpod0/{infra,pipeline,agents,dashboard,scripts,data/{synthetic,schema
 - Fallback path (not taken): agents hit CSS directly on port 3000
 - **Rationale:** PRD identifies this as the first critical risk. The timebox prevents infrastructure plumbing from consuming PoC time.
 
-**Decision INFRA-5: Dashboard — Python + HTMX (Lightweight)**
-- FastAPI backend serving HTMX-powered pages
-- Reads from observability logs (structured JSON) for live display
+**Decision INFRA-5: Dashboard — Rich TUI (extends pipeline dashboard)** _(amended 2026-03-25)_
+- Multi-tab Rich Live TUI extending `pipeline/src/pocpod0_pipeline/pipeline_dashboard.py` (proven in Story 3.7.1)
+- Reads JSONL event streams from `data/` directory (same pattern as pipeline events)
+- All modules (pipeline, troll, agents) emit JSONL events to `data/troll-run.jsonl` and `data/pipeline-run.jsonl`
 - Dev-mode only — no authentication, no production concerns
-- Displays: live attack results, query monitoring, pod ACL status
-- **Rationale:** FR39 requires a mission control dashboard. FastAPI+HTMX is the simplest stack that delivers live updates without a frontend build step. Nicolas already uses Python for the pipeline.
+- Tabs: [HEALTH] service status, [PODS] ACL/consent state, [CONSENT] consent gate counts, [TROLL] attack results, [QUERY] agent query monitor
+- **Rationale:** FR39 requires a mission control dashboard. The pipeline TUI (Story 3.7.1) already proves the Rich Live + JSONL pattern. Extending it is simpler than building a web app, works over SSH to VPS, and requires zero frontend tooling. FastAPI+HTMX was the original plan but is unnecessary complexity for the PoC.
+- **Demo model:** Two terminals — Terminal 1: Mission Control TUI (passive, shows state). Terminal 2: OpenClaw browser (interactive, user talks to agents). Agent actions (queries, ACL changes) produce JSONL events that the TUI consumes live.
+- **JSONL event format** (all modules must emit):
+  ```json
+  {"event_type": "troll.probe.start", "timestamp": 1711234567.0, "category": "cross_inference", "probe_id": "ci-001", "target_agent": "claire-teacher"}
+  {"event_type": "troll.probe.done", "timestamp": 1711234572.0, "category": "cross_inference", "probe_id": "ci-001", "result": "pass", "details": "..."}
+  {"event_type": "troll.category.done", "timestamp": 1711234600.0, "category": "cross_inference", "passed": 5, "partial": 1, "failed": 0}
+  ```
 
 ---
 
@@ -400,7 +408,7 @@ IPLD is compatible with RDF via JSON-LD serialization. Aggregated anonymized res
 ```json
 {
   "attack_category": "acl_enforcement|sparql_injection|cross_inference|vector_privacy|deletion_timing",
-  "access_path": "direct|through_skill",
+  "access_path": "direct|through_skill|through_agent",
   "test_name": "descriptive-test-name",
   "result": "pass|partial|fail",
   "details": "human-readable explanation",
@@ -559,20 +567,10 @@ pocpod0/
 │       ├── IDENTITY.md
 │       └── state/
 │
-├── dashboard/                       # Mission control (dev mode)
-│   ├── pyproject.toml
-│   ├── src/
-│   │   └── pocpod0_dashboard/
-│   │       ├── __init__.py
-│   │       ├── app.py               # FastAPI application
-│   │       ├── routes.py            # Dashboard endpoints
-│   │       └── templates/           # HTMX templates
-│   │           ├── base.html
-│   │           ├── mission-control.html
-│   │           ├── troll-report.html
-│   │           └── query-monitor.html
-│   └── static/
-│       └── style.css
+├── dashboard/                       # Mission control TUI (amended 2026-03-25: Rich TUI, not FastAPI)
+│   └── .gitkeep                     # TUI code lives in pipeline/src/pocpod0_pipeline/pipeline_dashboard.py
+│                                    # Extended in Epic 6 with multi-tab mission control
+│                                    # Reads JSONL from data/pipeline-run.jsonl + data/troll-run.jsonl
 │
 ├── data/
 │   ├── synthetic/                   # Generated xAPI dataset
@@ -627,8 +625,8 @@ pocpod0/
 │  │  │Claire │ │Marc│ │Isabelle│ │Fatima│ │Ayoub│      │
 │  │  └───────┘ └────┘ └────────┘ └──────┘ └─────┘      │
 │  │  ┌─────────────────────────────┐                     │
-│  │  │      Troll Adversary        │ ← Dual access:      │
-│  │  │  (skill + direct infra)     │    skill + direct    │
+│  │  │      Troll Adversary        │ ← Triple access:     │
+│  │  │  (skill + direct + agent)   │    skill+direct+NL   │
 │  │  └─────────────────────────────┘                     │
 │  └──────────────────────────────────────────────────────│
 │                                                         │
@@ -639,9 +637,9 @@ pocpod0/
 │  └──────────────────────────────────────────────────┘   │
 │                                                         │
 │  ┌──────────────────────────────────────────────────┐   │
-│  │          Dashboard (FastAPI + HTMX)              │   │
-│  │  Mission control, troll report, query monitor    │   │
-│  │  (dev mode, reads from logs)                     │   │
+│  │          Mission Control TUI (Rich Live)         │   │
+│  │  Extends pipeline_dashboard.py — multi-tab       │   │
+│  │  (reads JSONL events from data/ directory)       │   │
 │  └──────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────┘
 ```
