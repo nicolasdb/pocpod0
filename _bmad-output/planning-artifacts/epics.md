@@ -150,6 +150,7 @@ No UX Design document provided. Dashboard UX will be designed during Phase 4 bas
 | FR38 | Epic 6 | Funder intervention points |
 | FR39 | Epic 6 | Mission control dashboard |
 | FR40 | Epic 1 | Service startup with dependency ordering |
+| FR41 | Epic 5 | Ephemeral time-scoped consent with auto-revocation (Anagnorisis double-aveugle pattern) |
 
 ## Epic List
 
@@ -171,19 +172,20 @@ Role agents (Claire, Fatima, Isabelle) query across institutional silos, compare
 **Priority tags:** Claire stories tagged [must-ship], Fatima and Isabelle stories tagged [target] per PRD fallback strategy (plan for 5, fallback to 3)
 **Dashboard backlog:** Query monitor (SPARQL + hybrid), agent activity log, graph-vs-hybrid comparison display
 
-### Epic 4: Student Transfer & Data Portability
-The school transfer scenario (NL→FR) executes end-to-end — ACL grants, revocations, cross-community data handling — proving data moves with the learner, not the institution.
+### Epic 4: Student Transfer & Data Portability _(RESEQUENCED: now last / capstone — 2026-03-25)_
+The school transfer scenario (NL→FR) executes end-to-end — ACL grants, revocations, cross-community data handling — proving data moves with the learner, not the institution. Built with dashboard running (Epic 6 complete): first epic where project lead watches the full stack live.
 **FRs covered:** FR21, FR22, FR23
 **Priority:** [must-ship] — Marc's journey is one of the 3 must-ship journeys
 **Dashboard backlog:** Transfer workflow visualization, ACL change audit trail
 
-### Epic 5: Data Sovereignty Lifecycle
-Governance contracts execute (age-based sovereignty transition), deletion cascades propagate across all three data layers, and the system honestly reports its deletion timing — proving the architecture handles the full data lifecycle.
-**FRs covered:** FR24, FR25, FR26, FR27, FR32
+### Epic 5: Data Sovereignty Lifecycle _(RESEQUENCED: now before Epic 6 and 4 — 2026-03-25)_
+Governance contracts execute (age-based sovereignty transition), deletion cascades propagate across all three data layers, the consent lifecycle is agent-driven (acl-manage skill), and ephemeral time-scoped consent (Anagnorisis double-aveugle pattern) demonstrates that sensitive data can flow without identity exposure.
+**FRs covered:** FR24, FR25, FR26, FR27, FR32, FR41
 **Priority:** [must-ship] — Ayoub's journey is one of the 3 must-ship journeys
-**Dashboard backlog:** Governance event log, deletion cascade status, timing metrics
+**Dashboard backlog:** Governance event log, deletion cascade status, consent gate counts, timing metrics
+**Anagnorisis integration:** Stories 5.4, 5.5, 5.6 implement the consent-as-architecture principles from the Anagnorisis narrative — access receipts (BP-1), consent grant as RDF (BP-3), ephemeral time-scoped tokens (BP-5)
 
-### Epic 6: Adversarial Trust Report & Mission Control
+### Epic 6: Adversarial Trust Report & Mission Control _(RESEQUENCED: before Epic 4 — 2026-03-25)_
 The comprehensive troll run generates a funder-readable categorized report, the mission control dashboard surfaces all evidence from Epics 1-5, and intervention points let funders shift from audience to participant.
 **FRs covered:** FR33, FR34, FR38, FR39
 **Note:** Dashboard design happens here, informed by the component backlog built through Epics 1-5. UX Design spike precedes dashboard implementation.
@@ -796,6 +798,35 @@ So that I can understand, at any time, exactly what I agreed to and why.
 **When** the revocation executes
 **Then** the `revokedAt` field is populated (tombstone), the ACL grant is removed, and future aggregate queries automatically exclude Ayoub's data
 **And** historical aggregates computed before revocation remain immutable
+
+### Story 5.6: [backlog] Ephemeral Time-Scoped Consent — Double-Aveugle Pattern
+
+_Discovered during Anagnorisis narrative (Epic 3 retrospective, 2026-03-25). Implements BP-5 from architecture.md._
+
+As **Ayoub** (data sovereign),
+I want to grant time-scoped access to sensitive context data using an opaque token — so the receiving service never knows whose data it is and access auto-revokes when the token expires.
+
+**The scenario:** Ayoub attends a summer camp. The food service needs to know his dietary restrictions. His parents grant a camp-duration token — the food service sees "gluten-free for token-7f3a" not "gluten-free for Ayoub". The school community pod holds the token→learner mapping, invisible to the food service. After camp, the token expires and access is revoked.
+
+**Acceptance Criteria:**
+
+**Given** a consent grant resource (Story 5.5) for a time-scoped context (e.g., summer camp food service)
+**When** the grant is created
+**Then** it includes `poc:expiresAt` (camp end date) and an opaque `poc:token` alias (not Ayoub's WebID)
+**And** the food service receives only the token — it cannot dereference the token to Ayoub's identity
+
+**Given** the token expiry date has passed
+**When** any service attempts to use the token
+**Then** the CSS ACL check fails (token-scoped resource is no longer accessible)
+**And** a `consent.expired` JSONL event is emitted: `{"event_type": "consent.expired", "timestamp": ..., "token_id": "...", "pod": "..."}`
+**And** the receipt in Ayoub's access log (`/ayoub/access-log/camp-food-[date].ttl`) records the full access window (granted→expired)
+
+**Given** Isabelle queries the camp community pod for program aggregate
+**When** the query runs
+**Then** it hits the camp community pod (not Ayoub's pod) and returns counts via `GROUP BY`
+**And** no individual identity is exposed — double-aveugle (service is blind to identity, policy actor is blind to individual)
+
+**Implementation note:** Builds on Story 5.5 consent grant resource. Adds `poc:token` alias field and expiry check in the ACL enforcement path. The opaque token is a SHA-256 hash of `(pod_uri + grant_timestamp)` — deterministic but not reversible without the lookup index (held in school community pod, authorized access only).
 
 ## Epic 6: Adversarial Trust Report & Mission Control
 

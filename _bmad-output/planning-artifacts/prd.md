@@ -43,6 +43,8 @@ The audience is funders and strategic partners (Athumi, EU programme officers, E
 
 6. **Tracking works in both directions.** Every data flow serving an institution generates a readable receipt for the person whose data flowed. Ayoub can ask "who has my data and why?" and get a machine-readable, human-legible answer. Institutions see aggregate impact; data subjects see what institutions saw. This is the anti-bossware guarantee — and it aligns the system with the EU Data Governance Act's data intermediary and data altruism frameworks, making the PoC DGA-forward infrastructure.
 
+7. **Consent is a 4-question contract, not a checkbox.** The Anagnorisis principle (discovered during Epic 3 retrospective, 2026-03-25): every consent grant carries who is asking, what they will see, why they need it, and what happens if you refuse. The architecture makes refusal consequence legible — not coercive. The food-allergy camp scenario demonstrates ephemeral time-scoped consent (double-aveugle): sensitive data flows without the service knowing whose data it is, tokens auto-revoke, receipts write back to the data subject's pod. This is the difference between GDPR compliance as policy promise and GDPR compliance as mathematical guarantee.
+
 **Core insight:** The Pod is a platform primitive — like a passport (yours, portable, recognized everywhere, you control who sees it) or like S3 to AWS (the foundational data layer upon which an ecosystem composes). The PoC validates the primitive. The ecosystem builds on top.
 
 ## Project Classification
@@ -376,6 +378,7 @@ The schema contract bridges the data layer and the agent layer. This is a **know
 - FR25: The system can process a soft-delete request on a Pod resource
 - FR26: The system can propagate deletion cascade across all data layers (Pod → Oxigraph → Qdrant)
 - FR27: The system can verify deletion completeness across all data layers
+- FR41: The system can issue ephemeral time-scoped consent grants that auto-revoke at a specified expiry date, with a `consent.expired` event emitted to the JSONL event stream
 
 ### Adversarial Testing (Troll Agent)
 
@@ -406,8 +409,8 @@ The schema contract bridges the data layer and the agent layer. This is a **know
 
 ### Performance
 
-- **Simple SPARQL queries:** < 500ms response time at PoC data scale (10K triples)
-- **Hybrid SPARQL + vector queries:** < 2s response time at PoC data scale
+- **Simple SPARQL queries:** < 500ms response time at PoC data scale (10K triples) _(observed in Epic 3: ~2s actual due to containerized Oxigraph overhead — NFR target needs renegotiation)_
+- **Hybrid SPARQL + vector queries:** < 2s response time at PoC data scale _(observed in Epic 3: ~10s/student actual due to OpenRouter embedding variance — acceptable for demo narrative, noted as pilot optimization target)_
 - **Deletion cascade propagation:** All three data layers purged in a single execution of the propagation routine
 - **Service startup:** All services healthy and responsive within 60s of `docker-compose up`
 

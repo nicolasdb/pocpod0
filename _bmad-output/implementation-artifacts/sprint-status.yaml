@@ -1,6 +1,7 @@
 ---
 project_name: pocpod0
 sprint_generated: 2026-03-18
+last_updated: 2026-03-25
 tracking_system: file-system
 project_key: NOKEY
 communication_language: English
@@ -29,7 +30,7 @@ development_status:
   epic-2-retrospective: done
 
   # Epic 3: Cross-Context Learning Insights
-  epic-3: in-progress
+  epic-3: done
   story-3-1-shared-sparql-skill-foundation: done
   story-3-2-shared-qdrant-skill-foundation: done
   story-3-3-openClaw-agent-infrastructure: done
@@ -39,30 +40,43 @@ development_status:
   story-3-7-graph-only-vs-hybrid-comparison: done
   story-3-8-troll-cross-inference-validation: done
   # NOTE (2026-03-25): Story 3.8 enables OpenClaw chatCompletions API — prerequisite for Epic 5/6 agent interaction
-  epic-3-retrospective: optional
+  # NOTE (2026-03-25): Story 3.7.1 (side-quest) Pipeline Dashboard TUI — seed for Epic 6 mission control
+  epic-3-retrospective: done
 
-  # Epic 4: Student Transfer & Data Portability
-  epic-4: backlog
-  story-4-1-marc-seamless-student-transfer: backlog
-  story-4-2-cross-community-data-handling: backlog
-  epic-4-retrospective: optional
-
-  # Epic 5: Data Sovereignty Lifecycle
-  # NOTE (2026-03-25): Epic 5 enriched with acl-manage skill requirement (Story 5.1)
-  # This is the wiring epic — agents must be able to mutate ACLs for the demo narrative
-  # Prerequisite for Epic 6 funder intervention (consent lifecycle visible on TUI)
+  # Epic 5: Data Sovereignty Lifecycle (RESEQUENCED: was after Epic 4, now NEXT)
+  # NOTE (2026-03-25): Epic 3 retro decision — resequence to 5→6→4
+  # Rationale: acl-manage skill is prerequisite for both Marc (transfer) and Ayoub (governance).
+  # Anagnorisis narrative enriches consent mechanics (consent-as-architecture, access receipts,
+  # tombstone revocation, civic signal). Build consent machinery first.
+  # Epic 5 stories need review against consent-as-architecture before implementation.
   epic-5: backlog
   story-5-1-ayoub-governance-transition: backlog
   story-5-2-deletion-cascade-propagation: backlog
   story-5-3-troll-deletion-timing-validation: backlog
+  # Anagnorisis backlog stories (added 2026-03-25 — consent-as-architecture principles)
+  story-5-4-access-receipt-written-to-pod: backlog
+  story-5-5-consent-grant-as-rdf-resource: backlog
+  story-5-6-ephemeral-time-scoped-consent: backlog
   epic-5-retrospective: optional
 
-  # Epic 6: Adversarial Trust Report & Mission Control
+  # Epic 6: Adversarial Trust Report & Mission Control (RESEQUENCED: was last, now before Epic 4)
+  # NOTE (2026-03-25): Dashboard before demo — project lead navigating blind = Isabelle's pain.
+  # TUI pivot confirmed: Rich TUI + JSONL (Story 3.7.1 seed), NOT FastAPI+HTMX.
+  # Two-terminal demo model: pipeline/troll in one, dashboard in the other.
   epic-6: backlog
   story-6-1-troll-comprehensive-run-and-report: backlog
   story-6-2-mission-control-dashboard-implementation: backlog
   story-6-3-funder-intervention-points: backlog
   epic-6-retrospective: optional
+
+  # Epic 4: Student Transfer & Data Portability (RESEQUENCED: was next, now CAPSTONE)
+  # NOTE (2026-03-25): Marc's transfer becomes the integration test for the full stack.
+  # Built WITH dashboard running — first epic where project lead watches live.
+  # Consent mechanics (Epic 5) + dashboard (Epic 6) both available.
+  epic-4: backlog
+  story-4-1-marc-seamless-student-transfer: backlog
+  story-4-2-cross-community-data-handling: backlog
+  epic-4-retrospective: optional
 
 # Priority & Phasing
 priority_matrix:
@@ -98,18 +112,24 @@ phases:
 
   phase-3-agents-scenarios:
     label: "Cross-Context Agents & Scenarios"
-    epics: [epic-3, epic-4, epic-5]
-    duration_estimate: "3-4 weeks"
-    must_ship: [epic-4, epic-5, "story-3-4 (Claire)"]
-    target: ["story-3-5 (Fatima)", "story-3-6 (Isabelle)"]
-    fallback_plan: "If Phase 3 running late: implement Claire + Marc + Ayoub first, Isabelle and Fatima added in priority order if time permits"
+    epics: [epic-3]
+    status: done
+    note: "Epic 3 completed 2026-03-25. All 8 stories + 3.7.1 side-quest done. Claire, Fatima, Isabelle all shipped."
+
+  # Resequenced at Epic 3 retro (2026-03-25): 5→6→4
+  phase-4-sovereignty-and-dashboard:
+    label: "Consent Machinery + Dashboard"
+    epics: [epic-5, epic-6]
+    must_ship: [epic-5, "story-6-1", "story-6-2"]
+    target: ["story-6-3"]
+    note: "Epic 5 builds consent-as-architecture (Anagnorisis). Epic 6 gives project lead eyes (TUI dashboard)."
     risk_level: medium
 
-  phase-4-adversarial-testing:
-    label: "Adversarial Testing & Mission Control"
-    epics: [epic-6]
-    duration_estimate: "1-2 weeks"
-    critical_path: story-6-1-troll-comprehensive-run-and-report
+  phase-5-capstone:
+    label: "Capstone Integration (Marc Transfer)"
+    epics: [epic-4]
+    must_ship: [epic-4]
+    note: "Marc's transfer WITH dashboard running. First epic where project lead watches live. Integration test for full stack."
     risk_level: low
 
 # Sprint Backlog Ordering (Sequence by Critical Path)
@@ -212,47 +232,75 @@ sprint_backlog_order:
     priority: must-ship
     rationale: "Troll capstone last, same pattern as Epic 2; includes PRIV-1 probes"
 
+  # Epic 5 FIRST (resequenced at Epic 3 retro 2026-03-25): consent machinery before scenarios
   17:
-    story: story-4-1-marc-seamless-student-transfer
-    epic: epic-4
-    priority: must-ship
-    rationale: "Must-ship journey: operational proof"
-
-  18:
     story: story-5-1-ayoub-governance-transition
     epic: epic-5
     priority: must-ship
-    rationale: "Must-ship journey: principled architecture + honest failure"
+    rationale: "Must-ship journey: consent-as-architecture (Anagnorisis), acl-manage skill, governance transition"
 
-  19:
+  18:
     story: story-5-2-deletion-cascade-propagation
     epic: epic-5
     priority: must-ship
-    rationale: "Data lifecycle: tests right-to-erasure across all layers"
+    rationale: "Data lifecycle: right-to-erasure across all 3 layers + PRIV-1 opaque UUID fix"
 
-  20:
+  19:
     story: story-5-3-troll-deletion-timing-validation
     epic: epic-5
     priority: must-ship
-    rationale: "Adversarial validation of deletion cascade"
+    rationale: "Adversarial validation of deletion cascade timing"
 
-  21:
+  # Epic 5 Anagnorisis backlog stories (consent-as-architecture; implement if PoC capacity allows)
+  19b:
+    story: story-5-4-access-receipt-written-to-pod
+    epic: epic-5
+    priority: target
+    rationale: "Implements BP-1 (bidirectional accountability) — every institutional query produces a receipt in Ayoub's pod"
+
+  19c:
+    story: story-5-5-consent-grant-as-rdf-resource
+    epic: epic-5
+    priority: target
+    rationale: "Implements BP-3 (consent as 4-question RDF contract) — boolean flag evolves to dereferenceable URI"
+
+  19d:
+    story: story-5-6-ephemeral-time-scoped-consent
+    epic: epic-5
+    priority: target
+    rationale: "Implements BP-5 (double-aveugle Anagnorisis pattern) — ephemeral token, opaque identity, auto-revocation"
+
+  # Epic 6 SECOND (resequenced): dashboard before capstone demo
+  20:
     story: story-6-1-troll-comprehensive-run-and-report
     epic: epic-6
     priority: must-ship
-    rationale: "Phase 4: comprehensive adversarial testing and reporting"
+    rationale: "Comprehensive adversarial testing aggregating all attack categories"
 
-  22:
+  21:
     story: story-6-2-mission-control-dashboard-implementation
     epic: epic-6
-    priority: target
-    rationale: "Phase 4: dashboard designed after Phase 1-3 provide component requirements"
+    priority: must-ship
+    rationale: "TUI dashboard (Rich + JSONL, seeded by Story 3.7.1) — project lead gets eyes before capstone"
 
-  23:
+  22:
     story: story-6-3-funder-intervention-points
     epic: epic-6
     priority: target
-    rationale: "Phase 4: enables funder interaction with demo"
+    rationale: "Enables funder interaction with live demo"
+
+  # Epic 4 LAST (resequenced): capstone integration test WITH dashboard
+  23:
+    story: story-4-1-marc-seamless-student-transfer
+    epic: epic-4
+    priority: must-ship
+    rationale: "Capstone: Marc's transfer exercises full stack (consent + ACL + dashboard) — first epic run with live visibility"
+
+  24:
+    story: story-4-2-cross-community-data-handling
+    epic: epic-4
+    priority: must-ship
+    rationale: "Cross-community data handling validates NL→FR transfer with all machinery in place"
 
 # Sprint Metadata
 notes:

@@ -45,6 +45,85 @@ Apply the same pod sovereignty + data silo architecture to a healthcare domain i
 - Belgium has a strong eHealth platform context (eHealthBox, Vitalink, RSW) — real institutional silos to reference
 - Could be a compelling follow-up grant application or demo for a health-sector audience
 - Same codebase, different vocabulary schema contract (Story 2.1 equivalent = define FHIR/OSLO health schema contract)
+- **Divorced parents / split consent** is a medical/family edge case — architecturally possible via Solid ACL smart-contract patterns, but too many variables for the PoC. Could be translated into a consent rule engine if Solid can enforce it.
+- **Summer camp medical emergency**: time-scoped emergency consent to health records — same pattern as Anagnorisis food token but higher stakes. Ephemeral consent with auto-revocation after the camp period.
+
+---
+
+## Idea: Maker/Hobby Informal Education Domain Variant
+
+**Captured:** 2026-03-25 (Epic 3 Retrospective)
+**Status:** backlog
+
+### Concept
+
+Apply pod sovereignty to informal education and lifelong learning: FabLabs, makerspaces, Arduino workshops, Open Badges, community skill-shares. The structural problem: informal learning is invisible to formal systems. No transcripts, no credits, no interoperability. A maker who builds a CNC machine in a FabLab has no legible credential for that competency.
+
+### Stakeholder map
+
+| Maker/Hobby | Education analog |
+|---|---|
+| Maker/learner | Learner (Ayoub) |
+| FabLab mentor | Teacher (Claire) — cross-context visibility into learner progress |
+| Workshop facilitator | Tutoring provider |
+| Erasmus+ assessor / national agency | Policy advisor (Isabelle) — aggregate program impact |
+| Community collective | School community pod |
+
+### Isabelle analog: Erasmus+ assessor
+
+At national agency level, the Isabelle role maps to an Erasmus+ program assessor evaluating cross-border informal learning programs. Same structural paradox: signs the checks, receives Word/PDF narratives, cannot access actual learning outcome data across EU member states.
+
+### Ontology
+
+Open Badges / European Learning Model / ESCO competency framework. The pod stores badge assertions, competency evidence, workshop participation records. The GraphRAG layer makes them searchable and cross-referenceable.
+
+### European scale
+
+Informal learning is inherently cross-border (Erasmus+ youth mobility, European FabLab network, international maker faires). The pod portability + 5-star LOD compliance enables a maker in Brussels to carry their competency profile to a FabLab in Barcelona.
+
+---
+
+## Architecture Pattern: Ontology-as-Plugin
+
+**Captured:** 2026-03-25 (Epic 3 Retrospective)
+**Status:** backlog — architectural evolution for post-POC
+
+### Concept
+
+The pod is a domain-agnostic personal locker: storage + ACL + GraphRAG layer, W3C + 5-star LOD compliant. Domain specificity lives in the **service** that reads and writes, not in the infrastructure. Each service packages its own ontology.
+
+### How it works
+
+1. **Pod infrastructure** (domain-neutral): CSS pods + Oxigraph + Qdrant + ACL enforcement
+2. **Domain service** (domain-specific): packages an ontology (OSLO, FHIR, Open Badges, ESCO...) + ingestion adapter (xAPI, FHIR resources, badge assertions...) + SPARQL templates + agent personas
+3. **At runtime**: the service loads the adhoc ontology for the adhoc context. Triples are ingested using the right vocabulary. Queries use the right namespace.
+
+### Why this matters
+
+The vocabulary drift in Epic 3 (4 of 8 stories rewrote templates because of oslo-educ vs poc-pod0 mismatch) was a symptom: we treated one ontology as the architecture. The architecture is ontology-agnostic. OSLO is the education plugin. FHIR is the health plugin. Open Badges is the maker plugin.
+
+### Implication for current PoC
+
+No code change needed. Frame the three-layer stack as domain-neutral in architecture.md. Education is the first domain plugin, not the only one. This framing strengthens the pitch: "anyone can build services on top of this infrastructure."
+
+---
+
+## Idea: Liquid Democracy as Built-In Governance Feature
+
+**Captured:** 2026-03-25 (Epic 3 Retrospective)
+**Status:** backlog — Politype territory
+
+### Concept
+
+Consent revocation at the data layer IS continuous preference expression. If consent = a dereferenceable contract, and revocation = a tombstone that the aggregate engine respects, then governance automation for collectives emerges naturally.
+
+A collective (FabLab, school community, housing cooperative) can run consent-based decision-making where:
+- Members grant/revoke consent to specific data flows
+- Aggregate queries reflect the current state of collective consent
+- Revocation spikes are civic signals — distrust made legible
+- Historical aggregates (IPFS-anchored) provide the temporal baseline
+
+This is not a voting app. It's the data layer beneath governance tools that makes them trustworthy. Connects directly to Politype (digital democracy prototyping) and DémocratieXXL (civic relationships).
 
 ---
 

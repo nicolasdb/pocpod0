@@ -38,7 +38,7 @@ _This document captures all architectural decisions for the pocpod0 PoC — a de
 | Infrastructure & Operations | FR40 | docker-compose health-check orchestration |
 
 **Non-Functional Requirements:**
-- Performance: SPARQL < 500ms, hybrid < 2s, startup < 60s, cascade in single routine
+- Performance: SPARQL < 500ms, hybrid < 2s, startup < 60s, cascade in single routine _(PRD spec; actual observed: SPARQL ~2s, hybrid ~10s/student in containerized Oxigraph + OpenRouter embedding. NFR to be renegotiated in Epic 5/6 based on evidence — see Epic 3 retro.)_
 - Security: ACL pass required, SPARQL injection pass required, probabilistic surfaces assessed honestly
 - Observability: query logging, troll activity logging, deletion cascade status
 - Reproducibility: deterministic infra tests, NL cross-inference flagged as non-deterministic
@@ -258,6 +258,27 @@ mkdir -p pocpod0/{infra,pipeline,agents,dashboard,scripts,data/{synthetic,schema
 
 ---
 
+## Domain Architecture: Ontology-as-Plugin
+
+_Discovered during Epic 3 retrospective (2026-03-25). Root cause of vocabulary drift in 4/8 Epic 3 stories._
+
+**Decision DA-4: Domain-Agnostic Pod Infrastructure**
+
+> **The pod is a domain-agnostic personal locker. Domain specificity lives in the service that reads and writes, not in the infrastructure.**
+
+**Three-layer separation:**
+1. **Pod infrastructure** (domain-neutral): CSS pods + Oxigraph + Qdrant + ACL enforcement + W3C + 5-star LOD compliant
+2. **Domain service** (domain-specific): packages an ontology (OSLO for education, FHIR for health, Open Badges for makers, ESCO for work) + ingestion adapter (xAPI, FHIR resources, badge assertions) + SPARQL templates + agent personas
+3. **At runtime**: the service loads the adhoc ontology for the adhoc context. Triples ingested using the right vocabulary. Queries use the right namespace.
+
+**Vocabulary drift root cause (Epic 3 post-mortem):** 4 of 8 stories rewrote SPARQL templates because story specs used `oslo-educ:` predicates while actual ingestion produces `poc-pod0.edu/vocab/` namespace (from `oslo_mapper.py`). This was a symptom of treating one ontology as the architecture. **Fix:** Story templates must reference the actual namespace from the schema contract, not theoretical OSLO prefixes. Add "vocab reality check" step to story preparation.
+
+**Implication for architecture.md framing:** The three-layer stack (Pod→Graph→Vector) is domain-neutral. OSLO is the education plugin, not the architecture. This framing strengthens the pitch: "anyone can build services on top of this infrastructure." No code change needed in the PoC; education is the first domain plugin.
+
+**Post-PoC domain plugins:** FHIR for health, Open Badges/ELM/ESCO for makers/informal learning — see `post-poc-backlog.md`.
+
+---
+
 ## Design Principles: Bidirectional Accountability & Trust Architecture
 
 _Discovered during Story 3.6 deep dive (2026-03-24). These principles extend the security decisions above and inform pilot-phase evolution._
@@ -297,6 +318,24 @@ The boolean ACL flag evolves into a dereferenceable RDF resource carrying the fu
 The troll can dereference `poc:purpose` to answer a data subject's "why does X have access to my data?" — without human intermediary.
 
 - **PoC:** ACL is a boolean flag (current state). **Pilot:** consent grant becomes a dereferenceable URI linked from the ACL resource.
+
+### Principle BP-5: Ephemeral Time-Scoped Consent (Double-Aveugle Pattern)
+
+_Discovered during Anagnorisis narrative (Epic 3 retrospective, 2026-03-25). Demonstrated via food regime / summer camp scenario._
+
+> **Sensitive context data can flow through a system without the service knowing whose data it is — and without the data being permanently stored.**
+
+The Anagnorisis food-allergy scenario: Ayoub's pod contains his food regime. A summer camp food service needs to know if he has dietary restrictions. The consent grant is ephemeral and role-isolated:
+
+1. **Ayoub grants a time-scoped consent token** — valid for the duration of camp, auto-revokes on a specified date (`poc:expiresAt`)
+2. **The food service receives a one-time opaque token** (not Ayoub's WebID) — it knows "food regime for this token = gluten-free", not who the token belongs to. This is the **double-aveugle** principle: the service is blind to identity.
+3. **The school community pod holds the mapping** token→learner, visible only to the school admin — not to the food service and not queryable via aggregate
+4. **After camp, the token auto-revokes** — the food service loses access. The receipt is written to Ayoub's pod (`/ayoub/access-log/camp-food-[date].ttl`)
+5. **Isabelle's aggregate query** hits the camp community pod, not Ayoub's pod — it sees "32 registrations with dietary restrictions" via `GROUP BY`, not names
+
+**Architectural implication:** This pattern requires the consent grant resource (BP-3) to include `poc:expiresAt` and an opaque `poc:token` alias. The ACL enforcement checks token validity (not expired) before serving data. The pipeline emits a `consent.expired` JSONL event when tokens auto-revoke.
+
+**PoC scope:** The ephemeral token pattern is demonstrated via Story 5.5 (consent grant as RDF) by setting `poc:expiresAt` and verifying auto-revocation. The double-aveugle opaque token alias is a [backlog] story (Story 5.6).
 
 ### Principle BP-4: Tombstone Revocation & Temporal Civic Signals
 
