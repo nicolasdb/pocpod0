@@ -1,6 +1,6 @@
 # Story 5.2: [foundation] Deletion Cascade & Verification
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -46,73 +46,73 @@ And the raw `pod_resource_uri` is no longer stored in any Qdrant payload field
 ## Tasks / Subtasks
 
 ### Task 1: Create `delete_cascade.py` — 3-layer cascade (AC1)
-- [ ] Create `pipeline/src/pocpod0_pipeline/delete_cascade.py`
-- [ ] Implement `dataclass DeletionResult(resource_uri, pod_name, step_results: list[StepResult], all_layers_clean: bool, timestamp)`
-- [ ] Implement `dataclass StepResult(step: str, layer: str, status: str, details: str, duration_ms: int)`
-- [ ] Implement `soft_delete_css(resource_uri: str, css_auth_token: str) -> StepResult`:
+- [x] Create `pipeline/src/pocpod0_pipeline/delete_cascade.py`
+- [x] Implement `dataclass DeletionResult(resource_uri, pod_name, step_results: list[StepResult], all_layers_clean: bool, timestamp)`
+- [x] Implement `dataclass StepResult(step: str, layer: str, status: str, details: str, duration_ms: int)`
+- [x] Implement `soft_delete_css(resource_uri: str, css_auth_token: str) -> StepResult`:
   - PATCH the CSS resource to add `pocpod0:deletedAt` (ISO-8601 timestamp) and `pocpod0:isDeleted true` triples
   - Use `Authorization: WebID <webid>` header from Story 1.4/1.5 CSS auth pattern
   - Return StepResult with `layer="css"`, `step="1-css-soft-delete"`
-- [ ] Implement `drop_oxigraph_graph(resource_uri: str, oxigraph_url: str) -> StepResult`:
+- [x] Implement `drop_oxigraph_graph(resource_uri: str, oxigraph_url: str) -> StepResult`:
   - Execute SPARQL UPDATE: `DROP GRAPH <{resource_uri}>` via HTTP POST to Oxigraph `/update` endpoint
   - Confirm the named graph no longer exists with ASK query
   - Return StepResult with `layer="oxigraph"`, `step="2-oxigraph-drop"`
-- [ ] Implement `delete_qdrant_points(pod_uri_hash: str, qdrant_url: str) -> StepResult`:
+- [x] Implement `delete_qdrant_points(pod_uri_hash: str, qdrant_url: str) -> StepResult`:
   - Use Qdrant filter delete: `DELETE /collections/{collection}/points` with filter `{"must": [{"key": "pod_uri_hash", "match": {"value": "<hash>"}}]}`
   - Return StepResult with `layer="qdrant"`, `step="3-qdrant-delete"`, include count of deleted points in details
-- [ ] Implement `run_cascade(resource_uri: str, pod_name: str) -> DeletionResult`: orchestrates steps 1→2→3 sequentially; captures and logs each StepResult; does NOT abort on step failure (records error and continues)
-- [ ] CLI entry point: `python -m pocpod0_pipeline.delete_cascade --resource-uri <uri> --pod <name>`
+- [x] Implement `run_cascade(resource_uri: str, pod_name: str) -> DeletionResult`: orchestrates steps 1→2→3 sequentially; captures and logs each StepResult; does NOT abort on step failure (records error and continues)
+- [x] CLI entry point: `python -m pocpod0_pipeline.delete_cascade --resource-uri <uri> --pod <name>`
 
 ### Task 2: PRIV-1 fix — opaque UUID in `embed.py` (AC4)
-- [ ] Read `pipeline/src/pocpod0_pipeline/embed.py` to locate where `pod_resource_uri` is written to Qdrant payload
-- [ ] Replace `pod_resource_uri` in Qdrant payload with `pod_uri_hash = hashlib.sha256(pod_resource_uri.encode()).hexdigest()[:16]`
-- [ ] Add a comment in `embed.py`: `# PRIV-1 fix (Story 5.2): store opaque hash, not raw URI, to prevent identity leak via pod slug`
-- [ ] Remove `pod_resource_uri` from the Qdrant payload dict entirely — the hash is the only identifier
-- [ ] Ensure `content_text` and other non-identifying payload fields are unchanged
+- [x] Read `pipeline/src/pocpod0_pipeline/embed.py` to locate where `pod_resource_uri` is written to Qdrant payload
+- [x] Replace `pod_resource_uri` in Qdrant payload with `pod_uri_hash = hashlib.sha256(pod_resource_uri.encode()).hexdigest()[:16]`
+- [x] Add a comment in `embed.py`: `# PRIV-1 fix (Story 5.2): store opaque hash, not raw URI, to prevent identity leak via pod slug`
+- [x] Remove `pod_resource_uri` from the Qdrant payload dict entirely — the hash is the only identifier
+- [x] Ensure `content_text` and other non-identifying payload fields are unchanged
 
 ### Task 3: UUID lookup index in Oxigraph (AC4)
-- [ ] Create `pipeline/src/pocpod0_pipeline/uuid_index.py`
-- [ ] Implement `register_hash(pod_resource_uri: str, oxigraph_url: str) -> str`: computes hash, writes triple `<urn:uuid-index:{hash}> pocpod0:mapsTo <{pod_resource_uri}>` into named graph `<urn:uuid-index>` via SPARQL INSERT, returns hash
-- [ ] Implement `resolve_hash(pod_uri_hash: str, oxigraph_url: str) -> str | None`: queries named graph `<urn:uuid-index>` for the triple and returns the original URI, or None if not found
-- [ ] Implement `deregister_hash(pod_uri_hash: str, oxigraph_url: str)`: removes the mapping triple from `<urn:uuid-index>` after deletion cascade (clean up index after erasure)
-- [ ] Call `register_hash` from `embed.py` after computing the hash — so every embed also registers the lookup mapping
-- [ ] Call `deregister_hash` from `delete_cascade.py` step 3 after Qdrant delete succeeds
+- [x] Create `pipeline/src/pocpod0_pipeline/uuid_index.py`
+- [x] Implement `register_hash(pod_resource_uri: str, oxigraph_url: str) -> str`: computes hash, writes triple `<urn:uuid-index:{hash}> pocpod0:mapsTo <{pod_resource_uri}>` into named graph `<urn:uuid-index>` via SPARQL INSERT, returns hash
+- [x] Implement `resolve_hash(pod_uri_hash: str, oxigraph_url: str) -> str | None`: queries named graph `<urn:uuid-index>` for the triple and returns the original URI, or None if not found
+- [x] Implement `deregister_hash(pod_uri_hash: str, oxigraph_url: str)`: removes the mapping triple from `<urn:uuid-index>` after deletion cascade (clean up index after erasure)
+- [x] Call `register_hash` from `embed.py` after computing the hash — so every embed also registers the lookup mapping
+- [x] Call `deregister_hash` from `delete_cascade.py` step 3 after Qdrant delete succeeds
 
 ### Task 4: Deletion verification queries (AC2)
-- [ ] Implement `verify_deletion(resource_uri: str, pod_uri_hash: str) -> VerificationResult` in `delete_cascade.py`:
+- [x] Implement `verify_deletion(resource_uri: str, pod_uri_hash: str) -> VerificationResult` in `delete_cascade.py`:
   - Layer 1 (CSS): HEAD or GET on the resource URI; check for `pocpod0:isDeleted true` in response body
   - Layer 2 (Oxigraph): SPARQL ASK `{ GRAPH <{resource_uri}> { ?s ?p ?o } }` → must return false
   - Layer 3 (Qdrant): scroll/count query filtered by `pod_uri_hash` → must return 0 points
-- [ ] Implement `dataclass VerificationResult(resource_uri, css_deleted: bool, oxigraph_clean: bool, qdrant_clean: bool, all_layers_clean: bool, timestamp)`
-- [ ] Log verification result as JSONL event: `{"event_type": "deletion.verification", ...}`
-- [ ] Return verification result from `run_cascade` as the final step result
+- [x] Implement `dataclass VerificationResult(resource_uri, css_deleted: bool, oxigraph_clean: bool, qdrant_clean: bool, all_layers_clean: bool, timestamp)`
+- [x] Log verification result as JSONL event: `{"event_type": "deletion.verification", ...}`
+- [x] Return verification result from `run_cascade` as the final step result
 
 ### Task 5: Structured JSONL logging (AC3)
-- [ ] Ensure `data/consent-events.jsonl` exists (create if absent — see Story 5.1 Task 5)
-- [ ] In `delete_cascade.py`: emit one JSONL line per step to `data/consent-events.jsonl` in append mode
-- [ ] Emit final `deletion.complete` event after verification:
+- [x] Ensure `data/consent-events.jsonl` exists (create if absent — see Story 5.1 Task 5)
+- [x] In `delete_cascade.py`: emit one JSONL line per step to `data/consent-events.jsonl` in append mode
+- [x] Emit final `deletion.complete` event after verification:
   ```json
   {"event_type": "deletion.complete", "timestamp": "ISO-8601", "pod": "ayoub", "resource_uri": "<uri>", "all_layers_clean": true, "steps_completed": 4, "verification": {"css_deleted": true, "oxigraph_clean": true, "qdrant_clean": true}}
   ```
-- [ ] Also log each step to stdout using `utils.py` structured JSON logging pattern (same as pipeline modules)
-- [ ] Verify all JSONL lines pass `json.loads(line)` without error
+- [x] Also log each step to stdout using `utils.py` structured JSON logging pattern (same as pipeline modules)
+- [x] Verify all JSONL lines pass `json.loads(line)` without error
 
 ### Task 6: Update `traceability.py` if needed (AC1)
-- [ ] Read `pipeline/src/pocpod0_pipeline/traceability.py` to check if it writes provenance links that reference `pod_resource_uri` directly
-- [ ] If traceability writes to the named graph `<pod-resource-uri>`, confirm that `DROP GRAPH <pod-resource-uri>` in step 2 already removes all traceability triples for that graph — no separate traceability delete step needed
-- [ ] If traceability writes to a SEPARATE named graph (e.g., `<urn:provenance>`) with references to `<pod-resource-uri>`, add a step to delete those cross-references too: SPARQL DELETE on the provenance graph where subject/object = `<pod-resource-uri>`
-- [ ] Document the finding (either "DROP GRAPH is sufficient" or "additional provenance cleanup added") in Dev Notes
+- [x] Read `pipeline/src/pocpod0_pipeline/traceability.py` to check if it writes provenance links that reference `pod_resource_uri` directly
+- [x] If traceability writes to the named graph `<pod-resource-uri>`, confirm that `DROP GRAPH <pod-resource-uri>` in step 2 already removes all traceability triples for that graph — no separate traceability delete step needed
+- [x] If traceability writes to a SEPARATE named graph (e.g., `<urn:provenance>`) with references to `<pod-resource-uri>`, add a step to delete those cross-references too: SPARQL DELETE on the provenance graph where subject/object = `<pod-resource-uri>`
+- [x] Document the finding (either "DROP GRAPH is sufficient" or "additional provenance cleanup added") in Dev Notes
 
 ### Task 7: Tests (AC1–AC4)
-- [ ] Create `tests/test_deletion_cascade.py`
-- [ ] Test `soft_delete_css`: mock HTTP PATCH; verify correct URL, payload, and auth header; verify StepResult fields
-- [ ] Test `drop_oxigraph_graph`: mock SPARQL UPDATE endpoint; verify DROP GRAPH statement is correctly parameterized with resource URI
-- [ ] Test `delete_qdrant_points`: mock Qdrant delete endpoint; verify filter uses `pod_uri_hash`, NOT `pod_resource_uri`; verify deleted count in StepResult details
-- [ ] Test `verify_deletion`: mock all three layer queries; test all-clean path and partial-failure path
-- [ ] Test `run_cascade`: verify step order (1→2→3→verify); verify all four JSONL events emitted; verify partial failure (step 2 error) does not abort step 3
-- [ ] Test PRIV-1 fix in `embed.py`: mock Qdrant upsert; verify payload does NOT contain `pod_resource_uri`; verify payload DOES contain `pod_uri_hash`
-- [ ] Test `uuid_index.py`: `register_hash` → SPARQL INSERT into `<urn:uuid-index>`; `resolve_hash` → SPARQL SELECT; `deregister_hash` → SPARQL DELETE
-- [ ] Test hash determinism: same URI always produces same 16-char hex hash
+- [x] Create `tests/test_deletion_cascade.py`
+- [x] Test `soft_delete_css`: mock HTTP PATCH; verify correct URL, payload, and auth header; verify StepResult fields
+- [x] Test `drop_oxigraph_graph`: mock SPARQL UPDATE endpoint; verify DROP GRAPH statement is correctly parameterized with resource URI
+- [x] Test `delete_qdrant_points`: mock Qdrant delete endpoint; verify filter uses `pod_uri_hash`, NOT `pod_resource_uri`; verify deleted count in StepResult details
+- [x] Test `verify_deletion`: mock all three layer queries; test all-clean path and partial-failure path
+- [x] Test `run_cascade`: verify step order (1→2→3→verify); verify all four JSONL events emitted; verify partial failure (step 2 error) does not abort step 3
+- [x] Test PRIV-1 fix in `embed.py`: mock Qdrant upsert; verify payload does NOT contain `pod_resource_uri`; verify payload DOES contain `pod_uri_hash`
+- [x] Test `uuid_index.py`: `register_hash` → SPARQL INSERT into `<urn:uuid-index>`; `resolve_hash` → SPARQL SELECT; `deregister_hash` → SPARQL DELETE
+- [x] Test hash determinism: same URI always produces same 16-char hex hash
 
 ## Dev Notes
 
@@ -270,4 +270,43 @@ claude-sonnet-4-6
 
 ### Completion Notes List
 
+- **Task 6 finding: DROP GRAPH is sufficient.** `traceability.py` is read-only — it queries named graphs but writes no triples. All provenance data for a pod resource URI lives in the named graph `<pod-resource-uri>`. `DROP GRAPH` removes it completely. No additional provenance cleanup step needed.
+- **PRIV-1 fix applied to embed.py:** `pod_resource_uri` removed from Qdrant payload; replaced with `pod_uri_hash = SHA-256(uri)[:16]`. Payload index updated from `pod_resource_uri` to `pod_uri_hash`. `register_hash` called on each embed to populate the UUID index in Oxigraph.
+- **Legacy deletion (transition period):** `delete_qdrant_points` also attempts deletion by `pod_resource_uri` for points written before the fix. TODO comment left for post-story re-embed migration.
+- **qdrant-search handler updated:** `_format_results` now returns both `pod_uri_hash` (primary, new points) and `pod_resource_uri` (legacy, empty for new points) for backwards compatibility.
+- **29 new unit tests, 121 total pass.** Zero regressions.
+- **Code review 5.2: 12 patches applied, 0 regressions.** See review findings below.
+
+### Code Review 5.2 — Applied Patches
+
+- **P-1:** `deregister_hash` now guarded on `step3.status == "ok"` — orphaned Qdrant points prevented.
+- **P-2:** `deleted_count` accumulation of `operation_id` removed — `operation_id` is a sequence number, not a count.
+- **P-3:** Verification JSONL event changed from `event_type: deletion.verification` to `event_type: deletion.step, step: 4-verification` per AC3 schema.
+- **P-4:** `passed: true|false` field added to both `deletion.step` (verification) and `deletion.complete` events per AC2.
+- **P-5:** `register_hash` failure in `embed.py` now raises `RuntimeError` instead of swallowing — a point without an index entry is permanently unresolvable.
+- **P-6:** `ask_resp.json()` in `drop_oxigraph_graph` now guarded on `status_code == 200` to avoid `JSONDecodeError` on error bodies.
+- **P-7:** `isDeleted` substring check anchored to `"pocpod0:isDeleted true"` to prevent false-positives on similar predicate names.
+- **P-8:** `soft_delete_css` now accepts and uses `css_url` parameter for WebID construction (was using module constant, ignoring the argument).
+- **P-9:** First PRIV-1 unit test now patches `register_hash` to avoid live HTTP call.
+- **P-10:** `qdrant-search` handler returns `None` (not `""`) for absent `pod_resource_uri` / `pod_uri_hash` — consumers can distinguish absence.
+- **P-11:** `assert` for length guard replaced with `ValueError` — not disabled by Python `-O`.
+- **P-12:** `_safe_uri` failure in `verify_deletion` now emits a WARN log so operator knows it wasn't a real dirty-graph result.
+
+### Intent Gap (IG-1) — Spec Amendment Needed
+
+**CSS 404 in `verify_deletion`:** The spec defines soft-delete success as the CSS resource carrying `pocpod0:isDeleted true`. It is silent on what 404 means. Current code returns `css_deleted=False` on 404, which causes `all_layers_clean=False` even if data is fully gone. Decision needed before Story 5.3 troll runs:
+- Option A (current): 404 = `css_deleted=False` — strict; requires soft-delete marker be present.
+- Option B: 404 = `css_deleted=True` — data is gone, erasure complete; no audit trail preserved.
+- Option C: 404 = anomaly, log as WARN, treat as distinct state from soft-delete failure.
+
+Recommend **Option A** (keep current) — soft-delete is the canonical path; 404 indicates the cascade was run against an already-removed resource and should surface as an issue, not silent success. Story 5.3 troll should probe this path explicitly.
+
 ### File List
+
+- `pipeline/src/pocpod0_pipeline/delete_cascade.py` (new)
+- `pipeline/src/pocpod0_pipeline/uuid_index.py` (new)
+- `pipeline/tests/test_deletion_cascade.py` (new)
+- `pipeline/src/pocpod0_pipeline/embed.py` (modified — PRIV-1 fix)
+- `agents/skills/qdrant-search/handler.py` (modified — returns pod_uri_hash in results)
+- `pipeline/tests/test_embed.py` (modified — updated for PRIV-1 payload change)
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` (modified — status updated)

@@ -37,6 +37,7 @@ from qdrant_client.models import (
 )
 
 from pocpod0_pipeline.utils import log_event
+from pocpod0_pipeline.uuid_index import register_hash
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -290,10 +291,10 @@ class QdrantWriter:
                 distance=Distance.COSINE,
             ),
         )
-        # Payload index on pod_resource_uri for efficient reverse lookups (AC-5)
+        # Payload index on pod_uri_hash for efficient deletion lookups (PRIV-1 fix, Story 5.2)
         self._client.create_payload_index(
             collection_name=self._collection,
-            field_name="pod_resource_uri",
+            field_name="pod_uri_hash",
             field_schema=PayloadSchemaType.KEYWORD,
         )
         log_event("embed.qdrant_collection_created", "INFO", {
@@ -311,7 +312,8 @@ class QdrantWriter:
 
         Returns count of successfully upserted points.
         """
-        assert len(chunks) == len(vectors), "chunks and vectors must have same length"
+        if len(chunks) != len(vectors):
+            raise ValueError(f"chunks and vectors must have same length: {len(chunks)} vs {len(vectors)}")
         points = []
 
         for chunk, vector in zip(chunks, vectors):
@@ -328,13 +330,30 @@ class QdrantWriter:
             ).hexdigest()
             point_id = str(uuid.UUID(content_hash[:32]))
 
+            # PRIV-1 fix (Story 5.2): store opaque hash, not raw URI, to prevent identity leak via pod slug
+            pod_uri_hash = hashlib.sha256(chunk["pod_resource_uri"].encode()).hexdigest()[:16]
+
+            # Register hash→URI mapping in Oxigraph UUID index (Story 5.2 AC4)
+            # P-5: failure is a hard error — a point without an index entry is permanently
+            # unresolvable and cannot be cascade-deleted by hash. Re-raise to abort the batch.
+            try:
+                register_hash(chunk["pod_resource_uri"], OXIGRAPH_BASE_URL)
+            except Exception as _reg_exc:
+                log_event("embed.uuid_index.register", "ERROR", {
+                    "error": str(_reg_exc),
+                    "pod_resource_uri": chunk["pod_resource_uri"],
+                })
+                raise RuntimeError(
+                    f"UUID index registration failed for {chunk['pod_resource_uri']!r}: {_reg_exc}"
+                ) from _reg_exc
+
             points.append(
                 PointStruct(
                     id=point_id,
                     vector=vector,
                     payload={
                         "triple_uris": chunk["triple_uris"],
-                        "pod_resource_uri": chunk["pod_resource_uri"],
+                        "pod_uri_hash": pod_uri_hash,
                         "content_text": chunk.get("text") or "",
                     },
                 )

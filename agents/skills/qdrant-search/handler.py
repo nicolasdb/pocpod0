@@ -230,7 +230,10 @@ def _format_results(points: list[dict]) -> list[dict]:
             "score": point.get("score", 0.0),
             "content_summary": payload.get("content_text", "")[:500],
             "triple_uris": payload.get("triple_uris", []),
-            "pod_resource_uri": payload.get("pod_resource_uri", ""),
+            # PRIV-1 fix (Story 5.2): new points store pod_uri_hash (opaque); legacy points have pod_resource_uri
+            "pod_uri_hash": payload.get("pod_uri_hash") or None,
+            # P-10: None (not "") for new post-fix points so consumers can distinguish absence from empty
+            "pod_resource_uri": payload.get("pod_resource_uri") or None,
             "payload": payload,
         }
         results.append(result)

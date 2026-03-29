@@ -118,7 +118,9 @@ def test_generate_embeddings_retries_on_rate_limit(monkeypatch):
 # ---------------------------------------------------------------------------
 
 def test_batch_upsert_payload_structure():
-    """Verify triple_uris is list and pod_resource_uri is string in payload."""
+    """Verify triple_uris is list and pod_uri_hash is present (PRIV-1 fix, Story 5.2).
+    pod_resource_uri must NOT appear in the payload after the PRIV-1 fix.
+    """
     writer = QdrantWriter.__new__(QdrantWriter)
     writer._collection = QDRANT_COLLECTION
 
@@ -139,9 +141,13 @@ def test_batch_upsert_payload_structure():
     assert len(upserted_points) == 1
     payload = upserted_points[0].payload
     assert isinstance(payload["triple_uris"], list)
-    assert isinstance(payload["pod_resource_uri"], str)
-    assert payload["pod_resource_uri"] == chunk["pod_resource_uri"]
     assert payload["triple_uris"] == chunk["triple_uris"]
+    # PRIV-1 fix: raw URI removed, opaque hash stored instead
+    assert "pod_resource_uri" not in payload, "pod_resource_uri must not be in payload (PRIV-1 fix)"
+    assert "pod_uri_hash" in payload
+    import hashlib
+    expected_hash = hashlib.sha256(chunk["pod_resource_uri"].encode()).hexdigest()[:16]
+    assert payload["pod_uri_hash"] == expected_hash
 
 
 def test_batch_upsert_skips_none_vectors():

@@ -51,7 +51,7 @@ development_status:
   # Epic 5 stories need review against consent-as-architecture before implementation.
   epic-5: in-progress
   story-5-1-ayoub-governance-transition: done
-  story-5-2-deletion-cascade-propagation: ready-for-dev
+  story-5-2-deletion-cascade-propagation: done
   story-5-3-troll-deletion-timing-validation: ready-for-dev
   # Anagnorisis backlog stories (added 2026-03-25 — consent-as-architecture principles)
   story-5-4-access-receipt-written-to-pod: ready-for-dev
