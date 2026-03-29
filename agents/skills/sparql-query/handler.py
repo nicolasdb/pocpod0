@@ -53,6 +53,7 @@ import requests
 # ---------------------------------------------------------------------------
 sys.path.insert(0, str(Path(__file__).parent))
 from parameterize import load_template, parameterize_query
+from receipt import write_access_receipt
 
 # ---------------------------------------------------------------------------
 # Configuration (environment-overridable for Docker-internal execution)
@@ -557,6 +558,26 @@ def _summarize_aggregate(bindings: list[dict]) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Result shape description (for access receipt — BP-1)
+# ---------------------------------------------------------------------------
+
+
+def _build_result_shape(query_type: str, bindings: list[dict]) -> str:
+    """Build a human-readable description of query result shape for receipt.
+
+    No raw data — only metadata about what category of result was returned.
+    """
+    count = len(bindings)
+    if count == 0:
+        return f"{query_type}: no results returned"
+    if query_type == "aggregate-anonymized":
+        return f"aggregate count: {count} aggregate row(s), no individual records"
+    if query_type == "parental-view":
+        return f"parental-view: {count} activity record(s) across children, no raw scores"
+    return f"{query_type}: {count} activity record(s), summarized"
+
+
+# ---------------------------------------------------------------------------
 # Main skill execution
 # ---------------------------------------------------------------------------
 
@@ -676,6 +697,23 @@ def run_skill(
                 },
                 duration_ms,
             )
+            # BP-1: write a denial receipt to each target pod (non-blocking)
+            _denial_timestamp = _iso_now()
+            for _pod_uri in pod_uris:
+                try:
+                    write_access_receipt(
+                        agent_webid=webid,
+                        query_type=query_type,
+                        pod_uri=_pod_uri,
+                        consent_grant_uri=None,
+                        result_shape="access denied",
+                        named_graphs=[],
+                        timestamp=_denial_timestamp,
+                    )
+                except Exception as _exc:  # noqa: BLE001
+                    _log("WARN", "sparql.receipt.exception", agent_id,
+                         {"error": str(_exc), "pod_uri": _pod_uri,
+                          "note": "denial result unaffected"}, duration_ms)
             return denial
         acl_status = "passed"
     else:
@@ -830,6 +868,35 @@ def run_skill(
     else:
         pod_uri_param = params.get("pod_uri") or (pod_uris[0] if pod_uris else "")
         summary = _summarize_bindings(bindings, pod_uri_param)
+
+    # ── Step 7: Write access receipt to pod (BP-1 Bidirectional Accountability) ─
+    # Non-blocking side-effect: receipt write failure does NOT affect query result.
+    # Consent grant URI: use ACL resource URI as proxy (PoC — no explicit grant model yet).
+    # Timestamp captured once so all receipts from this query share the same instant.
+    result_shape = _build_result_shape(query_type, bindings)
+    named_graphs = sorted({
+        row.get("g", {}).get("value", "")
+        for row in bindings
+        if row.get("g", {}).get("value")
+    })
+    _receipt_timestamp = _iso_now()
+    _receipt_pods = provenance if provenance else pod_uris
+    for receipt_pod_uri in _receipt_pods:
+        consent_proxy = f"{receipt_pod_uri}.acl"
+        try:
+            write_access_receipt(
+                agent_webid=webid,
+                query_type=query_type,
+                pod_uri=receipt_pod_uri,
+                consent_grant_uri=consent_proxy,
+                result_shape=result_shape,
+                named_graphs=named_graphs,
+                timestamp=_receipt_timestamp,
+            )
+        except Exception as _exc:  # noqa: BLE001
+            _log("WARN", "sparql.receipt.exception", agent_id,
+                 {"error": str(_exc), "pod_uri": receipt_pod_uri,
+                  "note": "query result unaffected"}, duration_ms)
 
     return {
         "status": "success",

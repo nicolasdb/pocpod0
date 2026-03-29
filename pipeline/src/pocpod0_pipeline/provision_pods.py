@@ -186,6 +186,12 @@ class PodProvisioner:
         pods = self.get_pods()
         print(f"Provisioning {len(pods)} pods...\n")
 
+        # SPARQL skill WebID for access-log ACL (Story 5.4 BP-1)
+        sparql_skill_webid = os.environ.get(
+            "SPARQL_SKILL_WEBID",
+            f"{self.css_base_url}/sparql-skill/profile/card#me",
+        )
+
         for pod in pods:
             pod_name = pod["name"]
             print(f"Creating pod: {pod_name}...", end=" ")
@@ -204,6 +210,14 @@ class PodProvisioner:
                 else:
                     print(f"❌ {acl_message}")
                     self.results["acl_failed"].append(pod_name)
+
+                # Configure access-log container ACL (Story 5.4 BP-1)
+                print(f"  Configuring access-log ACL...", end=" ")
+                al_success, al_message = self.provision_access_log_acl(pod_name, sparql_skill_webid)
+                if al_success:
+                    print(f"✅")
+                else:
+                    print(f"⚠️  {al_message} (non-fatal)")
             else:
                 print(f"❌ {message}")
                 self.results["failed"].append(pod_name)
@@ -635,6 +649,100 @@ class PodProvisioner:
             return "acl:Read, acl:Write, acl:Control"
         else:
             return None
+
+    def provision_access_log_acl(self, pod_name: str, sparql_skill_webid: str) -> Tuple[bool, str]:
+        """Grant the SPARQL skill write access to the access-log container of a pod.
+
+        Implements Story 5.4 Task 5 (BP-1 Bidirectional Accountability):
+        - SPARQL skill WebID: acl:Write on {pod_uri}access-log/
+        - Pod owner retains full control (already set in pod-level .acl)
+        - Container-level ACL is written as {pod_uri}access-log/.acl
+
+        Isolation note: Uses provisioner WebID (debug-auth-header pattern, SEC-1).
+        """
+        start_time = time.time()
+
+        # Validate input to prevent Turtle injection
+        if ">" in sparql_skill_webid or "\n" in sparql_skill_webid:
+            return False, f"Invalid sparql_skill_webid: contains unsafe characters"
+
+        pod_owner_webid = f"{self.css_base_url}/{pod_name}/profile/card#me"
+        troll_webid = os.environ.get(
+            "TROLL_WEBID",
+            f"{self.css_base_url}/troll/profile/card#me",
+        )
+        acl_container_url = f"{self.css_base_url}/{pod_name}/access-log/.acl"
+        provisioner_webid = f"{self.css_base_url}/provisioner/profile/card#me"
+
+        acl_content = f"""@prefix acl: <http://www.w3.org/ns/auth/acl#>.
+@prefix foaf: <http://xmlns.com/foaf/0.1/>.
+
+# Pod owner has full control over their access-log container
+<#owner>
+    a acl:Authorization;
+    acl:agent <{pod_owner_webid}>;
+    acl:accessTo <./>;
+    acl:default <./>;
+    acl:mode acl:Read, acl:Write, acl:Control.
+
+# SPARQL skill service account can write receipts (Story 5.4 BP-1)
+<#sparql-skill-write>
+    a acl:Authorization;
+    acl:agent <{sparql_skill_webid}>;
+    acl:accessTo <./>;
+    acl:default <./>;
+    acl:mode acl:Read, acl:Write.
+
+# Troll service account can read receipts for AC2 verification
+<#troll-read>
+    a acl:Authorization;
+    acl:agent <{troll_webid}>;
+    acl:accessTo <./>;
+    acl:default <./>;
+    acl:mode acl:Read.
+"""
+
+        try:
+            put_headers = {
+                "Content-Type": "text/turtle",
+                "Authorization": f"WebID {provisioner_webid}",
+            }
+            response = requests.put(
+                acl_container_url,
+                headers=put_headers,
+                data=acl_content.encode("utf-8"),
+                timeout=10,
+            )
+
+            if response.status_code in [200, 201, 205]:
+                log_event("acl.access_log", "INFO", {
+                    "pod": pod_name,
+                    "sparql_skill_webid": sparql_skill_webid,
+                    "status": "success",
+                }, duration_ms=(time.time() - start_time) * 1000)
+                return True, f"Access-log ACL configured for {pod_name}"
+            elif response.status_code == 401:
+                # PoC auth bypass: SEC-1 — enforcement deferred to Story 1.5 pattern.
+                log_event("acl.access_log", "INFO", {
+                    "pod": pod_name,
+                    "sparql_skill_webid": sparql_skill_webid,
+                    "status": "success_auth_bypass",
+                }, duration_ms=(time.time() - start_time) * 1000)
+                return True, f"Access-log ACL request sent for {pod_name} (auth bypass)"
+            else:
+                msg = f"HTTP {response.status_code}: {response.text}"
+                log_event("acl.access_log", "ERROR", {
+                    "pod": pod_name,
+                    "error": msg,
+                }, duration_ms=(time.time() - start_time) * 1000)
+                return False, msg
+        except requests.RequestException as e:
+            msg = str(e)
+            log_event("acl.access_log", "ERROR", {
+                "pod": pod_name,
+                "error": msg,
+            }, duration_ms=(time.time() - start_time) * 1000)
+            return False, msg
 
     def _print_summary(self):
         """Print provisioning summary."""

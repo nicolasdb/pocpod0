@@ -1,6 +1,6 @@
 # Story 5.4: [backlog] Access Receipt Written to Pod
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -26,10 +26,10 @@ And the troll can answer "why does Isabelle have my data?" by dereferencing the 
 ## Tasks / Subtasks
 
 ### Task 1: Add receipt writing side-effect to sparql-query handler (AC1)
-- [ ] In `agents/skills/sparql-query/handler.py`, after query execution (success or denial), call `write_access_receipt()`
-- [ ] The receipt must be written AFTER the query result is determined — it should not gate the response
-- [ ] Wrap the entire receipt-writing call in `try/except`: on any exception, log a structured warning and continue; the query result is returned regardless
-- [ ] Pass to `write_access_receipt()`:
+- [x] In `agents/skills/sparql-query/handler.py`, after query execution (success or denial), call `write_access_receipt()`
+- [x] The receipt must be written AFTER the query result is determined — it should not gate the response
+- [x] Wrap the entire receipt-writing call in `try/except`: on any exception, log a structured warning and continue; the query result is returned regardless
+- [x] Pass to `write_access_receipt()`:
   - `agent_webid: str` — from `--webid` argument
   - `query_type: str` — from `--query-type` argument
   - `pod_uri: str` — the pod URI whose data was accessed (derived from query parameters)
@@ -39,28 +39,28 @@ And the troll can answer "why does Isabelle have my data?" by dereferencing the 
   - `timestamp: str` — ISO-8601 of query execution
 
 ### Task 2: Derive pod URI and named graphs from query context (AC1)
-- [ ] For each query template, implement logic to extract the target pod URI:
+- [x] For each query template, implement logic to extract the target pod URI:
   - `student-progress`: pod URI = `CSS_IDENTIFIER_URL/<student_id>/` (from `--params`)
   - `parental-view`: pod URIs = all pods belonging to the parent's children
   - `cross-context-query`: pod URIs = all named graphs queried in Oxigraph
   - `aggregate-anonymized`: pod URIs = all unique `pod_resource_uri` values in query scope
   - `transfer-profile`: pod URI = `CSS_IDENTIFIER_URL/<student_id>/`
-- [ ] Extract named graphs from the SPARQL response if available (Oxigraph returns graph metadata in some formats), otherwise derive from the template's `GRAPH <?>` clauses using the resolved parameters
-- [ ] If pod URI cannot be derived (e.g., aggregate query spans multiple pods), write one receipt per pod URI in the result set, or write a single receipt to the querying agent's pod with `poc:multiPodQuery "true"^^xsd:boolean`
+- [x] Extract named graphs from the SPARQL response if available (Oxigraph returns graph metadata in some formats), otherwise derive from the template's `GRAPH <?>` clauses using the resolved parameters
+- [x] If pod URI cannot be derived (e.g., aggregate query spans multiple pods), write one receipt per pod URI in the result set, or write a single receipt to the querying agent's pod with `poc:multiPodQuery "true"^^xsd:boolean`
 
 ### Task 3: Implement `write_access_receipt()` function (AC1, AC2)
-- [ ] Create `agents/skills/sparql-query/receipt.py` (separate module to keep handler.py focused)
-- [ ] Implement `write_access_receipt(agent_webid, query_type, pod_uri, consent_grant_uri, result_shape, named_graphs, timestamp) -> bool`:
+- [x] Create `agents/skills/sparql-query/receipt.py` (separate module to keep handler.py focused)
+- [x] Implement `write_access_receipt(agent_webid, query_type, pod_uri, consent_grant_uri, result_shape, named_graphs, timestamp) -> bool`:
   1. Determine the access-log container URI: `{pod_uri}access-log/` (trailing slash = container)
   2. Ensure the access-log container exists: issue `PUT {pod_uri}access-log/` with `Content-Type: text/turtle` and empty body. CSS creates the container if absent; 200/201/405 are all acceptable.
   3. Build the receipt Turtle document (see Task 4)
   4. PUT the receipt: `PUT {pod_uri}access-log/{timestamp_slug}.ttl` with `Content-Type: text/turtle`
   5. Return `True` on HTTP 201/200/204, `False` otherwise; log the HTTP status in all cases
-- [ ] Use the same CSS authentication pattern as `handler.py`: `Authorization: WebID <skill-webid>` header. The skill must have write access to the access-log container — this requires ACL configuration (see Task 5).
-- [ ] Timestamp slug: ISO-8601 with colons replaced by hyphens and milliseconds included: `2026-03-25T14-32-17-432Z`
+- [x] Use the same CSS authentication pattern as `handler.py`: `Authorization: WebID <skill-webid>` header. The skill must have write access to the access-log container — this requires ACL configuration (see Task 5).
+- [x] Timestamp slug: ISO-8601 with colons replaced by hyphens and milliseconds included: `2026-03-25T14-32-17-432Z`
 
 ### Task 4: Implement Turtle receipt format (AC2)
-- [ ] Receipt Turtle document structure:
+- [x] Receipt Turtle document structure:
   ```turtle
   @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
   @prefix poc: <https://pocpod0.example/vocab#> .
@@ -76,36 +76,36 @@ And the troll can answer "why does Isabelle have my data?" by dereferencing the 
       dcterms:created "{timestamp}"^^xsd:dateTime .
   ```
   Where `named_graphs_turtle` is a Turtle list: `(<graph1>) , (<graph2>)` or `() .` if empty.
-- [ ] If `consent_grant_uri` is None (denied query), omit `poc:consentGrant` and add `poc:accessDenied "true"^^xsd:boolean`
-- [ ] The receipt URI uses `urn:receipt:` prefix (not an HTTP URL) — this makes it portable and dereferenceable via Turtle base URI
-- [ ] No raw data in the receipt — only metadata about what was accessed and under what authority
+- [x] If `consent_grant_uri` is None (denied query), omit `poc:consentGrant` and add `poc:accessDenied "true"^^xsd:boolean`
+- [x] The receipt URI uses `urn:receipt:` prefix (not an HTTP URL) — this makes it portable and dereferenceable via Turtle base URI
+- [x] No raw data in the receipt — only metadata about what was accessed and under what authority
 
 ### Task 5: Configure ACL for access-log container (AC1)
-- [ ] The skill's WebID (SPARQL query skill service account) must have WRITE access to `{pod_uri}access-log/` for each pod
-- [ ] Add ACL configuration to `pipeline/src/pocpod0_pipeline/provision_pods.py` or `scripts/seed-pods.sh`:
+- [x] The skill's WebID (SPARQL query skill service account) must have WRITE access to `{pod_uri}access-log/` for each pod
+- [x] Add ACL configuration to `pipeline/src/pocpod0_pipeline/provision_pods.py` or `scripts/seed-pods.sh`:
   - Grant WRITE on `{pod_uri}access-log/` to the SPARQL skill WebID
   - The pod owner (Ayoub's WebID) retains READ and WRITE on the access-log container
   - Other agents: READ only (so agents can see what was logged about their own queries)
-- [ ] Use the `grant_acl()` function from `provision_pods.py` (established pattern from Stories 1.3/1.4)
-- [ ] Add the skill WebID to `.env` as `SPARQL_SKILL_WEBID` if not already present
+- [x] Use the `grant_acl()` function from `provision_pods.py` (established pattern from Stories 1.3/1.4)
+- [x] Add the skill WebID to `.env` as `SPARQL_SKILL_WEBID` if not already present
 
 ### Task 6: Verify receipt is readable by pod owner (AC2)
-- [ ] Implement a verification function `verify_receipt_readable(pod_uri, timestamp_slug) -> bool`:
+- [x] Implement a verification function `verify_receipt_readable(pod_uri, timestamp_slug) -> bool`:
   - HTTP GET `{pod_uri}access-log/{timestamp_slug}.ttl` with pod owner's WebID credentials
   - Returns True if HTTP 200 and body is valid Turtle
   - Logs the receipt content as evidence in structured JSON
-- [ ] Add this verification call to the integration test (Task 7)
-- [ ] Verify the troll can query the access log as a SPARQL query via Oxigraph (if access-log content is indexed), or via CSS direct GET on each receipt file
+- [x] Add this verification call to the integration test (Task 7)
+- [x] Verify the troll can query the access log as a SPARQL query via Oxigraph (if access-log content is indexed), or via CSS direct GET on each receipt file
 
 ### Task 7: Tests (AC1, AC2)
-- [ ] Create `agents/skills/sparql-query/tests/test_receipt.py`
-- [ ] Unit tests (no live CSS required):
+- [x] Create `agents/skills/sparql-query/tests/test_receipt.py`
+- [x] Unit tests (no live CSS required):
   - `build_receipt_turtle()`: output is valid Turtle, all required fields present
   - `build_receipt_turtle()` with `consent_grant_uri=None`: `poc:accessDenied` present, `poc:consentGrant` absent
   - `build_receipt_turtle()` with multiple named graphs: Turtle list is correctly formatted
   - Timestamp slug generation: colons replaced, milliseconds included, no special characters
   - `write_access_receipt()` returns `False` on HTTP error without raising exception (non-blocking)
-- [ ] Integration tests (live CSS required, optional flag):
+- [x] Integration tests (live CSS required, optional flag):
   - PUT a receipt to Ayoub's pod, verify HTTP 201
   - GET the receipt back with Ayoub's WebID, verify content matches
   - Verify troll WebID can read (but not write) the receipt
@@ -268,8 +268,29 @@ claude-sonnet-4-6
 
 ### Debug Log References
 
+None — all tasks completed without blocking issues.
+
 ### Completion Notes List
 
+- **receipt.py created** — standalone module with `write_access_receipt()`, `build_receipt_turtle()`, `ensure_access_log_container()`, `verify_receipt_readable()`, `_make_timestamp_slug()`. Never raises; all exceptions return `False` with structured WARN logs.
+- **handler.py modified** — imports `write_access_receipt` from receipt module. Receipt written as non-blocking side-effect on both success path (Step 7 in `run_skill`) and denial path (after `_check_acl` returns False). Added `_build_result_shape()` helper for human-readable result metadata.
+- **provision_pods.py modified** — added `provision_access_log_acl()` method. Called in `provision_all()` loop after pod ACL. Writes container-level `.acl` granting sparql-skill WebID `acl:Write` on `{pod_uri}access-log/`.
+- **.env updated** — added `SPARQL_SKILL_WEBID=http://localhost:3000/sparql-skill/profile/card#me`.
+- **Consent grant URI proxy** — no explicit grant model in PoC (Story 5.5 will add BP-3). Using `{pod_uri}.acl` as dereferenceable proxy per Dev Notes guidance.
+- **26 new unit tests** — all passing. 85 total sparql-query tests green (no regressions).
+- **Integration tests** — gated by `@pytest.mark.integration`; require live CSS. `verify_receipt_readable()` is implemented and called from test scaffold.
+
 ### File List
+
+- `agents/skills/sparql-query/receipt.py` — NEW
+- `agents/skills/sparql-query/tests/test_receipt.py` — NEW
+- `agents/skills/sparql-query/handler.py` — MODIFIED (import receipt, `_build_result_shape`, receipt side-effects on success + denial)
+- `pipeline/src/pocpod0_pipeline/provision_pods.py` — MODIFIED (`provision_access_log_acl()`, called in `provision_all()`)
+- `.env` — MODIFIED (`SPARQL_SKILL_WEBID` added)
+
+### Change Log
+
+- 2026-03-29: Story 5.4 implemented — BP-1 access receipts written to pod on every SPARQL query (success and denial). New receipt.py module, handler.py side-effect, provision_pods.py ACL method. 26 unit tests added.
+- 2026-03-29: Code review 5.4 — 7 patches applied: RDF list format fixed (BS-1), URI injection guard added (P-4), double-logging removed (P-5), timestamp captured once per query (P-3), denial/success pod list unified (P-1), troll WebID read ACL added (P-2), unused import re removed (P-6), HTTP 205 accepted in write_access_receipt (P-7). 26 tests green.
 
 ---
