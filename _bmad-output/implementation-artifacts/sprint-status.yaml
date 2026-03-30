@@ -1,7 +1,7 @@
 ---
 project_name: pocpod0
 sprint_generated: 2026-03-18
-last_updated: 2026-03-30  # story 5-6 implemented, ready for review
+last_updated: 2026-03-30
 tracking_system: file-system
 project_key: NOKEY
 communication_language: English
@@ -49,7 +49,7 @@ development_status:
   # Anagnorisis narrative enriches consent mechanics (consent-as-architecture, access receipts,
   # tombstone revocation, civic signal). Build consent machinery first.
   # Epic 5 stories need review against consent-as-architecture before implementation.
-  epic-5: in-progress
+  epic-5: done
   story-5-1-ayoub-governance-transition: done
   story-5-2-deletion-cascade-propagation: done
   story-5-3-troll-deletion-timing-validation: done
@@ -57,13 +57,19 @@ development_status:
   story-5-4-access-receipt-written-to-pod: done
   story-5-5-consent-grant-as-rdf-resource: done
   story-5-6-ephemeral-time-scoped-consent: done
-  epic-5-retrospective: optional
+  epic-5-retrospective: done
+  # NOTE (2026-03-30): Retro confirmed — all 6 stories shipped incl. 3 Anagnorisis backlog stories.
+  # LEGACY-PRIV1: pre-5.2 Qdrant points carry pod_resource_uri — handled by compose down -v reset (no migration needed for PoC).
+  # camp-dietary-aggregate.ttl not wired into pipeline — Story 6.0 added to fix.
+  # Demo reset strategy: compose down -v → up -d → run_pipeline.py (single command after Story 6.0).
 
   # Epic 6: Adversarial Trust Report & Mission Control (RESEQUENCED: was last, now before Epic 4)
   # NOTE (2026-03-25): Dashboard before demo — project lead navigating blind = Isabelle's pain.
   # TUI pivot confirmed: Rich TUI + JSONL (Story 3.7.1 seed), NOT FastAPI+HTMX.
   # Two-terminal demo model: pipeline/troll in one, dashboard in the other.
+  # NOTE (2026-03-30): Story 6.0 added (Epic 5 retro) — pipeline provision as Stage 0.
   epic-6: backlog
+  story-6-0-pipeline-provision-stage-zero: backlog
   story-6-1-troll-comprehensive-run-and-report: backlog
   story-6-2-mission-control-dashboard-implementation: backlog
   story-6-3-funder-intervention-points: backlog
@@ -271,6 +277,13 @@ sprint_backlog_order:
     rationale: "Implements BP-5 (double-aveugle Anagnorisis pattern) — ephemeral token, opaque identity, auto-revocation"
 
   # Epic 6 SECOND (resequenced): dashboard before capstone demo
+  # Story 6.0 added at Epic 5 retro (2026-03-30): provision as Stage 0 + community pod seed
+  19e:
+    story: story-6-0-pipeline-provision-stage-zero
+    epic: epic-6
+    priority: must-ship
+    rationale: "Add Stage 0 to run_pipeline.py: provision_pods.py + camp-dietary-aggregate.ttl seed + JSONL events. Enables single-command full reset for demo (compose down -v → up -d → run_pipeline.py)."
+
   20:
     story: story-6-1-troll-comprehensive-run-and-report
     epic: epic-6
@@ -325,9 +338,9 @@ known_issues:
     source: story-2-8 (vector_privacy.py, 9/14 tests partial)
     severity: medium
     attack_categories_affected: [name-extraction, identity-correlation, location-extraction, grade-extraction]
-    status: open
+    status: fixed
     fix_effort: medium
-    target: epic-5 or epic-6
+    target: epic-5 (implemented in story-5-2)
     proposed_fix: >
       At embed time, store an opaque UUID (derived from pod_resource_uri via SHA-256)
       in the Qdrant payload instead of the raw URI. Maintain a separate lookup index
@@ -356,4 +369,3 @@ known_issues:
       acceptable risk with explanation. No code change needed.
 
 # Ready to implement: call 'bmad-create-story' with story ID from sprint_backlog_order to begin work
-
