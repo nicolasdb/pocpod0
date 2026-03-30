@@ -16,6 +16,7 @@ Isolation notes:
   - From within distrobox: use distrobox-host-exec for podman exec CSS curl commands
 """
 
+import hashlib
 import json
 import os
 import re
@@ -25,6 +26,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+import httpx
 import requests
 from jinja2 import Environment, FileSystemLoader
 from rdflib import Graph
@@ -36,12 +38,25 @@ from pocpod0_pipeline.utils import log_event, repo_root
 _ROOT = repo_root()
 _TEMPLATE_DIR = _ROOT / "infra" / "css" / "pods"
 _TEMPLATE_NAME = "consent-grant.ttl.j2"
+_EPHEMERAL_TEMPLATE_NAME = "ephemeral-consent-grant.ttl.j2"
 _CONSENT_EVENTS_PATH = _ROOT / "data" / "consent-events.jsonl"
 _CSS_BASE_URL = os.environ.get("CSS_BASE_URL", "http://localhost:3000")
 _PROVISIONER_WEBID = f"{_CSS_BASE_URL}/provisioner/profile/card#me"
+_OXIGRAPH_URL = os.environ.get("OXIGRAPH_URL", "http://localhost:7878")
 
 
 # ─── data classes ─────────────────────────────────────────────────────────────
+
+@dataclass
+class EphemeralGrantResult:
+    grant_id: str
+    grant_uri: str
+    pod_name: str
+    token_id: str
+    expires_at: str
+    status: str  # "ok" | "error"
+    error_message: str = ""
+
 
 @dataclass
 class ConsentGrantResult:
@@ -500,6 +515,263 @@ def list_consent_grants(pod_name: str) -> list:
             grant_data["grant_id"] = grant_id
             results.append(grant_data)
     return results
+
+
+# ─── ephemeral consent — token generation & index ────────────────────────────
+
+def generate_token(pod_uri: str, grant_timestamp: str) -> str:
+    """Generate a deterministic opaque 16-char hex token from pod_uri + grant_timestamp.
+
+    The token is SHA-256[:16] of the concatenation. It is NOT reversible without both
+    inputs; the food service sees only the token and cannot derive Ayoub's identity.
+    """
+    raw = f"{pod_uri}{grant_timestamp}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+
+
+def register_token(
+    token_id: str,
+    pod_uri: str,
+    grant_id: str,
+    issued_at: str,
+    expires_at: str,
+    oxigraph_url: str = _OXIGRAPH_URL,
+) -> None:
+    """Register token→pod_uri mapping in Oxigraph <urn:token-index> named graph.
+
+    Raises RuntimeError on HTTP failure (caller must treat this as a hard abort).
+    The token index is readable by school admin only — the food service never queries it.
+    """
+    query = (
+        "PREFIX poc: <http://localhost:3000/vocab/pocpod0#>\n"
+        "PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>\n"
+        "INSERT DATA {\n"
+        "  GRAPH <urn:token-index> {\n"
+        f"    <urn:token:{token_id}> poc:tokenFor <{pod_uri}> ;\n"
+        f'                           poc:grantId "{grant_id}" ;\n'
+        f'                           poc:issuedAt "{issued_at}"^^xsd:dateTime ;\n'
+        f'                           poc:expiresAt "{expires_at}"^^xsd:dateTime .\n'
+        "  }\n"
+        "}"
+    )
+    resp = httpx.post(
+        f"{oxigraph_url.rstrip('/')}/update",
+        content=query.encode("utf-8"),
+        headers={"Content-Type": "application/sparql-update"},
+        timeout=30,
+    )
+    if resp.status_code not in (200, 204):
+        raise RuntimeError(f"Token registration failed: HTTP {resp.status_code}")
+
+
+def lookup_token(token_id: str, oxigraph_url: str = _OXIGRAPH_URL) -> Optional[dict]:
+    """Look up token in <urn:token-index>. Returns dict or None if not found/error.
+
+    School-admin-only operation. The food service never calls this.
+    """
+    query = (
+        "PREFIX poc: <http://localhost:3000/vocab/pocpod0#>\n"
+        "SELECT ?pod_uri ?grant_id ?issued_at ?expires_at WHERE {\n"
+        "  GRAPH <urn:token-index> {\n"
+        f"    <urn:token:{token_id}> poc:tokenFor ?pod_uri ;\n"
+        "                           poc:grantId ?grant_id ;\n"
+        "                           poc:issuedAt ?issued_at ;\n"
+        "                           poc:expiresAt ?expires_at .\n"
+        "  }\n"
+        "}"
+    )
+    resp = httpx.post(
+        f"{oxigraph_url.rstrip('/')}/query",
+        content=query.encode("utf-8"),
+        headers={"Content-Type": "application/sparql-query", "Accept": "application/sparql-results+json"},
+        timeout=30,
+    )
+    if resp.status_code != 200:
+        return None
+    bindings = resp.json().get("results", {}).get("bindings", [])
+    if not bindings:
+        return None
+    b = bindings[0]
+    return {
+        "pod_uri": b["pod_uri"]["value"],
+        "grant_id": b["grant_id"]["value"],
+        "issued_at": b["issued_at"]["value"],
+        "expires_at": b["expires_at"]["value"],
+    }
+
+
+def deregister_token(token_id: str, oxigraph_url: str = _OXIGRAPH_URL) -> None:
+    """Remove token triples from <urn:token-index>. Called on expiry/revocation.
+
+    Raises RuntimeError on HTTP failure.
+    The tombstone in the pod Turtle remains; only the lookup index entry is removed.
+    """
+    query = (
+        "PREFIX poc: <http://localhost:3000/vocab/pocpod0#>\n"
+        "DELETE WHERE {\n"
+        "  GRAPH <urn:token-index> {\n"
+        f"    <urn:token:{token_id}> ?p ?o .\n"
+        "  }\n"
+        "}"
+    )
+    resp = httpx.post(
+        f"{oxigraph_url.rstrip('/')}/update",
+        content=query.encode("utf-8"),
+        headers={"Content-Type": "application/sparql-update"},
+        timeout=30,
+    )
+    if resp.status_code not in (200, 204):
+        raise RuntimeError(f"Token deregistration failed: HTTP {resp.status_code}")
+
+
+def _render_ephemeral_turtle(
+    grant_uri: str,
+    service_label: str,
+    token_id: str,
+    purpose: str,
+    scope: str,
+    excluded: str,
+    consequence_of_refusal: str,
+    granted_at: str,
+    expires_at: str,
+) -> str:
+    """Render the ephemeral consent grant Jinja2 Turtle template and validate with rdflib."""
+    env = Environment(loader=FileSystemLoader(str(_TEMPLATE_DIR)), autoescape=False)
+    template = env.get_template(_EPHEMERAL_TEMPLATE_NAME)
+    turtle_str = template.render(
+        grant_uri=grant_uri,
+        service_label=_safe_literal(service_label),
+        token_id=token_id,
+        purpose=_safe_literal(purpose),
+        scope=_safe_literal(scope),
+        excluded=_safe_literal(excluded),
+        consequence_of_refusal=_safe_literal(consequence_of_refusal),
+        granted_at=granted_at,
+        expires_at=expires_at,
+    )
+    g = Graph()
+    g.parse(data=turtle_str, format="turtle")
+    return turtle_str
+
+
+def create_ephemeral_consent_grant(
+    pod_name: str,
+    service_label: str,
+    purpose: str,
+    scope: str,
+    excluded: str,
+    consequence_of_refusal: str,
+    expires_at: str,
+    oxigraph_url: str = _OXIGRAPH_URL,
+) -> EphemeralGrantResult:
+    """Create an ephemeral time-scoped consent grant with opaque token (BP-5).
+
+    The food service receives only the token_id — never Ayoub's WebID or pod URI.
+    Three operations must all succeed or all roll back:
+      1. Token registration in Oxigraph <urn:token-index>
+      2. Turtle write to CSS pod
+      3. JSONL event (telemetry — does not block)
+
+    ACL grant is intentionally omitted here: ephemeral grants use a pod-level resource
+    scoped by token rather than a WebID-based ACL rule.
+    """
+    granted_at = _now_iso()
+    pod_uri = f"{_CSS_BASE_URL}/{pod_name}/"
+    token_id = generate_token(pod_uri, granted_at)
+
+    service_slug = re.sub(r"[^a-z0-9\-]", "-", service_label.lower())[:20].strip("-")
+    date_tag = granted_at[:10].replace("-", "")
+    base_id = f"grant-{pod_name}-{service_slug}-{date_tag}"
+    grant_id = _resolve_grant_id_no_collision(pod_name, base_id)
+    if grant_id is None:
+        return EphemeralGrantResult(
+            grant_id=base_id, grant_uri="", pod_name=pod_name,
+            token_id=token_id, expires_at=expires_at, status="error",
+            error_message="Grant ID collision: could not allocate unique ID",
+        )
+
+    grant_uri = f"{_CSS_BASE_URL}/{pod_name}/consent-grants/{grant_id}"
+    grant_resource_url = f"{grant_uri}.ttl"
+
+    # Step 1: render + validate Turtle
+    try:
+        turtle_str = _render_ephemeral_turtle(
+            grant_uri=grant_uri,
+            service_label=service_label,
+            token_id=token_id,
+            purpose=purpose,
+            scope=scope,
+            excluded=excluded,
+            consequence_of_refusal=consequence_of_refusal,
+            granted_at=granted_at,
+            expires_at=expires_at,
+        )
+    except Exception as e:
+        return EphemeralGrantResult(
+            grant_id=grant_id, grant_uri=grant_uri, pod_name=pod_name,
+            token_id=token_id, expires_at=expires_at, status="error",
+            error_message=f"Turtle render failed: {e}",
+        )
+
+    # Step 2: register token in Oxigraph index (must succeed before CSS write)
+    try:
+        register_token(token_id, pod_uri, grant_id, granted_at, expires_at, oxigraph_url)
+    except Exception as e:
+        return EphemeralGrantResult(
+            grant_id=grant_id, grant_uri=grant_uri, pod_name=pod_name,
+            token_id=token_id, expires_at=expires_at, status="error",
+            error_message=f"Token index registration failed: {e}",
+        )
+
+    # Step 3: HTTP PUT to CSS pod
+    try:
+        headers = _provisioner_headers("text/turtle")
+        resp = requests.put(grant_resource_url, headers=headers, data=turtle_str.encode("utf-8"), timeout=10)
+        if resp.status_code not in (200, 201, 205):
+            _rollback_token(token_id, oxigraph_url, pod_name, grant_id)
+            return EphemeralGrantResult(
+                grant_id=grant_id, grant_uri=grant_uri, pod_name=pod_name,
+                token_id=token_id, expires_at=expires_at, status="error",
+                error_message=f"CSS PUT failed: HTTP {resp.status_code}",
+            )
+    except requests.RequestException as e:
+        _rollback_token(token_id, oxigraph_url, pod_name, grant_id)
+        return EphemeralGrantResult(
+            grant_id=grant_id, grant_uri=grant_uri, pod_name=pod_name,
+            token_id=token_id, expires_at=expires_at, status="error",
+            error_message=f"CSS PUT exception: {e}",
+        )
+
+    # Step 4: emit JSONL event (telemetry — never blocks governance)
+    _emit_consent_event({
+        "event_type": "consent.grant",
+        "timestamp": granted_at,
+        "pod": pod_name,
+        "grant_id": grant_id,
+        "grantee": service_label,
+        "purpose": purpose,
+        "token_id": token_id,
+        "expires_at": expires_at,
+    })
+
+    log_event("consent.ephemeral.grant", "INFO", {
+        "pod": pod_name, "grant_id": grant_id,
+        "token_id": token_id, "expires_at": expires_at, "status": "ok",
+    })
+    return EphemeralGrantResult(
+        grant_id=grant_id, grant_uri=grant_uri, pod_name=pod_name,
+        token_id=token_id, expires_at=expires_at, status="ok",
+    )
+
+
+def _rollback_token(token_id: str, oxigraph_url: str, pod_name: str, grant_id: str) -> None:
+    """Best-effort rollback: deregister token from index after CSS write failure."""
+    try:
+        deregister_token(token_id, oxigraph_url)
+    except Exception as exc:
+        log_event("consent.ephemeral.rollback_failed", "ERROR", {
+            "pod": pod_name, "grant_id": grant_id, "token_id": token_id, "error": str(exc),
+        })
 
 
 def inject_revocation_filter(query: str, revoked_pod_uris: list) -> str:

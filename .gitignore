@@ -2,6 +2,7 @@
 .directory
 _bmad/
 .claude/
+.gemini/
 steve*
 
 # Data directories (may contain sensitive or large files)

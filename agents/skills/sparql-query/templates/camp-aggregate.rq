@@ -1,0 +1,33 @@
+# camp-aggregate.rq
+# AC3 double-aveugle query: dietary restriction aggregate for summer camp program.
+#
+# This query targets the school-community pod named graph — NOT individual student pods.
+# Structural anonymization (BP-2): GROUP BY ensures only counts are returned.
+# No individual WebID, name, or identity appears in query results.
+#
+# The food service receives individual ephemeral tokens (separate flow).
+# Isabelle queries this aggregate for program planning and policy.
+#
+# Parameters:
+#   $camp_graph — named graph URI of the community pod camp data
+#                 (e.g. http://localhost:3000/school-community/camp/)
+#
+PREFIX poc:  <http://localhost:3000/vocab/pocpod0#>
+PREFIX xsd:  <http://www.w3.org/2001/XMLSchema#>
+
+SELECT
+  (SUM(?noRestriction) AS ?countNoDietaryRestriction)
+  (SUM(?gluten)        AS ?countGlutenIntolerance)
+  (SUM(?nut)           AS ?countNutAllergy)
+  (SUM(?lactose)       AS ?countLactoseIntolerance)
+  (SUM(?total)         AS ?totalEnrollments)
+WHERE {
+  GRAPH $camp_graph {
+    ?aggregate a poc:DietaryAggregate ;
+               poc:totalEnrollments       ?total ;
+               poc:countNoDietaryRestriction ?noRestriction ;
+               poc:countGlutenIntolerance ?gluten ;
+               poc:countNutAllergy        ?nut ;
+               poc:countLactoseIntolerance ?lactose .
+  }
+}

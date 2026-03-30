@@ -1,0 +1,13 @@
+@prefix poc: <http://localhost:3000/vocab/pocpod0#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<{{ grant_uri }}> a poc:ConsentGrant , poc:EphemeralConsentGrant ;
+  poc:token         "{{ token_id }}" ;
+  poc:serviceLabel  "{{ service_label }}" ;
+  poc:purpose       "{{ purpose }}" ;
+  poc:scope         "{{ scope }}" ;
+  poc:excluded      "{{ excluded }}" ;
+  poc:consequenceOfRefusal "{{ consequence_of_refusal }}" ;
+  poc:grantedAt     "{{ granted_at }}"^^xsd:dateTime ;
+  poc:revokedAt     "" ;
+  poc:expiresAt     "{{ expires_at }}"^^xsd:dateTime .

@@ -1,0 +1,10 @@
+@prefix poc: <http://localhost:3000/vocab/pocpod0#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<{{ receipt_uri }}> a poc:AccessReceipt ;
+  poc:token           "{{ token_id }}" ;
+  poc:serviceLabel    "{{ service_label }}" ;
+  poc:grantId         "{{ grant_id }}" ;
+  poc:accessGrantedAt "{{ granted_at }}"^^xsd:dateTime ;
+  poc:accessExpiredAt "{{ expired_at }}"^^xsd:dateTime ;
+  poc:receiptType     "ephemeral-expiry" .
