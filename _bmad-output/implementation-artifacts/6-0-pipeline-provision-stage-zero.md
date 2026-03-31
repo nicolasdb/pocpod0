@@ -1,6 +1,6 @@
 # Story 6.0: Pipeline Provision as Stage 0
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -45,22 +45,22 @@ so that a full demo reset is a single command (`compose down -v && compose up -d
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create `provision_stage.py` module (AC: 1, 2, 4)
-  - [ ] 1.1: New module `pipeline/src/pocpod0_pipeline/provision_stage.py` — callable as `python -m pocpod0_pipeline.provision_stage`
-  - [ ] 1.2: Call `PodProvisioner.provision_all()` with error handling (non-zero exit on failure)
-  - [ ] 1.3: Seed `school-community` pod — HTTP PUT `camp-dietary-aggregate.ttl` to `/school-community/camp/dietary-aggregate-2026` with `Content-Type: text/turtle` and provisioner WebID auth
-  - [ ] 1.4: Handle CSS LDP container auto-creation — PUT to `/school-community/camp/dietary-aggregate-2026` will auto-create `/school-community/camp/` container if CSS is configured to do so; if not, create it first
-  - [ ] 1.5: Exit 0 on success, non-zero on failure
-- [ ] Task 2: Wire Stage 0 into `run_pipeline.py` (AC: 1, 5)
-  - [ ] 2.1: Insert new stage at position 0 in `STAGES` list: `{"name": "provision", "label": "[0/6] Provision pods + seed data", "cmd": [sys.executable, "-m", "pocpod0_pipeline.provision_stage"]}`
-  - [ ] 2.2: Update all existing stage labels from `[1/5]`..`[5/5]` to `[1/6]`..`[5/6]`
-  - [ ] 2.3: Stage 0 uses the same `run_stage()` framework — JSONL events are automatic
-- [ ] Task 3: Wire `--wipe` flag to also wipe community pod seed data (AC: 4)
-  - [ ] 3.1: The existing `wipe_css_pods()` already recursively deletes `learning/` containers — verify it also covers `camp/` container in `school-community`, or extend to cover community pod seed paths
-- [ ] Task 4: Tests (AC: 1-5)
-  - [ ] 4.1: Unit test for `provision_stage.py` — mock `PodProvisioner` and CSS PUT, verify calls and exit codes
-  - [ ] 4.2: Verify STAGES list has 6 entries with correct labels
-  - [ ] 4.3: Verify stage 0 is first in execution order
+- [x] Task 1: Create `provision_stage.py` module (AC: 1, 2, 4)
+  - [x] 1.1: New module `pipeline/src/pocpod0_pipeline/provision_stage.py` — callable as `python -m pocpod0_pipeline.provision_stage`
+  - [x] 1.2: Call `PodProvisioner.provision_all()` with error handling (non-zero exit on failure)
+  - [x] 1.3: Seed `school-community` pod — HTTP PUT `camp-dietary-aggregate.ttl` to `/school-community/camp/dietary-aggregate-2026` with `Content-Type: text/turtle` and provisioner WebID auth
+  - [x] 1.4: Handle CSS LDP container auto-creation — PUT to `/school-community/camp/dietary-aggregate-2026` will auto-create `/school-community/camp/` container if CSS is configured to do so; if not, create it first
+  - [x] 1.5: Exit 0 on success, non-zero on failure
+- [x] Task 2: Wire Stage 0 into `run_pipeline.py` (AC: 1, 5)
+  - [x] 2.1: Insert new stage at position 0 in `STAGES` list: `{"name": "provision", "label": "[0/6] Provision pods + seed data", "cmd": [sys.executable, "-m", "pocpod0_pipeline.provision_stage"]}`
+  - [x] 2.2: Update all existing stage labels from `[1/5]`..`[5/5]` to `[1/6]`..`[5/6]`
+  - [x] 2.3: Stage 0 uses the same `run_stage()` framework — JSONL events are automatic
+- [x] Task 3: Wire `--wipe` flag to also wipe community pod seed data (AC: 4)
+  - [x] 3.1: The existing `wipe_css_pods()` already recursively deletes `learning/` containers — verify it also covers `camp/` container in `school-community`, or extend to cover community pod seed paths
+- [x] Task 4: Tests (AC: 1-5)
+  - [x] 4.1: Unit test for `provision_stage.py` — mock `PodProvisioner` and CSS PUT, verify calls and exit codes
+  - [x] 4.2: Verify STAGES list has 6 entries with correct labels
+  - [x] 4.3: Verify stage 0 is first in execution order
 
 ## Dev Notes
 
@@ -155,9 +155,47 @@ Recommend Option 2 for PoC simplicity — `--wipe` is a partial cleanup tool, `c
 ## Dev Agent Record
 
 ### Agent Model Used
+Claude Haiku 4.5
 
 ### Debug Log References
+- Stage 0 provision_stage.py: successfully mocks PodProvisioner, CSS PUT with content negotiation
+- run_pipeline.py: STAGES list updated to 6 entries with correct labels [0/6]...[5/6]
+- wipe_css_pods() extended to clean up camp/ container in school-community pod
+- All 14 unit tests passing (CSS health checks, seed content validation, error handling, stage ordering)
 
 ### Completion Notes List
+✅ **Provision_stage.py (Task 1)**: Module created at `pipeline/src/pocpod0_pipeline/provision_stage.py`
+- Calls `PodProvisioner.provision_all()` to create all pods and apply ACLs
+- Seeds school-community pod with camp-dietary-aggregate.ttl via HTTP PUT
+- Handles CSS LDP container auto-creation: creates /school-community/camp/ container if needed
+- Exits 0 on success, non-zero on failure (delegated to PodProvisioner and seed function)
+- Uses `requests` library (consistent with provision_pods.py)
+- Properly resolves CSS_BASE_URL and pod-config.yaml from environment/defaults
+
+✅ **Stage 0 wiring (Task 2)**: STAGES list modified in `run_pipeline.py`
+- Stage 0 inserted at position 0 with name="provision"
+- Label correctly set to "[0/6] Provision pods + seed data"
+- All existing stages updated from [1/5]..[5/5] to [1/6]..[5/6]
+- Stage 0 uses standard `run_stage()` framework (JSONL events are automatic via run_pipeline.py)
+
+✅ **Wipe functionality (Task 3)**: `wipe_css_pods()` extended
+- Now recursively deletes camp/ container in school-community pod
+- Maintains existing learning/ container deletion for all pods
+- Handles 404 gracefully (container already empty)
+- Provides detailed logging of deleted resources
+
+✅ **Tests (Task 4)**: All 14 unit tests created and passing
+- test_get_css_base_url_* (3 tests): CSS URL resolution from env/defaults
+- test_get_config_path (1 test): pod-config.yaml discovery from module path
+- test_seed_community_pod_* (3 tests): CSS PUT with content negotiation, container creation, error handling
+- test_main_* (3 tests): full integration of provisioning + seeding with error cases
+- test_stages_* (4 tests): STAGES list validation (6 entries, correct labels, Stage 0 first)
 
 ### File List
+
+**Created:**
+- `pipeline/src/pocpod0_pipeline/provision_stage.py` — Stage 0 module (provision pods + seed data)
+- `pipeline/tests/test_provision_stage.py` — Unit tests for provision_stage and STAGES list
+
+**Modified:**
+- `pipeline/run_pipeline.py` — Added Stage 0 to STAGES list, updated all stage labels (6 stages instead of 5), extended wipe_css_pods() to clean camp/ container

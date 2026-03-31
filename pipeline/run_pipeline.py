@@ -53,29 +53,34 @@ def _emit(event_type: str, **data) -> None:
 
 STAGES = [
     {
+        "name": "provision",
+        "label": "[0/6] Provision pods + seed data",
+        "cmd": [sys.executable, "-m", "pocpod0_pipeline.provision_stage"],
+    },
+    {
         "name": "generate-troll",
-        "label": "[1/5] Generate troll load",
+        "label": "[1/6] Generate troll load",
         "cmd": [sys.executable, "-m", "pocpod0_pipeline.generate_troll_load"],
     },
     {
         "name": "generate-scenarios",
-        "label": "[2/5] Generate scenario data",
+        "label": "[2/6] Generate scenario data",
         "cmd": [sys.executable, "-m", "pocpod0_pipeline.generate_scenarios"],
     },
     {
         "name": "ingest",
-        "label": "[3/5] Ingest xAPI → CSS Pods (RDF)",
+        "label": "[3/6] Ingest xAPI → CSS Pods (RDF)",
         "cmd": [sys.executable, "-m", "pocpod0_pipeline.ingest",
                 "--input-dir", str(Path(__file__).parent.parent / "data" / "synthetic")],
     },
     {
         "name": "load-graph",
-        "label": "[4/5] Load RDF → Oxigraph",
+        "label": "[4/6] Load RDF → Oxigraph",
         "cmd": [sys.executable, "-m", "pocpod0_pipeline.load_graph"],
     },
     {
         "name": "embed",
-        "label": "[5/5] Embed Oxigraph → Qdrant",
+        "label": "[5/6] Embed Oxigraph → Qdrant",
         "cmd": [sys.executable, "-m", "pocpod0_pipeline.embed"],
     },
 ]
@@ -190,13 +195,14 @@ def _recursive_delete(container_url: str, headers_get: dict, headers_delete: dic
 
 
 def wipe_css_pods(css_base_url: str) -> None:
-    """Recursive DELETE of learning/ containers in ALL CSS pods.
+    """Recursive DELETE of learning/ containers in ALL CSS pods, and camp/ in school-community.
 
     Enumerates pods dynamically from the CSS root to catch troll-generated
     pods (student-XXXX, admin-XXXX, etc.) in addition to scenario pods.
     CSS LDP returns 409 on DELETE of non-empty containers, so we must
     recursively delete leaves first (learning/ → course/ → *.ttl).
     Tolerates 404 gracefully (already empty = OK).
+    Also wipes camp/ container in school-community pod (seeded data).
     """
     provisioner_webid = f"{css_base_url}/provisioner/profile/card#me"
     headers_get = {
@@ -228,6 +234,18 @@ def wipe_css_pods(css_base_url: str) -> None:
         total_deleted += deleted
         if deleted > 0:
             print(f"  CSS pod {slug}/learning/: deleted {deleted} resources")
+
+    # Also wipe camp/ container in school-community pod (seeded data from Stage 0)
+    camp_url = f"{css_base_url}/school-community/camp/"
+    try:
+        resp = httpx.get(camp_url, headers=headers_get, timeout=10)
+        if resp.status_code in (200, 201):
+            deleted = _recursive_delete(camp_url, headers_get, headers_delete)
+            total_deleted += deleted
+            if deleted > 0:
+                print(f"  CSS pod school-community/camp/: deleted {deleted} resources")
+    except httpx.RequestError as exc:
+        print(f"  CSS pod school-community/camp/: connection error ({exc}), skipping")
 
     print(f"  CSS pods wiped: {total_deleted} total resources deleted across {len(slugs)} pods")
 
