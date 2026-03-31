@@ -4,401 +4,349 @@ Status: ready-for-dev
 
 ## Story
 
-As a **funder** (demo audience),
-I want a native-tabbed mission control TUI showing live attack results, pod/consent status, and service health,
-so that I can follow the PoC demo narrative visually with a professional, interactive interface.
+As a **funder and operator** (demo audience),
+I want a consent propagation network visualizer (TUI) showing how consent decisions flow through the system,
+so that I can understand and trust how data moves from individual pods through regional aggregates to civic policy evidence.
 
 ## Acceptance Criteria
 
-1. **AC1: Multi-tab mission control TUI with native Textual tabs**
+1. **AC1: Four-section consent propagation interface**
    - **Given** Textual framework is available (`textual>=6.6.0`)
    - **When** `pocpod0-mission-control` is launched
-   - **Then** it displays 5 native tabs (via `TabbedContent`) reading from 3 JSONL event streams:
-     - `data/pipeline-run.jsonl` (pipeline stages)
+   - **Then** the landing view displays 4 sections (always visible):
+     - SECTION 1: Consent Propagation Gantt (dynamic STOP levels based on scenario selection)
+     - SECTION 2: Pod Space (compact 4×4 grid, 16 pods color-coded by state)
+     - SECTION 3: Consent Gate (live counts: Active/Revoked/Transitioning/Expired)
+     - SECTION 4: Civic Aggregate + Alerts (only if scenario reaches federal level)
+   - **And** data sourced from 2 JSONL streams:
+     - `data/consent-events.jsonl` (grant/revoke/expire/ACL events)
      - `data/troll-run.jsonl` (adversarial test results)
-     - `data/consent-events.jsonl` (consent lifecycle events)
-   - **And** tabs are: [HEALTH], [PIPELINE], [TROLL], [CONSENT], [PODS]
-   - **And** tabs are interactive: arrow keys or mouse to switch; visual feedback on active tab
+   - **And** interface updates reactively when events arrive (~2 second polling tolerance)
 
-2. **AC2: Live troll results with reactive updates**
-   - **Given** a troll probe completes and emits a JSONL event to `data/troll-run.jsonl`
-   - **When** the TUI is running
-   - **Then** the [TROLL] tab `DataTable` updates automatically with the new result (probe ID, category, result)
-   - **And** per-category summary counts (pass/partial/fail/blocking) update reactively
-   - **And** colors change live: green=pass, yellow=partial, red=fail
+2. **AC2: Dynamic scenario selection with multi-route Gantt**
+   - **Given** operator can select multiple scenarios (Claire, Isabelle, Ayoub, Fatima, Marc)
+   - **When** scenarios are checked/unchecked (via header checkbox UI)
+   - **Then** Gantt renders only the STOP levels relevant to those scenarios:
+     - Claire (Teaching) → shows STOP 1-2 only (individual pods + school cluster)
+     - Isabelle (Outcome) → shows STOP 1-4 (full journey to civic layer)
+     - Ayoub (Transfer) → shows STOP 1-2 (personal data journey)
+     - Fatima (Parent), Marc (Admin) → shows STOP 1-3 (up to region)
+   - **And** keyframes mark consent boundary crossings (grant/revoke/impact at each STOP)
+   - **And** operator can click a pod in grid → filters Gantt to show that pod's vertical consent journey through all stops
 
-3. **AC3: Consent gate and pod state with reactive updates**
+3. **AC3: Live consent gate counts with real-time updates**
    - **Given** consent events are emitted to `data/consent-events.jsonl`
-   - **When** the TUI is running
-   - **Then** the [CONSENT] tab `DataTable` shows active, revoked, and expired grant counts per pod
-   - **And** the [PODS] tab shows pod name, ACL state, last event type, timestamp
-   - **And** tables update reactively as events arrive
+   - **When** the TUI is polling (~2 second refresh cycle)
+   - **Then** Consent Gate section displays live counts:
+     - Active Grants: [count of pods in "active" state]
+     - Revoked: [count of pods in "revoked" state]
+     - Transitioning: [count of pods in "transitioning" state, awaiting ACL override]
+     - Expired: [count of pods with expired tokens]
+   - **And** counts update reactively when new consent events arrive
+   - **And** operator can click a count → drill to [CONSENT] detail tab
 
-4. **AC4: Service health monitoring**
-   - **Given** the [HEALTH] tab is visible
-   - **When** services are checked (CSS, Oxigraph, Qdrant, OpenClaw)
-   - **Then** status indicators show ✓ (up) or ✗ (down) with last-checked timestamp
-   - **And** colors are green (up), red (down)
+4. **AC4: Pod state visualization with color coding**
+   - **Given** the Pod Space grid (SECTION 2)
+   - **When** consent events change pod state
+   - **Then** each of 16 pods displays as:
+     - ✓ (Green) = active (consent granted, pod accessible)
+     - ✗ (Red) = revoked (consent withdrawn, pod hidden)
+     - ⟳ (Yellow) = transitioning (governance change in progress, awaiting ACL override)
+     - ⚠ (Purple) = anomaly (unknown/error state)
+   - **And** operator can click a pod → filters Gantt to show consent journey, updates detail tabs
 
-5. **AC5: Non-technical readability and professional UX**
-   - **Given** a non-technical funder watching the TUI during a demo
-   - **When** they see the tabbed interface
-   - **Then** tabs are labeled clearly (HEALTH, PIPELINE, TROLL, CONSENT, PODS)
-   - **And** colors are consistent (green=pass/active, yellow=partial, red=fail/down)
-   - **And** no technical jargon is visible without context
-   - **And** the interface looks professional and responsive
+5. **AC5: Consent propagation visibility (trust transparency)**
+   - **Given** an operator watching consent flow through the system
+   - **When** a pod revokes consent (e.g., Karim at STOP 1)
+   - **Then** operator can see:
+     - STOP 1 keyframe: "revoke recorded at Karim's pod"
+     - STOP 2 keyframe: "School NL cluster recalculates: 8→7 pods active" ✓ impact detected
+     - STOP 3 keyframe: "Regional aggregate recomputes: 14→13 pods" ✓ impact propagates
+     - STOP 4 (Isabelle scenario only): "Civic layer checks: 13 pods > 10 min threshold? YES. Publication APPROVED. Privacy boundary holds ✓"
+   - **And** no technical jargon appears without context (pod URIs hidden unless drilling down)
+   - **And** colors are consistent (revoke=red, impact=yellow highlight, stable=green)
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create mission_control.py Textual app (AC: 1, 2, 3, 4)
-  - [ ] 1.1: New file `pipeline/src/pocpod0_pipeline/mission_control.py` — Textual App with TabbedContent
-  - [ ] 1.2: Define 5 TabPane widgets (HEALTH, PIPELINE, TROLL, CONSENT, PODS) each containing a DataTable
-  - [ ] 1.3: Implement reactive attributes for troll_events, consent_events, pipeline_events, health_status
-  - [ ] 1.4: Background worker tasks to tail 3 JSONL files asynchronously (no blocking)
-- [ ] Task 2: [HEALTH] tab (AC: 4)
-  - [ ] 2.1: DataTable: Service, Status, Last Check columns
-  - [ ] 2.2: Async health check loop (5s interval) for CSS, Oxigraph, Qdrant, OpenClaw
-  - [ ] 2.3: Reactive watch: when health_status changes, update_cell() for the affected row
-- [ ] Task 3: [PIPELINE] tab (AC: 1)
-  - [ ] 3.1: DataTable: Stage, Status, Elapsed (s), Start Time columns
-  - [ ] 3.2: Parse `pipeline.start`, `stage.start`, `stage.done`, `stage.failed`, `pipeline.done` events
-  - [ ] 3.3: Reactive watch: when pipeline_events changes, update table
-- [ ] Task 4: [TROLL] tab (AC: 2)
-  - [ ] 4.1: Top section: Category Summary (DataTable with Category, Passed, Partial, Failed, Blocking columns)
-  - [ ] 4.2: Bottom section: Recent Probes (DataTable with Probe ID, Category, Layer, Result, Elapsed (ms) columns)
-  - [ ] 4.3: Parse `troll.run.start`, `troll.probe.start`, `troll.probe.done`, `troll.category.done` events
-  - [ ] 4.4: Color-code results: Row style based on result value (pass=green, partial=yellow, fail=red)
-- [ ] Task 5: [CONSENT] tab (AC: 3)
-  - [ ] 5.1: DataTable: Pod, Active Grants, Revoked Grants, Expired Tokens, Last Event columns
-  - [ ] 5.2: Parse `consent.grant`, `consent.revoke`, `consent.expired`, `acl.grant`, `acl.revoke`, `acl.governance.transition` events
-  - [ ] 5.3: Reactive watch: accumulate counts per pod, update_cell() for affected rows
-- [ ] Task 6: [PODS] tab (AC: 3)
-  - [ ] 6.1: DataTable: Pod Name, ACL State, Last Event Type, Last Event Time columns
-  - [ ] 6.2: Derive pod state from consent + acl events (track per-pod grant/revoke/governance events)
-  - [ ] 6.3: Update table reactively as new events arrive
-- [ ] Task 7: JSONL file tailing (AC: 1-3)
-  - [ ] 7.1: Implement `_tail_jsonl(file_path)` async generator — yields new JSON objects as they appear
-  - [ ] 7.2: Background worker tasks in `on_mount()` for each of 3 files: `self.run_worker(self._poll_troll_events())`
-  - [ ] 7.3: Worker tasks parse JSON and append to reactive list attributes
-- [ ] Task 8: Tests (AC: 1-5)
-  - [ ] 8.1: Unit test for event parsers (pipeline, troll, consent)
-  - [ ] 8.2: Unit test for reactive watchers (verify table updates on reactive change)
-  - [ ] 8.3: Integration test with mock JSONL files
+- [ ] Task 1: Core app structure + JSONL polling (AC: 1)
+  - [ ] 1.1: New file `pipeline/src/pocpod0_pipeline/mission_control.py` — Textual App with 4-section layout
+  - [ ] 1.2: Create reactive attributes: consent_events, troll_events, pod_states, cluster_aggregates, regional_aggregates, civic_aggregates
+  - [ ] 1.3: Implement JSONL polling loop (2-second refresh, async worker task)
+  - [ ] 1.4: Compose 4 main sections: ConsentPropagationGantt, PodSpaceGrid, ConsentGateCounts, CivicAggregatePanel
+
+- [ ] Task 2: Pod state calculation (STOP 1) (AC: 4)
+  - [ ] 2.1: Implement `calculate_pod_state(pod_id, consent_events)` — derives pod state from event history
+  - [ ] 2.2: Pod state values: "active", "revoked", "transitioning", "anomaly"
+  - [ ] 2.3: Unit test: verify state calculation for all 4 states with sample events
+
+- [ ] Task 3: Cluster aggregate calculation (STOP 2) (AC: 2)
+  - [ ] 3.1: Implement `calculate_cluster_aggregate(cluster_id, pod_states)` — sums pod states
+  - [ ] 3.2: Returns: {cluster_id, active_pods, revoked_pods, total_pods, last_updated}
+  - [ ] 3.3: Unit test: verify count recalculation when pods change state
+
+- [ ] Task 4: Regional aggregate calculation (STOP 3) (AC: 2)
+  - [ ] 4.1: Implement `calculate_regional_aggregate(region_id, cluster_aggregates)` — sums clusters
+  - [ ] 4.2: Includes publication_ready check (active_pods >= MIN_PODS_FOR_PUBLICATION)
+  - [ ] 4.3: Unit test: verify regional totals and threshold logic
+
+- [ ] Task 5: Civic aggregate calculation (STOP 4) (AC: 5)
+  - [ ] 5.1: Implement `calculate_civic_aggregate(regional_agg, policy_data)` — derives civic evidence
+  - [ ] 5.2: Includes privacy boundary check (revoked pods must not appear)
+  - [ ] 5.3: Unit test: verify privacy boundary logic with mixed active/revoked pods
+
+- [ ] Task 6: Keyframe detection algorithm (AC: 2, 5)
+  - [ ] 6.1: Implement `should_fire_keyframe_stop1(event)` — fires on consent.* and acl.* events
+  - [ ] 6.2: Implement `should_fire_keyframe_stop2(event, prev_agg)` — fires if cluster count changes
+  - [ ] 6.3: Implement `should_fire_keyframe_stop3/4` — fires on impact detection or explicit civic events
+  - [ ] 6.4: Unit test: verify keyframes fire at correct stops with sample event sequences
+
+- [ ] Task 7: Consent Propagation Gantt widget (AC: 2, 5)
+  - [ ] 7.1: Create ConsentPropagationGantt widget — renders dynamic STOP rows
+  - [ ] 7.2: Scenario-to-STOP mapping: Claire→1-2, Isabelle→1-4, Ayoub→1-2, etc.
+  - [ ] 7.3: Gantt rendering: STOP 1 (pod rows with timeline), STOP 2 (cluster row), STOP 3 (regional row), STOP 4 (civic row)
+  - [ ] 7.4: Keyframe markers (▼) with color coding (🟢 grant, 🔴 revoke, 🟡 impact, 🟣 governance)
+  - [ ] 7.5: Integration test: render Gantt with sample consent event sequence
+
+- [ ] Task 8: Pod Space grid widget (AC: 4)
+  - [ ] 8.1: Create PodSpaceGrid widget — 4×4 compact pod layout
+  - [ ] 8.2: Color pods by state: ✓ (green), ✗ (red), ⟳ (yellow), ⚠ (purple)
+  - [ ] 8.3: Clickable pods → trigger pod filtering (filters Gantt + updates detail tabs)
+  - [ ] 8.4: Unit test: verify pod grid render and click behavior
+
+- [ ] Task 9: Consent Gate counts widget (AC: 3)
+  - [ ] 9.1: Create ConsentGateCounts widget — displays 4 live counts
+  - [ ] 9.2: Calculate counts from pod_states: active, revoked, transitioning, expired
+  - [ ] 9.3: Reactive watcher: when pod_states changes, recalculate and update display
+  - [ ] 9.4: Unit test: verify count accuracy with sample pod states
+
+- [ ] Task 10: Civic Aggregate + Alert panel (AC: 5)
+  - [ ] 10.1: Create CivicAggregatePanel widget — displays civic evidence (only for Isabelle scenario)
+  - [ ] 10.2: Show: evidence name, pods counted, outcome, privacy boundary status, publication status
+  - [ ] 10.3: Create AlertSection widget — yellow warnings for data quality issues
+  - [ ] 10.4: Alert scenarios: missing pod context, malformed JSON, unknown pod, threshold breach
+  - [ ] 10.5: Unit test: verify alerts fire for edge cases
+
+- [ ] Task 11: Detail tabs (scenario drill-down) (AC: 2, 5)
+  - [ ] 11.1: Create DetailTabs (TabbedContent) with 5 tabs: [Claire], [Isabelle], [Ayoub], [POD], [ATTACKS]
+  - [ ] 11.2: [Claire] tab: event timeline + student consent grid (per AC spec)
+  - [ ] 11.3: [Isabelle] tab: full propagation journey (STOP 1-4) with privacy boundary check
+  - [ ] 11.4: [POD: <pod>] tab: individual pod consent history + ACL state table
+  - [ ] 11.5: [ATTACKS] tab: attack scenario selector, category summary, recent probes
+  - [ ] 11.6: Integration test: navigate between tabs, verify data consistency
+
+- [ ] Task 12: Pod filtering and navigation (AC: 2)
+  - [ ] 12.1: Implement pod click handler — sets `filtered_pod` reactive attribute
+  - [ ] 12.2: Gantt filters to scenarios involving that pod, highlights STOP 1 row
+  - [ ] 12.3: Detail tabs update to focus on that pod (e.g., [POD: Karim] appears)
+  - [ ] 12.4: "Clear filter" button returns to multi-scenario view
+  - [ ] 12.5: Integration test: click pod, verify Gantt filter + detail tab updates
+
+- [ ] Task 13: Event parsing + error handling (AC: 1)
+  - [ ] 13.1: Implement JSON parser for consent events (grant/revoke/expire/ACL/governance)
+  - [ ] 13.2: Implement parser for troll events (run.start, probe.*, category.done, run.done)
+  - [ ] 13.3: Handle malformed JSON: log error, skip line, emit alert
+  - [ ] 13.4: Handle missing fields: gracefully default, emit warning
+  - [ ] 13.5: Unit test: verify parsers with valid + malformed JSONL samples
+
+- [ ] Task 14: Integration + system tests (AC: 1-5)
+  - [ ] 14.1: Create mock JSONL fixtures (sample consent event sequences)
+  - [ ] 14.2: Integration test: JSONL polling → reactive updates → widget refresh
+  - [ ] 14.3: System test: full scenario (Claire request → Karim revoke → cluster impact → Isabelle sees reduction)
+  - [ ] 14.4: Performance test: render with 16 pods, 100+ events, verify no lag
+  - [ ] 14.5: Edge case test: missing pod context, threshold breach, privacy boundary violations
+
+- [ ] Task 15: Project file updates (AC: 1)
+  - [ ] 15.1: `pipeline/pyproject.toml` — add `textual>=6.6.0` dependency
+  - [ ] 15.2: `pipeline/pyproject.toml` — add `pocpod0-mission-control` script entry
+  - [ ] 15.3: `pipeline/pyproject.toml` — ensure `asyncio` (builtin) available
 
 ## Dev Notes
 
-### Architecture Change: Rich → Textual
+### Strategic Context: Consent Propagation Visualizer
 
-**Decision:** Story 6.2 uses **Textual, NOT Rich** (hybrid approach).
+**Mission Control is NOT a dashboard — it's a trust visualization system.**
 
-- Story 3.7.1's pipeline dashboard (Rich) remains standalone and untouched
-- Story 6.2 creates NEW file: `mission_control.py` (Textual-based mission control)
-- Both can run simultaneously in different terminals
-- Demo setup: Terminal 1 = Mission Control (mission_control.py), Terminal 2 = OpenClaw/CLI/Optional Pipeline Dashboard
+The TUI shows operators how consent decisions flow through a multi-level system:
+- **Individual pods** (Ayoub grants/revokes)
+- → **School cluster aggregate** (recalculates: 8/8 → 7/8 pods active)
+- → **Regional hub** (recalculates: 14 → 13 pods)
+- → **Federal civic layer** (privacy boundary: revoked pods invisible, aggregate only)
 
-**Why Textual for 6.2:**
-- Native `TabbedContent` widget (professional UX, no faking tabs with sections)
-- Reactive system for automatic UI updates (no manual polling)
-- `DataTable` with `update_cell()` efficiency (large datasets)
-- Async/background workers (non-blocking JSONL tailing)
+Operator sees the **vertical propagation**: when Karim revokes, where does that decision ripple? Which aggregates recalculate? Does it hit the privacy boundary? This builds trust.
 
-### Textual Framework Patterns
+### Architecture: Textual + 4-Section Layout
 
-**File:** `pipeline/src/pocpod0_pipeline/mission_control.py` (NEW, ~600-800 lines)
+**Why Textual (not Rich):**
+- Native reactive system (attribute changes → automatic UI updates)
+- Background workers (non-blocking JSONL polling)
+- Efficient DataTable updates (large event streams)
 
-**Structure:**
+**Why 4 sections (not 5 tabs):**
+- All sections always visible (context never lost)
+- STOP levels render dynamically based on scenario selection
+- Consent gate counts live update (operator watches impact in real-time)
 
-```python
-from textual.app import App, ComposeResult
-from textual.widgets import TabbedContent, TabPane, DataTable, Static, Label
-from textual.reactive import reactive
+**Key decision:** TUI derives all aggregates. No pre-computed values in JSONL. This gives transparency and allows offline scenario exploration.
 
-class MissionControlApp(App):
-    """Mission Control TUI for funder-facing demo monitoring."""
+### Consent Propagation Model (4 STOP Levels)
 
-    # Reactive attributes — changes trigger watcher methods
-    troll_events = reactive([])           # List of parsed troll events
-    consent_events = reactive([])         # List of consent/ACL events
-    pipeline_events = reactive([])        # List of pipeline stage events
-    health_status = reactive({})          # {service_name: {status, last_check}}
+Refer to `/var/home/nicolas/github/pocpod0/_bmad-output/implementation-artifacts/6-2-mission-control-ux-spec.md` for:
+- **STOP 1: Individual pods** — where consent decisions originate
+- **STOP 2: School cluster aggregate** — inherits pod consents, recalculates on changes
+- **STOP 3: Regional hub** — sums clusters, checks publication threshold
+- **STOP 4: Federal civic layer** — de-identified evidence, privacy boundary sealed
 
-    # Watch methods called when reactive attributes change
-    def watch_troll_events(self, new_events):
-        """Update [TROLL] tab when new probe events arrive."""
-        self.update_troll_table()
+Only relevant STOP levels render per scenario (dynamic visibility).
 
-    def watch_consent_events(self, new_events):
-        """Update [CONSENT] and [PODS] tabs when new consent events arrive."""
-        self.update_consent_table()
-        self.update_pods_table()
+### Implementation Guide: Reference the UX Spec
 
-    def watch_health_status(self, new_status):
-        """Update [HEALTH] tab when service status changes."""
-        self.update_health_table()
+**Detailed implementation patterns in:** `6-2-mission-control-ux-spec.md`
 
-    def compose(self) -> ComposeResult:
-        """Create the tabbed interface."""
-        yield TabbedContent(
-            TabPane("HEALTH", self.HealthTab()),      # id="health"
-            TabPane("PIPELINE", self.PipelineTab()),  # id="pipeline"
-            TabPane("TROLL", self.TrollTab()),        # id="troll"
-            TabPane("CONSENT", self.ConsentTab()),    # id="consent"
-            TabPane("PODS", self.PodsTab()),          # id="pods"
-            id="tabs"
-        )
+That spec contains:
+- **Information Architecture** — exact 4-section layout
+- **Consent Propagation Model** — STOP 1-4 definitions + derivation rules
+- **Keyframe Detection Algorithm** — precise trigger conditions per STOP
+- **Aggregate Calculation Logic** — TUI's calculator for pod→cluster→region→civic
+- **Reactive State Model** — reactive attributes + watcher methods
+- **Widget Architecture** — Textual component breakdown (ConsentPropagationGantt, PodSpaceGrid, etc.)
+- **Textual Patterns** — JSONL polling loop, color coding, event parsing
+- **Detail Tabs** — 5 tabs for scenario drill-down
+- **Graceful Failure States** — 8 failure scenarios with alert handling
 
-    def on_mount(self) -> None:
-        """Initialize background worker tasks."""
-        # Start background workers for JSONL file tailing
-        self.run_worker(self._poll_troll_events())
-        self.run_worker(self._poll_consent_events())
-        self.run_worker(self._poll_pipeline_events())
-        self.run_worker(self._poll_health_status())
+**Do not re-invent:** The spec has the business logic. Implement from the spec, ask questions if unclear.
 
-    async def _poll_troll_events(self) -> None:
-        """Background worker: tail data/troll-run.jsonl and update reactive attribute."""
-        async for new_events in self._tail_jsonl(TROLL_JSONL_PATH):
-            self.troll_events = new_events
-            self.mutate_reactive(self.troll_events)  # Notify watcher
+### JSONL Event Catalog (Ref: UX Spec Section)
 
-    # Similar for consent, pipeline, health...
-```
+TUI reads two JSONL sources:
 
-### JSONL Event Catalog (All Sources)
+1. **`data/consent-events.jsonl`** — (Story 5 legacy + agents)
+   - consent.grant, consent.revoke, consent.expired
+   - acl.grant, acl.revoke, acl.governance.transition
+   - (Optional) aggregate.computed, civic.aggregate.locked (if agents emit pre-computed)
 
-**Pipeline events** (`data/pipeline-run.jsonl`):
-| Event Type | Key Fields |
-|---|---|
-| `pipeline.start` | stages, wipe |
-| `stage.start` | stage, label |
-| `stage.done` | stage, elapsed |
-| `stage.failed` | stage, elapsed |
-| `pipeline.done` | total_elapsed |
+2. **`data/troll-run.jsonl`** — (Story 6.1 orchestrator)
+   - troll.run.start, troll.probe.start, troll.probe.done
+   - troll.category.done, troll.run.done
 
-**Troll events** (`data/troll-run.jsonl`):
-| Event Type | Key Fields |
-|---|---|
-| `troll.run.start` | categories (Story 6.1 adds this) |
-| `troll.probe.start` | category, test_name, layer (optional) |
-| `troll.probe.done` | category, test_name, result, elapsed_ms |
-| `troll.category.done` | category, passed, partial, failed |
-| `troll.run.done` | total_elapsed, blocking_pass (Story 6.1 adds this) |
+**Complete schema:** See `6-2-mission-control-ux-spec.md#JSONL Event Catalog`
 
-**Consent events** (`data/consent-events.jsonl`):
-| Event Type | Key Fields |
-|---|---|
-| `consent.grant` | grant_id, pod, grantee_webid, purpose, scope |
-| `consent.revoke` | grant_id, pod |
-| `consent.expired` | token_id, pod, grant_id |
-| `acl.grant` | pod, identity, action, role |
-| `acl.revoke` | pod, identity |
-| `acl.governance.transition` | pod, from_role, to_role, revoked_identities |
-| `deletion.step` | pod, resource_uri, step, status |
-| `deletion.complete` | resource_uri, pod, all_layers_clean |
+### Invalidated Assumptions (Design Session — 2026-03-31)
 
-### Textual Widget Patterns
-
-**TabbedContent Example:**
-```python
-from textual.widgets import TabbedContent, TabPane, DataTable
-
-def compose(self) -> ComposeResult:
-    with TabbedContent(id="tabs"):
-        with TabPane("HEALTH", id="health"):
-            yield DataTable(id="health_table")
-        with TabPane("PIPELINE", id="pipeline"):
-            yield DataTable(id="pipeline_table")
-        with TabPane("TROLL", id="troll"):
-            yield DataTable(id="troll_table")
-        with TabPane("CONSENT", id="consent"):
-            yield DataTable(id="consent_table")
-        with TabPane("PODS", id="pods"):
-            yield DataTable(id="pods_table")
-```
-
-**Reactive Updates Example:**
-```python
-class TrollTab(Static):
-    troll_events = reactive([])
-
-    def watch_troll_events(self, new_events: list[dict]) -> None:
-        """Called when troll_events reactive attribute changes."""
-        table = self.query_one(DataTable)
-        # Clear and rebuild, or use update_cell() for efficiency
-        self._rebuild_troll_table(new_events)
-
-    def _rebuild_troll_table(self, events: list[dict]) -> None:
-        table = self.query_one(DataTable)
-        table.clear()
-        for event in events:
-            row_key = str(event.get("probe_id", ""))
-            result = event.get("result", "unknown")
-            style = "green" if result == "pass" else ("yellow" if result == "partial" else "red")
-            table.add_row(
-                event.get("test_name", ""),
-                event.get("category", ""),
-                result,
-                style=style,
-                key=row_key
-            )
-```
-
-**JSONL File Tailing with Async:**
-```python
-import json
-
-async def _tail_jsonl(self, file_path: Path) -> AsyncIterator[list[dict]]:
-    """Tail a JSONL file and yield new events as list."""
-    events = []
-    with open(file_path, "r") as f:
-        # Read existing lines first
-        for line in f:
-            if line.strip():
-                try:
-                    events.append(json.loads(line))
-                except json.JSONDecodeError:
-                    pass
-
-        # Now follow new lines
-        while True:
-            line = f.readline()
-            if line:
-                try:
-                    events.append(json.loads(line.strip()))
-                    yield list(events)  # Yield accumulated events
-                except json.JSONDecodeError:
-                    pass
-            else:
-                await asyncio.sleep(0.1)  # Poll interval
-
-async def _poll_troll_events(self) -> None:
-    """Background worker: tail troll events and update reactive attribute."""
-    async for new_events in self._tail_jsonl(TROLL_JSONL_PATH):
-        self.troll_events = new_events
-        self.mutate_reactive(self.troll_events)  # Notify watcher
-```
-
-### DataTable Color Coding
-
-```python
-from rich.style import Style
-
-# Add row with style based on result
-if result == "pass":
-    style = Style(color="green")
-elif result == "partial":
-    style = Style(color="yellow")
-else:
-    style = Style(color="red")
-
-table.add_row(*row_data, style=style, key=row_key)
-
-# Or update an existing cell
-table.update_cell(row_key, "result_column", Text(result, style=style))
-```
-
-### Key Files to Touch
-
-| File | Action |
-|------|--------|
-| `pipeline/src/pocpod0_pipeline/mission_control.py` | **CREATE** — Textual mission control app (NEW, not extending pipeline_dashboard.py) |
-| `pipeline/pyproject.toml` | **EDIT** — Add textual>=6.6.0 dependency, add `pocpod0-mission-control` script entry |
-| `pipeline/tests/test_mission_control.py` | **CREATE** — Unit tests for event parsing and reactive updates |
-
-### Key Files to Reference (READ ONLY)
-
-| File | What to Extract |
-|------|-----------------|
-| `pipeline/src/pocpod0_pipeline/pipeline_dashboard.py` | Reference only — Rich TUI patterns (DO NOT EXTEND) |
-| `pipeline/run_pipeline.py:46-51` | `_emit()` — pipeline JSONL format |
-| `agents/troll-adversary/attacks/deletion_timing.py:150-180` | `_emit_jsonl()` — troll JSONL format |
-| `pipeline/src/pocpod0_pipeline/consent_grant.py:118-128` | `_emit_consent_event()` — consent JSONL format |
-| `pipeline/src/pocpod0_pipeline/governance_transition.py:64-72` | `_append_consent_event()` — governance event format |
-| `agents/skills/acl-manage/handler.py:72-80` | ACL skill consent event format |
-| `data/troll-run.jsonl` | 289 real events to validate parser against |
-| `data/pipeline-run.jsonl` | 12 real events to validate parser against |
-| `_bmad-output/planning-artifacts/architecture.md#INFRA-5` | Architecture decision (amended for hybrid approach) |
-| `_bmad-output/implementation-artifacts/3-7-1-pipeline-dashboard-tui.md` | Reference for JSONL pattern, but not extending |
-| **Textual Docs** | Context7: `/textualize/textual` — TabbedContent, DataTable, reactive patterns |
-
-### Invalidated Assumptions
-
-| Assumption | Status | Correction |
+| Assumption | Status | Resolution |
 |---|---|---|
-| Dashboard extends pipeline_dashboard.py (Rich) | INVALIDATED (by hybrid decision) | Mission control is NEW file (mission_control.py, Textual), separate from pipeline dashboard |
-| Rich is the TUI framework for mission control | INVALIDATED (by hybrid decision) | **Textual** is now the framework for Story 6.2. Rich remains for Story 3.7.1 pipeline dashboard only. |
-| Architecture INFRA-5 forbids Textual | CLARIFIED | INFRA-5 says "Rich TUI + JSONL" but hybrid approach splits this: Pipeline Dashboard (Rich, Story 3.7.1) + Mission Control (Textual, Story 6.2). Both use JSONL. Textual is appropriate for advanced dashboard features. |
-| `agent.yaml` is the agent config | INVALIDATED (Epic 3.3) | Agents use SOUL.md / AGENTS.md / IDENTITY.md |
-| `dashboard/` directory holds TUI code | PARTIAL | Both TUI modules live in `pipeline/src/pocpod0_pipeline/`: `pipeline_dashboard.py` (Rich) and `mission_control.py` (Textual). The `dashboard/` dir remains scaffolding only. |
-| `consent-events.jsonl` has data | UNVERIFIED | File exists at 0 bytes — events are emitted during pipeline runs that exercise consent operations. May need a pipeline run first to populate |
+| Mission control is a dashboard with 5 flat tabs [HEALTH], [PIPELINE], [TROLL], [CONSENT], [PODS] | **INVALIDATED** | UX redesign: 4-section consent propagation visualizer. Tabs are now detail drill-downs (scenarios + POD + ATTACKS), not primary navigation. |
+| Health monitoring is a primary concern | **INVALIDATED** | Health is deprioritized. Operator priorities: (1) Current consent state, (2) How decisions ripple through system, (3) Test results. Health monitoring can be added in future iteration. |
+| Pipeline events drive the TUI | **INVALIDATED** | Pipeline is not displayed. TUI focuses on consent propagation + test results. Pipeline monitoring is Story 3.7.1's job. |
+| TUI pre-computes aggregates from agent-emitted events | **INVALIDATED** | TUI derives all aggregates from raw consent events. This gives transparency and allows offline scenario exploration. |
+| Scenario selection is hidden/static | **INVALIDATED** | Multi-select checkboxes in header. Operator can select multiple scenarios (Claire, Isabelle, Ayoub, etc.) and see their STOP levels dynamically. |
+| Consent propagation is flat/linear | **INVALIDATED** | Consent is **vertical**: individual pod → school cluster → region → federal civic layer (4 STOP levels). Each STOP recalculates when lower STOP changes. |
+| Gantt shows time-series events in a timeline view | **CLARIFIED** | Gantt is vertical propagation network (STOP 1-4 rows), not time-series. Time axis is horizontal (when events fired), but focus is **where consent crosses boundaries**. |
+| Pod grid is a detailed table | **INVALIDATED** | Pod grid is compact 4×4 visual grid (16 pods as colored boxes). Click pod → filter Gantt to show vertical journey. |
+| `consent-events.jsonl` has pre-aggregated counts | **INVALIDATED** | JSONL contains only raw consent events (grant/revoke/expire/ACL). TUI parses these and calculates: pod states → cluster counts → regional totals → civic evidence. |
 
-### Hybrid Deployment Model
+### Two-TUI Deployment Model
 
-**Two separate TUI apps:**
+**Separate TUI apps serve different purposes:**
+
 1. **Story 3.7.1: Pipeline Dashboard** (Rich)
-   - File: `pipeline/src/pocpod0_pipeline/pipeline_dashboard.py` (259 lines)
-   - Entry: `pocpod0-pipeline-dashboard` script
-   - Purpose: Monitor pipeline stages in real-time
-   - Use: Optional, can run alone during pipeline runs
+   - File: `pipeline/src/pocpod0_pipeline/pipeline_dashboard.py`
+   - Purpose: Monitor pipeline stages (provision, ingest, query, etc.) in real-time
+   - Use: Optional, runs during pipeline execution
+   - Output: Stage progress, elapsed times
 
 2. **Story 6.2: Mission Control** (Textual)
-   - File: `pipeline/src/pocpod0_pipeline/mission_control.py` (NEW, ~600-800 lines)
-   - Entry: `pocpod0-mission-control` script (NEW in pyproject.toml)
-   - Purpose: Multi-tab funder-facing demo dashboard
-   - Use: Primary demo interface during funder presentation
+   - File: `pipeline/src/pocpod0_pipeline/mission_control.py` (NEW, ~1000-1200 lines)
+   - Purpose: **Consent propagation network visualizer** for operator/funder
+   - Use: Primary interface during demo (shows trust + transparency)
+   - Output: How consent flows from pods → school → region → civic layer; where it hits privacy boundary
 
-**Demo setup (two terminals):**
-- Terminal 1: `pocpod0-mission-control` (mission_control.py)
-- Terminal 2: OpenClaw browser, pipeline CLI, or optional `pocpod0-pipeline-dashboard`
+**They are NOT the same TUI.** Mission Control is a consent-focused operator dashboard, not a pipeline monitor.
 
-### Dependencies
+**Demo setup (two terminals, optional):**
+- **Terminal 1:** `pocpod0-mission-control` (watch consent/test results)
+- **Terminal 2:** `pocpod0-pipeline-dashboard` (optional, watch pipeline stages) OR OpenClaw browser (agent control)
 
-- **Story 6.0:** Stage 0 must exist for pipeline events to include provision step
-- **Story 6.1:** Troll orchestrator must emit `troll.run.start`/`troll.run.done` wrapper events and `troll.category.done` per category
-- **Consent modules (Epic 5):** Already emit events — no changes needed
-- **Textual dependency:** Add `textual>=6.6.0` to `pipeline/pyproject.toml` dependencies
+### Dependencies & Blockers
 
-### Environment
+**Hard dependencies:**
+- **Story 6.1:** Troll orchestrator must emit `troll.run.start`, `troll.run.done`, `troll.category.done` events
+- **Epic 5 modules:** Must emit `consent.grant`, `consent.revoke`, `consent.expired`, `acl.*` events to `data/consent-events.jsonl`
+- **Textual v6.6.0+:** Required for reactive, DataTable, Static widgets
 
-- **Textual version:** `>=6.6.0` (latest stable with TabbedContent and DataTable optimizations)
-- **Rich version:** `>=13.0` (pipeline_dashboard.py already has this)
-- **Terminal size:** Demo terminal should be at least 120 columns wide, 40+ rows tall for readable multi-tab display
-- **Distrobox note:** `distrobox-host-exec podman compose` for container commands
-- **Terminal emulator:** Tested with xterm, GNOME Terminal, iTerm2. Avoid very old terminals without color/Unicode support.
+**Soft dependencies:**
+- **Story 6.0:** Improves demo narrative (shows provision stage in pipeline context), but not required for TUI to run
+- **OpenClaw agents:** Agents must write consent events to JSONL (already true from Epic 5)
 
-### Previous Story Intelligence (Story 6.1)
+**No blocking issues identified.** Epic 5 consent modules are already emitting events. Story 6.1 orchestrator is in dev. TUI can be implemented in parallel.
 
-- Story 6.1 creates the troll orchestrator with `troll.run.start`/`troll.run.done` JSONL wrapper events — mission_control.py depends on these for [TROLL] tab header/footer
-- Existing `troll.probe.start`/`troll.probe.done`/`troll.category.done` events already exist from individual attack modules (Stories 1.5, 2.7, 2.8, 3.8, 5.3)
+### Runtime Environment
 
-### Project Structure Notes
+**Requirements:**
+- **Textual:** `>=6.6.0` (reactive, Static, DataTable, async workers)
+- **Python:** `>=3.10` (async/await, type hints)
+- **Terminal:** 120+ columns, 40+ rows (for 4-section layout + Gantt)
+- **JSONL files:** `data/consent-events.jsonl`, `data/troll-run.jsonl` (can be empty initially)
 
-**New files:**
-- `pipeline/src/pocpod0_pipeline/mission_control.py` — Textual mission control app (NEW)
+**Testing:**
+- Validated with: xterm, GNOME Terminal, iTerm2
+- Avoid: Very old terminals without color/Unicode support
 
-**Modified files:**
-- `pipeline/pyproject.toml` — Add `textual>=6.6.0` dependency, add `pocpod0-mission-control` script entry
+**Dev setup:**
+- Use `distrobox-host-exec` for podman container commands
+- Ensure venv activated when running `pocpod0-mission-control` (per CLAUDE.md)
 
-**Unchanged files:**
-- `pipeline/src/pocpod0_pipeline/pipeline_dashboard.py` — Remains as Story 3.7.1 (Rich, standalone)
+### Story Dependencies
+
+**Mission Control depends on:**
+1. **Story 6.1 (Troll Orchestrator):** Emits `troll.run.start`, `troll.run.done`, `troll.category.done` events to `data/troll-run.jsonl`
+2. **Epic 5 (Consent Modules):** Already emit `consent.grant`, `consent.revoke`, `consent.expired`, `acl.*` events to `data/consent-events.jsonl`
+3. **Story 6.0 (Provision Stage):** Ensures Stage 0 exists in pipeline (not displayed by Mission Control, but implicit in scenario setup)
+
+**Mission Control does NOT depend on:**
+- Story 3.7.1 (Pipeline Dashboard) — that's a separate TUI
+- Health check services — health monitoring is out of scope for 6.2
+
+### Project Structure
+
+**Files to create:**
+- `pipeline/src/pocpod0_pipeline/mission_control.py` — Textual consent propagation visualizer
+- `pipeline/tests/test_mission_control.py` — Unit + integration tests
+- `pipeline/tests/fixtures/mock_consent_events.jsonl` — Sample test data
+
+**Files to modify:**
+- `pipeline/pyproject.toml` — Add `textual>=6.6.0`, add `pocpod0-mission-control` script entry
+
+**Files NOT touched:**
+- `pipeline/src/pocpod0_pipeline/pipeline_dashboard.py` — Unchanged (Story 3.7.1)
 - `dashboard/` — Remains scaffolding only
+- `data/pipeline-run.jsonl` — Not read by mission_control.py
 
-**Entry points:**
-- `pocpod0-pipeline-dashboard` = `pocpod0_pipeline.pipeline_dashboard:main` (existing, Story 3.7.1)
-- `pocpod0-mission-control` = `pocpod0_pipeline.mission_control:main` (NEW, Story 6.2)
+**CLI Entry Points:**
+- `pocpod0-mission-control` → `pocpod0_pipeline.mission_control:main` (NEW)
+- `pocpod0-pipeline-dashboard` → `pocpod0_pipeline.pipeline_dashboard:main` (existing, unchanged)
 
-### References
+### References & Further Reading
 
-- [Source: _bmad-output/planning-artifacts/epics.md#Story 6.1 Mission Control TUI] — AC for mission control
-- [Source: _bmad-output/planning-artifacts/architecture.md#INFRA-5] — Original dashboard architecture (Rich + JSONL) — amended for hybrid: Rich (pipeline) + Textual (mission control)
-- [Source: _bmad-output/implementation-artifacts/3-7-1-pipeline-dashboard-tui.md] — Story 3.7.1 foundation (Rich, reference only)
-- [Source: pipeline/src/pocpod0_pipeline/pipeline_dashboard.py] — Story 3.7.1 (Rich, reference only — do NOT extend)
-- [Source: _bmad-output/implementation-artifacts/epic-5-retro-2026-03-30.md#Epic 6 Preview] — Consent-events.jsonl event catalog action item
-- [Source: Context7 Textual docs via /textualize/textual] — TabbedContent, DataTable, reactive patterns, async workers
-  - TabbedContent: native tabs with interactive switching
-  - DataTable: efficient rendering with update_cell() for live updates
-  - reactive: automatic watcher methods for state changes
-  - workers: background tasks for non-blocking JSONL tailing
+**PRIMARY SOURCE (Implementation Guide):**
+- **`6-2-mission-control-ux-spec.md`** — Complete UX specification with information architecture, aggregate logic, reactive state, widgets, graceful failures
+
+**STORY CONTEXT:**
+- `planning-artifacts/epics.md#Story 6.2` — Original AC (now superseded by spec)
+- `planning-artifacts/product-brief-pocpod0-2026-03-16.md` — Personas: Claire, Isabelle, Ayoub, Fatima, Marc (operators)
+
+**EVENT SOURCES (Reference, Read-Only):**
+- `pipeline/src/pocpod0_pipeline/consent_grant.py` — Consent event format
+- `pipeline/src/pocpod0_pipeline/governance_transition.py` — Governance transition format
+- `agents/skills/acl-manage/handler.py` — ACL event format
+- `data/consent-events.jsonl` — Live consent events (empty until pipeline runs)
+- `data/troll-run.jsonl` — Live troll events (from Story 6.1 orchestrator)
+
+**RELATED STORIES (Do NOT Extend):**
+- `3-7-1-pipeline-dashboard-tui.md` — Story 3.7.1 (Rich TUI, separate app)
+- `pipeline/src/pocpod0_pipeline/pipeline_dashboard.py` — Rich-based pipeline monitor (reference only)
+
+**TEXTUAL DOCUMENTATION:**
+- Context7: `/textualize/textual` — reactive, Static, DataTable, TabbedContent, async workers
 
 ## Dev Agent Record
 
