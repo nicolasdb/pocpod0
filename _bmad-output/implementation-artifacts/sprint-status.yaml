@@ -71,7 +71,7 @@ development_status:
   epic-6: in-progress
   story-6-0-pipeline-provision-stage-zero: done
   story-6-1-troll-comprehensive-run-and-report: done
-  story-6-2-mission-control-dashboard-implementation: ready-for-dev
+  story-6-2-mission-control-dashboard-implementation: review
   story-6-3-funder-intervention-points: backlog
   epic-6-retrospective: optional
 

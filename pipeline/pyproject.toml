@@ -21,6 +21,7 @@ dependencies = [
     "httpx>=0.27.0",
     "tqdm>=4.66.0",
     "rich>=13.0",
+    "textual>=6.6.0",
 ]
 
 [project.optional-dependencies]
@@ -37,6 +38,7 @@ pocpod0-load-graph = "pocpod0_pipeline.load_graph:main"
 pocpod0-embed = "pocpod0_pipeline.embed:main"
 pocpod0-compare = "pocpod0_pipeline.compare_query_modes:main"
 pocpod0-dashboard = "pocpod0_pipeline.pipeline_dashboard:main"
+pocpod0-mission-control = "pocpod0_pipeline.mission_control:main"
 
 [tool.setuptools]
 packages = ["pocpod0_pipeline"]
