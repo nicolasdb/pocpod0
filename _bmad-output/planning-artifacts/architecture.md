@@ -241,20 +241,49 @@ mkdir -p pocpod0/{infra,pipeline,agents,dashboard,scripts,data/{synthetic,schema
 - Fallback path (not taken): agents hit CSS directly on port 3000
 - **Rationale:** PRD identifies this as the first critical risk. The timebox prevents infrastructure plumbing from consuming PoC time.
 
-**Decision INFRA-5: Dashboard — Rich TUI (extends pipeline dashboard)** _(amended 2026-03-25)_
-- Multi-tab Rich Live TUI extending `pipeline/src/pocpod0_pipeline/pipeline_dashboard.py` (proven in Story 3.7.1)
-- Reads JSONL event streams from `data/` directory (same pattern as pipeline events)
-- All modules (pipeline, troll, agents) emit JSONL events to `data/troll-run.jsonl` and `data/pipeline-run.jsonl`
-- Dev-mode only — no authentication, no production concerns
-- Tabs: [HEALTH] service status, [PODS] ACL/consent state, [CONSENT] consent gate counts, [TROLL] attack results, [QUERY] agent query monitor
-- **Rationale:** FR39 requires a mission control dashboard. The pipeline TUI (Story 3.7.1) already proves the Rich Live + JSONL pattern. Extending it is simpler than building a web app, works over SSH to VPS, and requires zero frontend tooling. FastAPI+HTMX was the original plan but is unnecessary complexity for the PoC.
-- **Demo model:** Two terminals — Terminal 1: Mission Control TUI (passive, shows state). Terminal 2: OpenClaw browser (interactive, user talks to agents). Agent actions (queries, ACL changes) produce JSONL events that the TUI consumes live.
-- **JSONL event format** (all modules must emit):
+**Decision INFRA-5: Dashboard — Hybrid TUI Approach** _(amended 2026-03-25 for Rich, further amended 2026-03-31 for Textual hybrid)_
+
+**Architecture:**
+- **Story 3.7.1 — Pipeline Dashboard (Rich TUI):** `pipeline/src/pocpod0_pipeline/pipeline_dashboard.py` — monitors pipeline stages in real-time, proven pattern
+- **Story 6.2 — Mission Control (Textual TUI):** `pipeline/src/pocpod0_pipeline/mission_control.py` (NEW) — funder-facing multi-tab dashboard with native tabs and reactive updates
+- Both are independent entry points; demo uses mission control as primary interface
+
+**Why hybrid (Rich → Textual for mission control):**
+- Pipeline dashboard (Story 3.7.1): Rich is proven, simple, sufficient for stage monitoring. No changes.
+- Mission control (Story 6.2): Textual provides native `TabbedContent` widget (professional UX), reactive system for automatic updates, and async workers for non-blocking JSONL tailing. Funder-facing interface deserves investment in UX polish; Textual's features justify 12-16 hour rewrite for credibility.
+
+**Dashboard implementations:**
+1. **Rich TUI (Story 3.7.1):** Reads JSONL, polls every 0.5s, updates via `Live.update()`. Entry: `pocpod0-pipeline-dashboard`
+2. **Textual TUI (Story 6.2):** Reads JSONL via async generators in background workers, reactive attributes trigger watch methods, tabs switch natively. Entry: `pocpod0-mission-control` (NEW)
+
+**Tabs in Mission Control (Textual, Story 6.2):**
+- [HEALTH] service status (CSS, Oxigraph, Qdrant, OpenClaw)
+- [PIPELINE] pipeline stages progress
+- [TROLL] per-category attack results (pass/partial/fail counts, blocking flag)
+- [CONSENT] consent grant counts per pod (active/revoked/expired)
+- [PODS] pod ACL state and last event timestamp
+
+**Event sources (all JSONL):**
+- `data/pipeline-run.jsonl` — pipeline stages (Story 6.0 adds Stage 0)
+- `data/troll-run.jsonl` — adversarial test results (Story 6.1 orchestrator)
+- `data/consent-events.jsonl` — consent lifecycle events (Epic 5 modules)
+
+**Demo model (two terminals):**
+- Terminal 1: `pocpod0-mission-control` (Textual, passive multi-tab monitoring)
+- Terminal 2: OpenClaw browser or pipeline CLI (interactive, user actions)
+- Events from Terminal 2 appear live in Terminal 1 via JSONL tailing
+
+**JSONL event format** (all modules must emit):
   ```json
   {"event_type": "troll.probe.start", "timestamp": 1711234567.0, "category": "cross_inference", "probe_id": "ci-001", "target_agent": "claire-teacher"}
   {"event_type": "troll.probe.done", "timestamp": 1711234572.0, "category": "cross_inference", "probe_id": "ci-001", "result": "pass", "details": "..."}
   {"event_type": "troll.category.done", "timestamp": 1711234600.0, "category": "cross_inference", "passed": 5, "partial": 1, "failed": 0}
   ```
+
+**Rationale:**
+- FR39 requires a mission control dashboard. Original plan: FastAPI+HTMX (too complex). Iteration 1 (2026-03-25): Rich TUI + JSONL (simpler, works over SSH, proven). Iteration 2 (2026-03-31): Textual for mission control only — keeps pipeline dashboard simple (Rich) while upgrading funder-facing interface (Textual) for professional credibility. Hybrid approach balances schedule (Rich for pipeline) with UX polish (Textual for funder demo).
+- Textual provides native tabs, reactive updates, and professional TUI aesthetic. Investment justified for investment-decision demos where interface credibility matters.
+- Both TUIs share JSONL event streams — clean separation of concerns.
 
 ---
 

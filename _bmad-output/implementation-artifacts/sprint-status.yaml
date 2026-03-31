@@ -1,7 +1,7 @@
 ---
 project_name: pocpod0
 sprint_generated: 2026-03-18
-last_updated: 2026-03-30
+last_updated: 2026-03-30  # Story 6.0 ready-for-dev
 tracking_system: file-system
 project_key: NOKEY
 communication_language: English
@@ -68,10 +68,10 @@ development_status:
   # TUI pivot confirmed: Rich TUI + JSONL (Story 3.7.1 seed), NOT FastAPI+HTMX.
   # Two-terminal demo model: pipeline/troll in one, dashboard in the other.
   # NOTE (2026-03-30): Story 6.0 added (Epic 5 retro) — pipeline provision as Stage 0.
-  epic-6: backlog
-  story-6-0-pipeline-provision-stage-zero: backlog
-  story-6-1-troll-comprehensive-run-and-report: backlog
-  story-6-2-mission-control-dashboard-implementation: backlog
+  epic-6: in-progress
+  story-6-0-pipeline-provision-stage-zero: ready-for-dev
+  story-6-1-troll-comprehensive-run-and-report: ready-for-dev
+  story-6-2-mission-control-dashboard-implementation: ready-for-dev
   story-6-3-funder-intervention-points: backlog
   epic-6-retrospective: optional
 
