@@ -92,11 +92,6 @@
           "name": "Ayoub",
           "emoji": "🎓"
         },
-        // Ayoub owns his own pod — required for acl-manage skill ownership scope check (Story 5.1)
-        "env": {
-          "AGENT_POD_OWNERSHIP": "ayoub",
-          "AGENT_ID": "ayoub-student"
-        }
       },
       {
         "id": "troll-adversary",

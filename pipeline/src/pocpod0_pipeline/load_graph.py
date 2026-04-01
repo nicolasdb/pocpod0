@@ -275,6 +275,7 @@ def load_from_pods(
         "oxigraph_base": oxigraph_base,
     })
 
+    log_event("load_graph.discovery.start", "INFO", {"css_base": css_base})
     pod_resources = _list_all_pod_resources(css_base)
     total_resources = len(pod_resources)
     log_event("load_graph.resources.discovered", "INFO", {"total": total_resources})

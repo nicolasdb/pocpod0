@@ -520,6 +520,7 @@ def run_embedding_pipeline(
     })
 
     # Extract content
+    log_event("embed.discovery.start", "INFO", {"oxigraph_base": oxigraph_base})
     chunks = extract_content_chunks(oxigraph_base)
     if not chunks:
         log_event("embed.pipeline.complete", "WARN", {

@@ -1,7 +1,7 @@
 ---
 project_name: pocpod0
 sprint_generated: 2026-03-18
-last_updated: 2026-03-31  # Story 6.1 done (code review complete)
+last_updated: 2026-03-31  # Story 6.2 done (code review complete, all 18 patches applied)
 tracking_system: file-system
 project_key: NOKEY
 communication_language: English
@@ -68,10 +68,12 @@ development_status:
   # TUI pivot confirmed: Rich TUI + JSONL (Story 3.7.1 seed), NOT FastAPI+HTMX.
   # Two-terminal demo model: pipeline/troll in one, dashboard in the other.
   # NOTE (2026-03-30): Story 6.0 completed — pipeline provision as Stage 0.
+  # NOTE (2026-03-31): Pipeline completed successfully! Total: 3320.6s
+
   epic-6: in-progress
   story-6-0-pipeline-provision-stage-zero: done
   story-6-1-troll-comprehensive-run-and-report: done
-  story-6-2-mission-control-dashboard-implementation: review
+  story-6-2-mission-control-dashboard-implementation: in-progress  # COURSE CORRECTION 2026-04-01: redesign from Gantt to control room widgets. See sprint-change-proposal-2026-04-01.md
   story-6-3-funder-intervention-points: backlog
   epic-6-retrospective: optional
 

@@ -438,14 +438,13 @@ class TestKeyframeDetection:
         assert should_fire_keyframe_stop1(event) is True
 
     def test_keyframe_stop2_fires_on_aggregate_change(self):
-        """Keyframe STOP 2 fires when cluster changes (Task 6.2)."""
+        """Keyframe STOP 2 fires when cluster active_pods count changes (Task 6.2)."""
         event = ConsentEvent(
             timestamp="2026-03-31T14:30:00Z",
             event_type="consent.revoke",
             pod="karim-pod",
         )
 
-        # Previous aggregate with different count
         previous_agg = ClusterAggregate(
             cluster_id="school-nl-1",
             cluster_name="School NL",
@@ -453,8 +452,25 @@ class TestKeyframeDetection:
             active_pods=8,
             total_pods=8,
         )
+        current_agg = ClusterAggregate(
+            cluster_id="school-nl-1",
+            cluster_name="School NL",
+            pods=[],
+            active_pods=7,  # count changed after revoke
+            total_pods=8,
+        )
 
-        assert should_fire_keyframe_stop2(event, previous_agg) is True
+        assert should_fire_keyframe_stop2(event, previous_agg, current_agg) is True
+
+    def test_keyframe_stop2_no_fire_when_unchanged(self):
+        """Keyframe STOP 2 does NOT fire when cluster count is unchanged."""
+        event = ConsentEvent(
+            timestamp="2026-03-31T14:30:00Z",
+            event_type="acl.grant",
+            pod="karim-pod",
+        )
+        agg = ClusterAggregate("school-nl-1", "School NL", [], active_pods=8, total_pods=8)
+        assert should_fire_keyframe_stop2(event, agg, agg) is False
 
     def test_keyframe_stop4_fires_on_civic_locked(self):
         """Keyframe STOP 4 fires on civic.aggregate.locked event (Task 6.4)."""
@@ -599,15 +615,20 @@ class TestEdgeCases:
         assert state.current_state == PodStateEnum.ANOMALY
 
     def test_events_out_of_order(self):
-        """Handle events that arrive out of chronological order."""
+        """Handle events that arrive out of chronological order in the list.
+
+        grant has timestamp 14:30 (later) but appears first in the list.
+        revoke has timestamp 14:00 (earlier) and appears second.
+        After sorting by timestamp, grant is last → ACTIVE.
+        """
         events = [
-            ConsentEvent(timestamp="2026-03-31T14:30:00Z", event_type="consent.revoke", pod="ayoub-pod"),
-            ConsentEvent(timestamp="2026-03-31T14:00:00Z", event_type="consent.grant", pod="ayoub-pod"),
+            ConsentEvent(timestamp="2026-03-31T14:30:00Z", event_type="consent.grant", pod="ayoub-pod"),
+            ConsentEvent(timestamp="2026-03-31T14:00:00Z", event_type="consent.revoke", pod="ayoub-pod"),
         ]
 
-        # Should sort by timestamp and use last event
+        # Should sort by timestamp and use last event (grant@14:30)
         state = calculate_pod_state("ayoub-pod", events)
-        assert state.current_state == PodStateEnum.ACTIVE  # Last by timestamp
+        assert state.current_state == PodStateEnum.ACTIVE  # grant is last by timestamp
 
     def test_cluster_with_no_pods(self):
         """Handle cluster with no pods."""

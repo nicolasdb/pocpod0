@@ -25,7 +25,23 @@ from rich.text import Text
 # Config
 # ---------------------------------------------------------------------------
 _JSONL_LOG = Path(__file__).parent.parent.parent.parent / "data" / "pipeline-run.jsonl"
+_PIPELINE_LOG = Path(__file__).parent.parent.parent.parent / "data" / "pipeline.log"
 _POLL_INTERVAL = 0.5  # seconds
+
+# Maps log event name → (stage_name, role, detail_key)
+# role "total":      set total from details[detail_key]
+# role "done":       increment done (by details[detail_key] if set, else 1)
+# role "discovery":  show "discovering…" label until total is known
+_PROGRESS_EVENTS: dict[str, tuple[str, str, str | None]] = {
+    "ingest.statements.loaded":        ("ingest",      "total",     "total"),
+    "ingest.statement.stored":         ("ingest",      "done",      None),
+    "load_graph.discovery.start":      ("load-graph",  "discovery", None),
+    "load_graph.resources.discovered": ("load-graph",  "total",     "total"),
+    "load_graph.resource.loaded":      ("load-graph",  "done",      None),
+    "embed.discovery.start":           ("embed",       "discovery", None),
+    "embed.extract":                   ("embed",       "total",     "chunk_count"),
+    "embed.qdrant_upsert":             ("embed",       "done",      "point_count"),
+}
 
 OXIGRAPH_URL = os.environ.get("OXIGRAPH_BASE_URL", "http://localhost:7878")
 QDRANT_URL = os.environ.get("QDRANT_BASE_URL", "http://localhost:6333")
@@ -103,11 +119,22 @@ STATUS_ICON = {
 }
 
 
+def _progress_bar(done: int, total: int, width: int = 16) -> str:
+    """Render a compact ASCII progress bar: ████░░░░ 45/120"""
+    frac = min(done / total, 1.0) if total > 0 else 0.0
+    filled = round(frac * width)
+    bar = "█" * filled + "░" * (width - filled)
+    pct = int(frac * 100)
+    return f"{bar} {done}/{total} ({pct}%)"
+
+
 def _build_table(
     stage_order: list[str],
     stage_status: dict[str, str],
     stage_elapsed: dict[str, float],
     stage_start_ts: dict[str, float],
+    stage_detail: dict[str, str],
+    stage_progress: dict[str, tuple[int, int]],
     health: dict[str, bool],
     pipeline_start_ts: float,
     total_elapsed: float | None,
@@ -116,6 +143,7 @@ def _build_table(
 
     table = Table(title="pocpod0 Pipeline Dashboard", show_header=True, header_style="bold cyan")
     table.add_column("Stage", style="white", min_width=20)
+    table.add_column("Progress", min_width=32)
     table.add_column("Status", justify="center", min_width=10)
     table.add_column("Elapsed", justify="right", min_width=8)
 
@@ -132,11 +160,18 @@ def _build_table(
         else:
             elapsed_str = "—"
 
-        table.add_row(
-            name,
-            Text(f"{icon} {status}", style=style),
-            elapsed_str,
-        )
+        detail = stage_detail.get(name, "")
+        label = f"{name}  [dim]{detail}[/dim]" if detail else name
+
+        prog_text = ""
+        if name in stage_progress:
+            done, total = stage_progress[name]
+            if total > 0:
+                bar = _progress_bar(done, total)
+                prog_style = "green" if status == "done" else "yellow"
+                prog_text = f"[{prog_style}]{bar}[/{prog_style}]"
+
+        table.add_row(label, prog_text, Text(f"{icon} {status}", style=style), elapsed_str)
 
     # Separator + total elapsed
     if total_elapsed is not None:
@@ -182,6 +217,8 @@ def main() -> None:
     stage_status: dict[str, str] = {}
     stage_elapsed: dict[str, float] = {}
     stage_start_ts: dict[str, float] = {}
+    stage_detail: dict[str, str] = {}
+    stage_progress: dict[str, tuple[int, int]] = {}  # stage → (done, total)
     pipeline_start_ts: float = 0.0
     pipeline_done = False
     total_elapsed: float | None = None
@@ -190,14 +227,62 @@ def main() -> None:
     while not jsonl_path.exists():
         time.sleep(_POLL_INTERVAL)
 
-    with Live(console=console, refresh_per_second=4, screen=False) as live:
-        with open(jsonl_path) as f:
+    log_path = Path("data/pipeline.log")
+    if not log_path.parent.exists():
+        log_path = _PIPELINE_LOG
+
+    with Live(console=console, refresh_per_second=4, screen=True) as live:
+        log_path.touch()  # create if not yet present
+        with open(jsonl_path) as f, open(log_path, "a+") as lf:
+            lf.seek(0, 2)  # start at end — only tail new lines
             while True:
+                # Read progress events from pipeline.log
+                for raw in lf:
+                    raw = raw.strip()
+                    if not raw:
+                        continue
+                    try:
+                        ev = json.loads(raw)
+                    except json.JSONDecodeError:
+                        continue
+                    ename = ev.get("event", "")
+                    if ename in _PROGRESS_EVENTS:
+                        stage, role, detail_key = _PROGRESS_EVENTS[ename]
+                        details = ev.get("details", {})
+                        done, total = stage_progress.get(stage, (0, 0))
+                        if role == "discovery":
+                            stage_detail[stage] = "discovering…"
+                        elif role == "total":
+                            total = details.get(detail_key, 0) if detail_key else 0
+                            stage_detail.pop(stage, None)
+                        elif role == "done":
+                            increment = details.get(detail_key, 1) if detail_key else 1
+                            done += increment
+                        stage_progress[stage] = (done, total)
+
                 events = _read_new_lines(f)
                 for ev in events:
                     etype = ev.get("event_type", "")
 
-                    if etype == "pipeline.start":
+                    if etype == "pipeline.wipe.start":
+                        stage_order = ["wipe"]
+                        stage_status["wipe"] = "running"
+                        stage_start_ts["wipe"] = ev.get("timestamp", time.time())
+                        pipeline_start_ts = stage_start_ts["wipe"]
+
+                    elif etype == "pipeline.wipe.progress":
+                        done = ev.get("pods_done", 0)
+                        total = ev.get("pods_total", 0)
+                        pod = ev.get("pod", "")
+                        stage_detail["wipe"] = f"{pod} ({done}/{total} pods)"
+
+                    elif etype == "pipeline.wipe.done":
+                        stage_status["wipe"] = "done"
+                        if "wipe" in stage_start_ts:
+                            stage_elapsed["wipe"] = ev.get("timestamp", time.time()) - stage_start_ts["wipe"]
+                        stage_detail.pop("wipe", None)
+
+                    elif etype == "pipeline.start":
                         stage_order = ev.get("stages", [])
                         stage_status = {s: "pending" for s in stage_order}
                         pipeline_start_ts = ev.get("timestamp", time.time())
@@ -231,6 +316,8 @@ def main() -> None:
                     stage_status,
                     stage_elapsed,
                     stage_start_ts,
+                    stage_detail,
+                    stage_progress,
                     health,
                     pipeline_start_ts,
                     total_elapsed,

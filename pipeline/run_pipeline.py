@@ -194,7 +194,7 @@ def _recursive_delete(container_url: str, headers_get: dict, headers_delete: dic
     return deleted
 
 
-def wipe_css_pods(css_base_url: str) -> None:
+def wipe_css_pods(css_base_url: str, emit_progress=None) -> None:
     """Recursive DELETE of learning/ containers in ALL CSS pods, and camp/ in school-community.
 
     Enumerates pods dynamically from the CSS root to catch troll-generated
@@ -225,6 +225,8 @@ def wipe_css_pods(css_base_url: str) -> None:
             continue
 
         if resp.status_code == 404:
+            if emit_progress:
+                emit_progress(slug, 0, len(slugs))
             continue  # already empty, no noise
         if resp.status_code not in (200, 201):
             print(f"  CSS pod {slug}/learning/: unexpected GET status {resp.status_code}, skipping")
@@ -232,6 +234,8 @@ def wipe_css_pods(css_base_url: str) -> None:
 
         deleted = _recursive_delete(container_url, headers_get, headers_delete)
         total_deleted += deleted
+        if emit_progress:
+            emit_progress(slug, deleted, len(slugs))
         if deleted > 0:
             print(f"  CSS pod {slug}/learning/: deleted {deleted} resources")
 
@@ -254,7 +258,14 @@ def wipe(oxigraph_url: str, qdrant_url: str) -> None:
     _header("Wiping existing data")
     _emit("pipeline.wipe.start")
 
-    wipe_css_pods(CSS_BASE_URL)
+    _wipe_pod_count = [0]
+
+    def _on_pod_wiped(slug: str, deleted: int, total_pods: int) -> None:
+        _wipe_pod_count[0] += 1
+        _emit("pipeline.wipe.progress", pod=slug, deleted=deleted,
+              pods_done=_wipe_pod_count[0], pods_total=total_pods)
+
+    wipe_css_pods(CSS_BASE_URL, emit_progress=_on_pod_wiped)
 
     print("  Oxigraph: CLEAR ALL ... ", end="", flush=True)
     resp = httpx.post(
@@ -282,7 +293,7 @@ def wipe(oxigraph_url: str, qdrant_url: str) -> None:
     _emit("pipeline.wipe.done")
 
 
-def run_stage(stage: dict, dry_run: bool = False) -> None:
+def run_stage(stage: dict, dry_run: bool = False, log_file=None) -> None:
     _header(stage["label"])
     t0 = time.monotonic()
     _emit("stage.start", stage=stage["name"], label=stage["label"])
@@ -290,7 +301,11 @@ def run_stage(stage: dict, dry_run: bool = False) -> None:
         time.sleep(1.5)
         elapsed = time.monotonic() - t0
     else:
-        result = subprocess.run(stage["cmd"], env=os.environ.copy())
+        kwargs = {"env": os.environ.copy()}
+        if log_file is not None:
+            kwargs["stdout"] = log_file
+            kwargs["stderr"] = log_file
+        result = subprocess.run(stage["cmd"], **kwargs)
         elapsed = time.monotonic() - t0
         if result.returncode != 0:
             _emit("stage.failed", stage=stage["name"], elapsed=elapsed, returncode=result.returncode)
@@ -335,7 +350,7 @@ def main() -> None:
     pipeline_start = time.monotonic()
     _emit("pipeline.start", stages=[s["name"] for s in STAGES], wipe=args.wipe)
     for stage in STAGES:
-        run_stage(stage, dry_run=args.dry_run)
+        run_stage(stage, dry_run=args.dry_run, log_file=_log_file)
 
     total = time.monotonic() - pipeline_start
     _emit("pipeline.done", total_elapsed=total)

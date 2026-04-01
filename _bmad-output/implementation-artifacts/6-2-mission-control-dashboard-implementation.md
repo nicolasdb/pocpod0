@@ -1,6 +1,6 @@
 # Story 6.2: Mission Control Dashboard Implementation
 
-Status: review
+Status: in-progress
 
 ## Story
 
@@ -197,6 +197,44 @@ Refer to `/var/home/nicolas/github/pocpod0/_bmad-output/implementation-artifacts
 - **STOP 4: Federal civic layer** — de-identified evidence, privacy boundary sealed
 
 Only relevant STOP levels render per scenario (dynamic visibility).
+
+### Review Findings
+
+**Code review: 2026-03-31 — 3 decision-needed, 16 patch, 4 defer, 2 dismissed**
+
+#### Decision-Needed (resolve before patching)
+
+- [x] [Review][Patch] **D1→Patch: Implement full TabbedContent** — 5 tabs: [Claire], [Isabelle], [Ayoub], [POD], [ATTACKS]. Add pod click handler wiring (Tasks 11, 12). Decision: full implementation.
+- [x] [Review][Patch] **D2→Patch: Implement Textual Sparkline timeline in Gantt** — replace plain text rows with Sparkline-based timeline bars + ▼ keyframe markers, color-coded by state (Task 7.3/7.4). Decision: Textual Sparkline (not Rich).
+- [x] [Review][Defer] **D3→Defer: Troll events display ([ATTACKS] tab)** — deferred to Story 6.3 (Funder Intervention Points). `troll_events` polled and stored; surface in 6.3.
+
+#### Patch (unambiguous fixes)
+
+- [x] [Review][Patch] **P1: `acl.governance.transition` missing from `should_fire_keyframe_stop1`** — test failure #1; add to event type list [`mission_control.py:309`]
+- [x] [Review][Patch] **P2: `should_fire_keyframe_stop2/3` always return True** — never compare active_pods count vs previous; fires on every poll cycle [`mission_control.py:316,323`]
+- [x] [Review][Patch] **P3: Scenario selector is static Label** — `selected_scenarios` reactive never mutated by user; replace with Textual Checkbox widgets [`mission_control.py:623`]
+- [x] [Review][Patch] **P4: Pod click handler absent on PodSpaceGrid** — `filtered_pod` reactive exists but is never set or consumed [`mission_control.py:425`]
+- [x] [Review][Patch] **P5: Reactivity ordering bug** — `self.pod_states` set before `self.cluster_aggregates`/`self.regional_aggregates`; `watch_pod_states` fires with stale aggregate data [`mission_control.py:685`]
+- [x] [Review][Patch] **P6: `claire-pod` in wrong cluster** — CLUSTER_MAPPING places it in `school-fr-1` but `SCENARIO_CLUSTER_MAPPING["Claire"]` points to `school-nl-1` [`mission_control.py:76`]
+- [x] [Review][Patch] **P7: Civic status strings inverted** — `"locked"` when privacy is OK, `"at_risk"` when violated; semantically backwards for funder audience [`mission_control.py:296`]
+- [x] [Review][Patch] **P8: Civic outcome hardcoded** — `"+12% engagement"` regardless of region or actual data [`mission_control.py:295`]
+- [x] [Review][Patch] **P9: Gantt STOP filtering is union-wide** — Claire shows STOP 3/4 when Isabelle also selected; must filter stops per scenario independently [`mission_control.py:365`]
+- [x] [Review][Patch] **P10: Expired pod count logic wrong** — `calculate_pod_state` maps `consent.expired→REVOKED`; counting by event type double-counts expired pods in revoked total [`mission_control.py:487`]
+- [x] [Review][Patch] **P11: Unbounded event list growth** — `consent_events`/`troll_events` grow forever; O(events×pods) recalculation every 2 sec [`mission_control.py:650`]
+- [x] [Review][Patch] **P12: Timestamp sort is lexicographic string** — test failure #2 (`test_events_out_of_order`); use `datetime.fromisoformat` as sort key [`mission_control.py:204`]
+- [x] [Review][Patch] **P13: Seek position not reset on file truncation** — demo reset via `compose down -v` truncates JSONL; next poll seeks past EOF and reads nothing [`mission_control.py:645`]
+- [x] [Review][Patch] **P14: `alerts[:5]` cap inconsistent** — `_add_alert` keeps last 10, panel renders only 5; silent data loss [`mission_control.py:538`]
+- [x] [Review][Patch] **P15: Unused imports** — `os`, `sys`, `time`, `defaultdict`, `Container`, `VerticalScroll`, `Literal` [`mission_control.py:31`]
+- [x] [Review][Patch] **P16: Bare `except Exception: pass` in watchers** — swallows post-mount widget crashes silently [`mission_control.py:726`]
+
+#### Deferred (pre-existing or design decisions)
+
+- [x] [Review][Defer] **W1: `publication_ready` ignores TRANSITIONING pods** — design decision; transitioning is not the same as revoked [`mission_control.py:261`] — deferred, pre-existing
+- [x] [Review][Defer] **W2: Partial write on last JSONL line** — acceptable for PoC demo [`mission_control.py:647`] — deferred, pre-existing
+- [x] [Review][Defer] **W3: `extra=data` aliasing in parse_consent_event** — read-only use in PoC [`mission_control.py:197`] — deferred, pre-existing
+- [x] [Review][Defer] **W4: `_poll_jsonl_task` not cancelled on unmount** — Textual handles task cleanup on exit [`mission_control.py:634`] — deferred, pre-existing
+
+---
 
 ### Implementation Guide: Reference the UX Spec
 
