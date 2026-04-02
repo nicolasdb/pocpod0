@@ -1,14 +1,17 @@
-"""ACL Enforcement Dashboard API for Story 6.2.
+"""ACL Enforcement Dashboard API for Story 6.3.
 
 FastAPI backend that queries CSS pod ACL state live and demonstrates
-"private by default" enforcement. Queries CSS directly via PodProvisioner.
+"private by default" enforcement. Routes grant/revoke through acl-manage skill,
+displays troll attack results live.
 """
 
 import os
 import httpx
+import json
+import subprocess
 from pathlib import Path
 from typing import Optional
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, status
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from pocpod0_pipeline.provision_pods import PodProvisioner
@@ -59,6 +62,105 @@ _provisioner = PodProvisioner(
     config_path=str(POD_CONFIG_PATH),
 )
 
+# acl-manage handler constants
+ALL_PODS = "ayoub,claire-student-1,claire-student-2,fatima-child-1,fatima-child-2,school-community"
+HANDLER_PATH = REPO_ROOT / "agents" / "skills" / "acl-manage" / "handler.py"
+
+# Troll attack constants
+TROLL_PATH = REPO_ROOT / "agents" / "troll-adversary" / "attacks" / "run_comprehensive.py"
+TROLL_JSONL_PATH = REPO_ROOT / "data" / "troll-run.jsonl"
+BLOCKING_CATEGORIES = {"acl_enforcement", "sparql_injection"}
+
+
+def call_acl_manage(action: str, pod: str, webid: str | None = None, actor: str | None = None) -> tuple[bool, str]:
+    """Call acl-manage handler.py subprocess and return (ok, message)."""
+    cmd = [
+        "python", str(HANDLER_PATH),
+        "--action", action,
+        "--pod-name", pod,
+    ]
+    if webid:
+        cmd += ["--identity", webid]
+    if actor:
+        cmd += ["--role", actor, "--access-level", "read"]
+
+    env = {
+        **os.environ,
+        "CSS_CONNECT_URL": "http://localhost:3000",
+        "AGENT_POD_OWNERSHIP": ALL_PODS,
+        "AGENT_ID": "dashboard",
+    }
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=10)
+
+        # Parse JSON response
+        try:
+            response = json.loads(result.stdout)
+            if result.returncode == 0 and response.get("status") == "ok":
+                return (True, response.get("message", "Success"))
+            else:
+                # Handler returned error (exit code 1) or status != "ok"
+                return (False, response.get("message", "Handler error"))
+        except json.JSONDecodeError:
+            return (False, result.stderr or "No JSON response from handler")
+    except subprocess.TimeoutExpired:
+        return (False, "acl-manage handler timeout")
+    except Exception as e:
+        return (False, f"Error calling acl-manage: {str(e)}")
+
+
+def parse_troll_results() -> dict:
+    """Parse troll-run.jsonl and return categorized summary.
+
+    Returns:
+        {
+            "categories": {
+                "acl_enforcement": {"blocking": True, "passed": X, "partial": Y, "failed": Z, "total": T},
+                ...
+            },
+            "run_summary": {"total_tests": X, "total_passed": Y, ...} or None
+        }
+    """
+    categories = {}
+    run_summary = None
+
+    if not TROLL_JSONL_PATH.exists():
+        return {"categories": categories, "run_summary": run_summary}
+
+    try:
+        with open(TROLL_JSONL_PATH, "r") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                try:
+                    event = json.loads(line)
+                    event_type = event.get("event_type")
+
+                    if event_type == "troll.category.done":
+                        category = event.get("attack_category")
+                        categories[category] = {
+                            "blocking": event.get("blocking", False),
+                            "passed": event.get("passed", 0),
+                            "partial": event.get("partial", 0),
+                            "failed": event.get("failed", 0),
+                            "total": event.get("total", 0),
+                        }
+                    elif event_type == "troll.run.done":
+                        run_summary = {
+                            "total_tests": event.get("total_tests", 0),
+                            "total_passed": event.get("total_passed", 0),
+                            "total_partial": event.get("total_partial", 0),
+                            "total_failed": event.get("total_failed", 0),
+                            "blocking_pass": event.get("blocking_pass", False),
+                        }
+                except json.JSONDecodeError:
+                    continue
+    except Exception as e:
+        pass
+
+    return {"categories": categories, "run_summary": run_summary}
+
 
 # Request/Response models
 class ProbeRequest(BaseModel):
@@ -99,6 +201,20 @@ class PodCardResponse(BaseModel):
     display_name: str
     grants: list
     is_private: bool
+
+
+class TrollResultsResponse(BaseModel):
+    categories: dict
+    run_summary: Optional[dict] = None
+
+
+class TrollCategory(BaseModel):
+    name: str
+    blocking: bool
+    passed: int
+    partial: int
+    failed: int
+    total: int
 
 
 # Health check endpoint
@@ -206,7 +322,7 @@ async def probe_pod(pod: str, req: ProbeRequest):
 # Grant endpoint
 @app.post("/api/pods/{pod}/grant")
 async def grant_access(pod: str, req: GrantRequest):
-    """Grant ACL access to a pod for an actor."""
+    """Grant ACL access to a pod for an actor via acl-manage skill."""
     if pod not in REAL_PODS:
         raise HTTPException(status_code=400, detail=f"Unknown pod: {pod}")
 
@@ -214,15 +330,15 @@ async def grant_access(pod: str, req: GrantRequest):
         raise HTTPException(status_code=400, detail=f"Unknown actor: {req.actor}")
 
     agent_webid = ACTOR_WEBIDS[req.actor]
-    ok, msg = _provisioner.grant_acl_access(
-        pod_name=pod,
-        agent_webid=agent_webid,
-        role=req.actor,
-        access_level=req.access_level
+    ok, msg = call_acl_manage(
+        action="grant",
+        pod=pod,
+        webid=agent_webid,
+        actor=req.actor
     )
 
     if not ok:
-        raise HTTPException(status_code=500, detail=msg)
+        raise HTTPException(status_code=400, detail=msg)
 
     return {"ok": True, "message": msg}
 
@@ -230,7 +346,7 @@ async def grant_access(pod: str, req: GrantRequest):
 # Revoke endpoint
 @app.post("/api/pods/{pod}/revoke")
 async def revoke_access(pod: str, req: RevokeRequest):
-    """Revoke ACL access from a pod for an actor."""
+    """Revoke ACL access from a pod for an actor via acl-manage skill."""
     if pod not in REAL_PODS:
         raise HTTPException(status_code=400, detail=f"Unknown pod: {pod}")
 
@@ -238,15 +354,50 @@ async def revoke_access(pod: str, req: RevokeRequest):
         raise HTTPException(status_code=400, detail=f"Unknown actor: {req.actor}")
 
     agent_webid = ACTOR_WEBIDS[req.actor]
-    ok, msg = _provisioner.revoke_acl_access(
-        pod_name=pod,
-        agent_webid=agent_webid
+    ok, msg = call_acl_manage(
+        action="revoke",
+        pod=pod,
+        webid=agent_webid
     )
 
     if not ok:
-        raise HTTPException(status_code=500, detail=msg)
+        raise HTTPException(status_code=400, detail=msg)
 
     return {"ok": True, "message": msg}
+
+
+# Troll run endpoint - triggers comprehensive attack suite
+@app.post("/api/troll/run", status_code=status.HTTP_202_ACCEPTED)
+async def run_troll():
+    """Trigger troll comprehensive attack suite (runs in background)."""
+    env = {
+        **os.environ,
+        "CSS_BASE_URL": CSS_BASE_URL,
+        # Also include other required env vars for troll
+    }
+
+    try:
+        # Run troll in background (don't wait for completion)
+        subprocess.Popen(
+            ["python", str(TROLL_PATH)],
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return {"status": "accepted", "message": "Troll comprehensive run started"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to start troll: {str(e)}")
+
+
+# Troll results endpoint - get latest test results
+@app.get("/api/troll/results")
+async def get_troll_results() -> TrollResultsResponse:
+    """Get latest troll attack results from troll-run.jsonl."""
+    results = parse_troll_results()
+    return TrollResultsResponse(
+        categories=results["categories"],
+        run_summary=results["run_summary"]
+    )
 
 
 # Mount static files (AFTER all /api/* routes so they take precedence)

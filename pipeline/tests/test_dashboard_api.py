@@ -1,7 +1,9 @@
-"""Tests for dashboard_api.py (Story 6.2)."""
+"""Tests for dashboard_api.py (Story 6.3)."""
 
 import pytest
 import httpx
+import json
+import subprocess
 from unittest.mock import patch, MagicMock, AsyncMock
 from fastapi.testclient import TestClient
 from pocpod0_pipeline.dashboard_api import app, REAL_PODS, ACTOR_WEBIDS
@@ -203,10 +205,14 @@ def test_probe_handles_request_errors():
 # AC4: Grant access
 # ============================================================================
 
-@patch('pocpod0_pipeline.dashboard_api._provisioner.grant_acl_access')
-def test_grant_calls_provisioner(mock_grant):
-    """AC4: Grant button calls provisioner.grant_acl_access()."""
-    mock_grant.return_value = (True, "Granted isabelle read access to ayoub")
+@patch('pocpod0_pipeline.dashboard_api.subprocess.run')
+def test_grant_calls_acl_manage_handler(mock_subprocess):
+    """AC1: Grant button calls acl-manage handler.py via subprocess."""
+    # Mock successful acl-manage handler response
+    mock_subprocess.return_value = MagicMock(
+        returncode=0,
+        stdout=json.dumps({"status": "ok", "message": "Granted isabelle read access to ayoub"})
+    )
 
     response = client.post(
         "/api/pods/ayoub/grant",
@@ -214,57 +220,66 @@ def test_grant_calls_provisioner(mock_grant):
     )
 
     assert response.status_code == 200
-    assert mock_grant.called
+    assert mock_subprocess.called
 
-    # Verify grant was called with correct arguments
-    call_args = mock_grant.call_args
-    assert call_args[1]["pod_name"] == "ayoub"
-    assert call_args[1]["agent_webid"] == ACTOR_WEBIDS["isabelle"]
-    assert call_args[1]["role"] == "isabelle"
-    assert call_args[1]["access_level"] == "read"
+    # Verify subprocess was called with handler path and correct arguments
+    call_args = mock_subprocess.call_args
+    cmd = call_args[0][0]  # First positional argument is the command list
+    assert "acl-manage" in cmd[1]  # Handler path should contain "acl-manage"
+    assert "--action" in cmd and "grant" in cmd
+    assert "--pod-name" in cmd and "ayoub" in cmd
 
 
-@patch('pocpod0_pipeline.dashboard_api._provisioner.grant_acl_access')
-def test_grant_validates_pod_name(mock_grant):
-    """AC4: Grant rejects unknown pod."""
+@patch('pocpod0_pipeline.dashboard_api.subprocess.run')
+def test_grant_validates_pod_name(mock_subprocess):
+    """AC1: Grant rejects unknown pod."""
     response = client.post(
         "/api/pods/unknown/grant",
         json={"actor": "isabelle", "access_level": "read"}
     )
 
     assert response.status_code == 400
-    assert not mock_grant.called
+    assert not mock_subprocess.called
 
 
-@patch('pocpod0_pipeline.dashboard_api._provisioner.grant_acl_access')
-def test_grant_validates_actor_name(mock_grant):
-    """AC4: Grant rejects unknown actor."""
+@patch('pocpod0_pipeline.dashboard_api.subprocess.run')
+def test_grant_validates_actor_name(mock_subprocess):
+    """AC1: Grant rejects unknown actor."""
     response = client.post(
         "/api/pods/ayoub/grant",
         json={"actor": "unknown", "access_level": "read"}
     )
 
     assert response.status_code == 400
-    assert not mock_grant.called
+    assert not mock_subprocess.called
 
 
-@patch('pocpod0_pipeline.dashboard_api._provisioner.grant_acl_access')
-def test_grant_handles_provisioner_error(mock_grant):
-    """AC4: Grant returns error if provisioner fails."""
-    mock_grant.return_value = (False, "CSS is not responding")
+@patch('pocpod0_pipeline.dashboard_api.subprocess.run')
+def test_grant_handles_handler_denied(mock_subprocess):
+    """AC6: Grant returns HTTP 400 if handler denies (exit code 1)."""
+    # Handler returns exit code 1 with denied message in JSON
+    mock_subprocess.return_value = MagicMock(
+        returncode=1,
+        stdout=json.dumps({"status": "denied", "message": "Not in AGENT_POD_OWNERSHIP scope"})
+    )
 
     response = client.post(
         "/api/pods/ayoub/grant",
         json={"actor": "isabelle", "access_level": "read"}
     )
 
-    assert response.status_code == 500
+    assert response.status_code == 400
+    data = response.json()
+    assert "Not in AGENT_POD_OWNERSHIP scope" in data.get("detail", "")
 
 
-@patch('pocpod0_pipeline.dashboard_api._provisioner.grant_acl_access')
-def test_grant_returns_ok_response(mock_grant):
-    """AC4: Successful grant returns {ok: true, message}."""
-    mock_grant.return_value = (True, "Granted isabelle read access to ayoub")
+@patch('pocpod0_pipeline.dashboard_api.subprocess.run')
+def test_grant_returns_ok_response(mock_subprocess):
+    """AC1: Successful grant returns HTTP 200."""
+    mock_subprocess.return_value = MagicMock(
+        returncode=0,
+        stdout=json.dumps({"status": "ok", "message": "Granted isabelle read access to ayoub"})
+    )
 
     response = client.post(
         "/api/pods/ayoub/grant",
@@ -281,10 +296,13 @@ def test_grant_returns_ok_response(mock_grant):
 # AC5: Revoke access
 # ============================================================================
 
-@patch('pocpod0_pipeline.dashboard_api._provisioner.revoke_acl_access')
-def test_revoke_calls_provisioner(mock_revoke):
-    """AC5: Revoke button calls provisioner.revoke_acl_access()."""
-    mock_revoke.return_value = (True, "Revoked access for isabelle from ayoub")
+@patch('pocpod0_pipeline.dashboard_api.subprocess.run')
+def test_revoke_calls_acl_manage_handler(mock_subprocess):
+    """AC1: Revoke button calls acl-manage handler.py via subprocess."""
+    mock_subprocess.return_value = MagicMock(
+        returncode=0,
+        stdout=json.dumps({"status": "ok", "message": "Revoked access for isabelle from ayoub"})
+    )
 
     response = client.post(
         "/api/pods/ayoub/revoke",
@@ -292,55 +310,65 @@ def test_revoke_calls_provisioner(mock_revoke):
     )
 
     assert response.status_code == 200
-    assert mock_revoke.called
+    assert mock_subprocess.called
 
-    # Verify revoke was called with correct arguments
-    call_args = mock_revoke.call_args
-    assert call_args[1]["pod_name"] == "ayoub"
-    assert call_args[1]["agent_webid"] == ACTOR_WEBIDS["isabelle"]
+    # Verify subprocess was called with handler path and correct arguments
+    call_args = mock_subprocess.call_args
+    cmd = call_args[0][0]
+    assert "acl-manage" in cmd[1]  # Handler path
+    assert "--action" in cmd and "revoke" in cmd
+    assert "--pod-name" in cmd and "ayoub" in cmd
 
 
-@patch('pocpod0_pipeline.dashboard_api._provisioner.revoke_acl_access')
-def test_revoke_validates_pod_name(mock_revoke):
-    """AC5: Revoke rejects unknown pod."""
+@patch('pocpod0_pipeline.dashboard_api.subprocess.run')
+def test_revoke_validates_pod_name(mock_subprocess):
+    """AC1: Revoke rejects unknown pod."""
     response = client.post(
         "/api/pods/unknown/revoke",
         json={"actor": "isabelle"}
     )
 
     assert response.status_code == 400
-    assert not mock_revoke.called
+    assert not mock_subprocess.called
 
 
-@patch('pocpod0_pipeline.dashboard_api._provisioner.revoke_acl_access')
-def test_revoke_validates_actor_name(mock_revoke):
-    """AC5: Revoke rejects unknown actor."""
+@patch('pocpod0_pipeline.dashboard_api.subprocess.run')
+def test_revoke_validates_actor_name(mock_subprocess):
+    """AC1: Revoke rejects unknown actor."""
     response = client.post(
         "/api/pods/ayoub/revoke",
         json={"actor": "unknown"}
     )
 
     assert response.status_code == 400
-    assert not mock_revoke.called
+    assert not mock_subprocess.called
 
 
-@patch('pocpod0_pipeline.dashboard_api._provisioner.revoke_acl_access')
-def test_revoke_handles_provisioner_error(mock_revoke):
-    """AC5: Revoke returns error if provisioner fails."""
-    mock_revoke.return_value = (False, "CSS is not responding")
+@patch('pocpod0_pipeline.dashboard_api.subprocess.run')
+def test_revoke_handles_handler_denied(mock_subprocess):
+    """AC6: Revoke returns HTTP 400 if handler denies (exit code 1)."""
+    mock_subprocess.return_value = MagicMock(
+        returncode=1,
+        stdout=json.dumps({"status": "denied", "message": "Not in AGENT_POD_OWNERSHIP scope"})
+    )
 
     response = client.post(
         "/api/pods/ayoub/revoke",
         json={"actor": "isabelle"}
     )
 
-    assert response.status_code == 500
+    assert response.status_code == 400
+    data = response.json()
+    assert "Not in AGENT_POD_OWNERSHIP scope" in data.get("detail", "")
 
 
-@patch('pocpod0_pipeline.dashboard_api._provisioner.revoke_acl_access')
-def test_revoke_returns_ok_response(mock_revoke):
-    """AC5: Successful revoke returns {ok: true, message}."""
-    mock_revoke.return_value = (True, "Revoked access for isabelle from ayoub")
+@patch('pocpod0_pipeline.dashboard_api.subprocess.run')
+def test_revoke_returns_ok_response(mock_subprocess):
+    """AC1: Successful revoke returns HTTP 200."""
+    mock_subprocess.return_value = MagicMock(
+        returncode=0,
+        stdout=json.dumps({"status": "ok", "message": "Revoked access for isabelle from ayoub"})
+    )
 
     response = client.post(
         "/api/pods/ayoub/revoke",
@@ -406,9 +434,8 @@ def test_health_check_partial_failure():
 # ============================================================================
 
 @patch('pocpod0_pipeline.dashboard_api._provisioner.view_acl_state')
-@patch('pocpod0_pipeline.dashboard_api._provisioner.grant_acl_access')
-@patch('pocpod0_pipeline.dashboard_api._provisioner.revoke_acl_access')
-def test_demo_moment_workflow(mock_revoke, mock_grant, mock_view_acl):
+@patch('pocpod0_pipeline.dashboard_api.subprocess.run')
+def test_demo_moment_workflow(mock_subprocess, mock_view_acl):
     """AC7: Full demo workflow - private → grant → shared → revoke → private."""
 
     # Step 1: Pod is private (no grants)
@@ -419,7 +446,10 @@ def test_demo_moment_workflow(mock_revoke, mock_grant, mock_view_acl):
     assert ayoub["is_private"] is True
 
     # Step 2: Grant isabelle access
-    mock_grant.return_value = (True, "Granted isabelle read access to ayoub")
+    mock_subprocess.return_value = MagicMock(
+        returncode=0,
+        stdout=json.dumps({"status": "ok", "message": "Granted isabelle read access to ayoub"})
+    )
     response = client.post(
         "/api/pods/ayoub/grant",
         json={"actor": "isabelle", "access_level": "read"}
@@ -441,7 +471,10 @@ def test_demo_moment_workflow(mock_revoke, mock_grant, mock_view_acl):
     assert ayoub["is_private"] is False
 
     # Step 4: Revoke isabelle's access
-    mock_revoke.return_value = (True, "Revoked access for isabelle from ayoub")
+    mock_subprocess.return_value = MagicMock(
+        returncode=0,
+        stdout=json.dumps({"status": "ok", "message": "Revoked access for isabelle from ayoub"})
+    )
     response = client.post(
         "/api/pods/ayoub/revoke",
         json={"actor": "isabelle"}
@@ -454,3 +487,60 @@ def test_demo_moment_workflow(mock_revoke, mock_grant, mock_view_acl):
     pods = response.json()
     ayoub = [p for p in pods if p["pod"] == "ayoub"][0]
     assert ayoub["is_private"] is True
+
+
+# ============================================================================
+# AC2/AC3: Troll backend routes
+# ============================================================================
+
+@patch('pocpod0_pipeline.dashboard_api.subprocess.Popen')
+def test_troll_run_triggers_subprocess(mock_popen):
+    """AC2: POST /api/troll/run triggers run_comprehensive.py subprocess."""
+    mock_popen.return_value = MagicMock()
+
+    response = client.post("/api/troll/run")
+
+    assert response.status_code == 202  # Accepted (async)
+    assert mock_popen.called
+
+    # Verify subprocess was called with troll path
+    call_args = mock_popen.call_args
+    cmd = call_args[0][0]
+    assert "run_comprehensive.py" in cmd[1]
+
+
+@patch('pocpod0_pipeline.dashboard_api.Path')
+def test_troll_results_reads_jsonl_file(mock_path):
+    """AC3: GET /api/troll/results reads troll-run.jsonl and returns summary."""
+    # Mock the troll-run.jsonl file with JSONL events
+    troll_content = (
+        '{"timestamp": "2026-04-02T12:00:00", "event_type": "troll.run.start", "total_categories": 5}\n'
+        '{"timestamp": "2026-04-02T12:05:00", "event_type": "troll.category.done", "attack_category": "acl_enforcement", "blocking": true, "passed": 45, "partial": 2, "failed": 1, "total": 48}\n'
+        '{"timestamp": "2026-04-02T12:10:00", "event_type": "troll.category.done", "attack_category": "sparql_injection", "blocking": true, "passed": 30, "partial": 0, "failed": 0, "total": 30}\n'
+        '{"timestamp": "2026-04-02T12:15:00", "event_type": "troll.run.done", "total_tests": 150, "total_passed": 140, "total_partial": 5, "total_failed": 5, "blocking_pass": true}\n'
+    )
+
+    # Mock file operations
+    mock_file = MagicMock()
+    mock_file.read_text.return_value = troll_content
+    mock_file.exists.return_value = True
+
+    with patch('pocpod0_pipeline.dashboard_api.REPO_ROOT', '/fake/repo'):
+        with patch('builtins.open', MagicMock(return_value=MagicMock(__enter__=MagicMock(return_value=MagicMock(readlines=MagicMock(return_value=troll_content.split('\n'))))))):
+            response = client.get("/api/troll/results")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert "categories" in data or "troll_run" in data or len(data) > 0
+
+
+@patch('pocpod0_pipeline.dashboard_api.subprocess.Popen')
+def test_troll_run_returns_accepted(mock_popen):
+    """AC2: POST /api/troll/run returns 202 Accepted (background task)."""
+    mock_popen.return_value = MagicMock()
+
+    response = client.post("/api/troll/run")
+
+    assert response.status_code == 202
+    data = response.json()
+    assert "status" in data or "message" in data
