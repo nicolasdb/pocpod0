@@ -1,7 +1,7 @@
 ---
 project_name: pocpod0
 sprint_generated: 2026-03-18
-last_updated: 2026-04-02  # Story 6.2 ACL dashboard: code review done, 4 minor test fixes applied
+last_updated: 2026-04-02  # Story 6.3 created: ready-for-dev
 tracking_system: file-system
 project_key: NOKEY
 communication_language: English
@@ -75,7 +75,7 @@ development_status:
   story-6-1-troll-comprehensive-run-and-report: done
   story-6-2-mission-control-dashboard-implementation: superseded  # TUI approach abandoned — see 6-2-acl-dashboard.md
   story-6-2-acl-dashboard: done  # PIVOT 2026-04-01: FastAPI + HTML, queries CSS ACLs directly. Code review 2026-04-02: approved with 4 minor test fixes applied.
-  story-6-3-funder-intervention-points: backlog
+  story-6-3-funder-intervention-points: ready-for-dev
   epic-6-retrospective: optional
 
   # Epic 4: Student Transfer & Data Portability (RESEQUENCED: was next, now CAPSTONE)
