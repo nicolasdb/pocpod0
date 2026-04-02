@@ -1,6 +1,6 @@
 # Story 6.2: Mission Control Dashboard Implementation
 
-Status: in-progress
+Status: review
 
 ## Story
 
@@ -159,6 +159,44 @@ so that I can understand and trust how data moves from individual pods through r
   - [x] 15.1: `pipeline/pyproject.toml` — add `textual>=6.6.0` dependency
   - [x] 15.2: `pipeline/pyproject.toml` — add `pocpod0-mission-control` script entry
   - [x] 15.3: `pipeline/pyproject.toml` — ensure `asyncio` (builtin) available
+
+---
+## Course Correction Tasks (2026-04-01) — Control Room Redesign
+
+> See: `_bmad-output/planning-artifacts/sprint-change-proposal-2026-04-01.md`
+> Root cause: Gantt/Sparkline design produced unusable output (all 16 pods show ⚠ anomaly,
+> no real consent data, fictional pod names). Redesigned as operations control room.
+
+- [x] CC1: Add fatima parent pod to POD_SLUGS
+  - [x] CC1.1: `pipeline/run_pipeline.py` — add "fatima" to POD_SLUGS (8 total real pods)
+
+- [x] CC2: Consent seed script
+  - [x] CC2.1: Create `scripts/seed-consent-events.py` — writes 6 consent.grant events (all except ayoub)
+  - [x] CC2.2: Dashboard starts with 7 green, 1 no-consent (ayoub) — meaningful initial state
+
+- [x] CC3: Rewrite mission_control.py as operations control room
+  - [x] CC3.1: Drop: ConsentPropagationGantt, PodSparklineRow, CivicAggregatePanel, DetailTabs, CLUSTER_MAPPING (fictional), REGION_MAPPING (fictional)
+  - [x] CC3.2: Keep: parse_consent_event, _parse_ts, calculate_pod_state, PodStateEnum, ConsentEvent, Textual async framework
+  - [x] CC3.3: Add PodStateEnum.NO_CONSENT (pods with no events — not an error)
+  - [x] CC3.4: Implement ServiceHealthWidget — polls CSS/Oxigraph/Qdrant HTTP endpoints
+  - [x] CC3.5: Implement TrollAlarmWidget — reads troll-run.jsonl, groups by category, color severity
+  - [x] CC3.6: Implement PodGridWidget — 8 real pods (2×4 grid), clickable, color-coded
+  - [x] CC3.7: Implement CascadePredictorWidget — downstream impact for selected pod
+  - [x] CC3.8: Implement ConsentGateWidget — Active/No-consent/Revoked/Transitioning counts
+  - [x] CC3.9: Implement EventLogWidget — last 20 consent events, newest first
+  - [x] CC3.10: Compose single-screen layout: [Health|Troll] / [PodGrid|Cascade] / [ConsentGate] / [EventLog]
+  - [x] CC3.11: Implement aggregate_troll_results() — category.done takes precedence over probe aggregation
+  - [x] CC3.12: Implement compute_cascade_impact() — CASCADE_MAP defines fatima→children, claire→students
+  - [x] CC3.13: Implement build_pod_states() — compute all 8 pods from events list
+  - [x] CC3.14: File truncation detection (P13 pattern preserved) — demo reset safe
+
+- [x] CC4: Update tests for new design
+  - [x] CC4.1: Remove tests for deleted functions (calculate_regional/civic, keyframes, CLUSTER_MAPPING)
+  - [x] CC4.2: Add tests for calculate_pod_state — NO_CONSENT when no events
+  - [x] CC4.3: Add tests for build_pod_states — seed scenario, all-no-consent scenario
+  - [x] CC4.4: Add tests for compute_cascade_impact — fatima cascade, threshold logic
+  - [x] CC4.5: Add tests for aggregate_troll_results — probes, summary, severity, real format
+  - [x] CC4.6: All 34 tests pass, 0 regressions
 
 ## Dev Notes
 
@@ -421,7 +459,7 @@ All 15 tasks completed and tested:
 - Graceful error handling for malformed JSON and missing fields
 - Full scenario integration test: consent grant/revoke/expiration flows
 
-**Test Coverage:**
+**Test Coverage (original Tasks 1-15):**
 - Pod state: all 4 state values + sorting by timestamp
 - Cluster aggregate: pod count recalculation + metadata
 - Regional aggregate: publication threshold logic
@@ -429,9 +467,36 @@ All 15 tasks completed and tested:
 - Keyframe detection: all STOP levels + event type matching
 - Event parsing: valid events, malformed JSON, missing fields, edge cases
 
+✅ **Course Correction Complete (2026-04-01) — Control Room Redesign**
+
+Root cause addressed: Gantt design produced unusable output (fictional pods, no real data).
+Redesigned as operations control room per `sprint-change-proposal-2026-04-01.md`.
+
+**What changed:**
+- `mission_control.py` rewritten: 6 isolated widgets, 8 real pods, no tabs
+- New: ServiceHealthWidget, TrollAlarmWidget, PodGridWidget, CascadePredictorWidget, ConsentGateWidget, EventLogWidget
+- New: PodStateEnum.NO_CONSENT (pods with no events show red dot, not anomaly warning)
+- New: `aggregate_troll_results()` → parses troll-run.jsonl by category + severity
+- New: `compute_cascade_impact()` → cascade map (fatima→children, claire→students)
+- New: `build_pod_states()` → computes all 8 pods from events list
+- Dropped: ConsentPropagationGantt, PodSparklineRow, CivicAggregatePanel, DetailTabs, CLUSTER_MAPPING (fictional), keyframe functions
+- `run_pipeline.py`: added "fatima" parent pod to POD_SLUGS
+- `scripts/seed-consent-events.py`: seeds 6 consent.grant events (all except ayoub)
+
+**Test Results:** 34/34 pass. 0 regressions (1 pre-existing unrelated failure in test_provision_stage.py).
+
+**Operator can now answer 5 questions in <5 seconds:**
+1. Are services alive? → ServiceHealthWidget (CSS/Oxigraph/Qdrant)
+2. Security holding? → TrollAlarmWidget (categories: deletion_timing and others)
+3. Pod consent state? → PodGridWidget (8 real pods, green/red/yellow)
+4. Overall distribution? → ConsentGateWidget (Active/No-consent/Revoked/Transitioning)
+5. What just happened? → EventLogWidget (last 20 events, newest first)
+
 ### File List
-- **Created:** `pipeline/src/pocpod0_pipeline/mission_control.py` (~1100 lines, Tasks 1-11)
-- **Created:** `pipeline/tests/test_mission_control.py` (~600 lines, Tasks 2-14)
+- **Created:** `pipeline/src/pocpod0_pipeline/mission_control.py` (~1100 lines, Tasks 1-11; ~450 lines after CC3 redesign)
+- **Created:** `pipeline/tests/test_mission_control.py` (~600 lines original; ~230 lines after CC4 rewrite)
 - **Created:** `pipeline/tests/fixtures/mock_consent_events.jsonl` (sample test data)
 - **Modified:** `pipeline/pyproject.toml` (Task 15: added textual dep + script entry)
 - **Modified:** `_bmad-output/implementation-artifacts/sprint-status.yaml` (marked in-progress)
+- **Created:** `scripts/seed-consent-events.py` (CC2: consent seed script)
+- **Modified:** `pipeline/run_pipeline.py` (CC1: added fatima to POD_SLUGS)

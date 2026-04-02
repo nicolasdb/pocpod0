@@ -172,11 +172,14 @@ Role agents (Claire, Fatima, Isabelle) query across institutional silos, compare
 **Priority tags:** Claire stories tagged [must-ship], Fatima and Isabelle stories tagged [target] per PRD fallback strategy (plan for 5, fallback to 3)
 **Dashboard backlog:** Query monitor (SPARQL + hybrid), agent activity log, graph-vs-hybrid comparison display
 
-### Epic 4: Student Transfer & Data Portability _(RESEQUENCED: now last / capstone — 2026-03-25)_
+### Epic 4: Student Transfer & Data Portability _(RESEQUENCED: now last / capstone — 2026-03-25; scope expanded 2026-04-02)_
 The school transfer scenario (NL→FR) executes end-to-end — ACL grants, revocations, cross-community data handling — proving data moves with the learner, not the institution. Built with dashboard running (Epic 6 complete): first epic where project lead watches the full stack live.
+
+_(amended 2026-04-02: Epic 4 absorbs narrative context and stakeholder workflow scope deferred from Epic 6. Epic 6 proved the boundary (ACLs hold). Epic 4 proves the value inside the boundary — what resources are accessed, by whom, and why it matters to each stakeholder. OpenClaw agents become the primary interaction model. Fine-tune seeded data against scenarios.)_
+
 **FRs covered:** FR21, FR22, FR23
 **Priority:** [must-ship] — Marc's journey is one of the 3 must-ship journeys
-**Dashboard backlog:** Transfer workflow visualization, ACL change audit trail
+**Additional scope (from Epic 6 deferral):** Narrative context on dashboard cards, pod content exploration, stakeholder workflows via OpenClaw agents, scenario fine-tuning
 
 ### Epic 5: Data Sovereignty Lifecycle _(RESEQUENCED: now before Epic 6 and 4 — 2026-03-25)_
 Governance contracts execute (age-based sovereignty transition), deletion cascades propagate across all three data layers, the consent lifecycle is agent-driven (acl-manage skill), and ephemeral time-scoped consent (Anagnorisis double-aveugle pattern) demonstrates that sensitive data can flow without identity exposure.
@@ -828,93 +831,70 @@ I want to grant time-scoped access to sensitive context data using an opaque tok
 
 **Implementation note:** Builds on Story 5.5 consent grant resource. Adds `poc:token` alias field and expiry check in the ACL enforcement path. The opaque token is a SHA-256 hash of `(pod_uri + grant_timestamp)` — deterministic but not reversible without the lookup index (held in school community pod, authorized access only).
 
-## Epic 6: Adversarial Trust Report & Mission Control
+## Epic 6: Adversarial Trust Report & ACL Dashboard
 
-The comprehensive troll run generates a funder-readable categorized report, the mission control TUI surfaces all evidence from Epics 1-5, and intervention points let funders shift from audience to participant. The TUI extends the proven pipeline dashboard (Story 3.7.1) with multi-tab mission control. _(amended 2026-03-25: Rich TUI replaces FastAPI+HTMX — simpler, terminal-native, proven pattern)_
+_(amended 2026-04-02: TUI approach abandoned after two pivots. FastAPI + vanilla HTML dashboard queries CSS ACLs directly, proves enforcement live. Troll comprehensive run shipped as Story 6.1. Dashboard shipped as Story 6.2. Story 6.3 adds acl-manage skill integration, troll tab, and UI polish.)_
 
-**Demo model — two terminals:**
-- **Terminal 1: Mission Control TUI** — passive multi-tab Rich Live display reading JSONL events. Shows health, pods, consent gate, troll results, query monitor.
-- **Terminal 2: OpenClaw browser** (localhost:18789) — interactive. User picks an agent, talks to them in NL. Agent actions (queries, ACL changes) emit JSONL events consumed by the TUI live.
+The comprehensive troll run generates a funder-readable categorized report, the ACL dashboard surfaces live pod ACL state and enforcement probes, and intervention points let funders observe consent changes in real-time.
 
-**Narrative:** The demo tells the consent lifecycle story. Before: Isabelle gets Word/PDF reports with self-reported counts. After: data flows from beneficiaries through consent gate → aggregate engine → Isabelle, with clear anonymization boundaries visible on the TUI. Revocations propagate live. The troll attacks the system and results appear in real-time.
+**Demo model:**
+- **Browser: ACL Dashboard** (localhost:8000) — live pod grid, probe enforcement, grant/revoke, troll attack tab.
+- **Browser: OpenClaw** (localhost:18789) — interactive. User picks an agent, talks to them in NL. Agent actions (queries, ACL changes) reflect on dashboard.
 
-### Story 6.1: Mission Control TUI
+### Story 6.0: Pipeline Provision as Stage 0
+_Done. Adds provision_pods.py + camp-dietary-aggregate.ttl seed as Stage 0 in run_pipeline.py._
 
-As a **funder** (demo audience),
-I want a mission control TUI showing live attack results, query monitoring, and Pod/consent status,
-So that I can follow the PoC demo narrative visually without needing technical explanation.
+### Story 6.1: Troll Comprehensive Run & Report
+_Done. `run_comprehensive.py` orchestrates all 5 attack categories, writes `data/troll-run.jsonl`, generates funder-readable categorized report._
 
-**Acceptance Criteria:**
+**FRs covered:** FR33, FR34
 
-**Given** the dashboard component backlog collected from Epics 1-5 (pod status, ACL state, pipeline ingestion, query monitor, agent activity, governance events, deletion cascade, troll test results)
-**When** the pipeline dashboard (`pipeline/src/pocpod0_pipeline/pipeline_dashboard.py`) is extended into a multi-tab mission control TUI
-**Then** it reads JSONL event streams from `data/pipeline-run.jsonl`, `data/troll-run.jsonl`, and `data/consent-events.jsonl`
-**And** it displays multi-tab views: [HEALTH] service status, [PODS] pod ACL/consent state, [CONSENT] consent gate active/revoked counts, [TROLL] attack results per category, [QUERY] agent query monitor
+### Story 6.2: ACL Enforcement Dashboard (PIVOT)
 
-**Given** a troll probe completes and emits a JSONL event
-**When** the TUI is running
-**Then** the [TROLL] tab updates live with the new result (probe ID, target agent, pass/partial/fail)
+_(Original 6.1/6.2 TUI stories superseded. This story replaces them with a FastAPI + HTML dashboard.)_
 
-**Given** an ACL change occurs (via acl-manage skill from Story 5.1)
-**When** the consent-events.jsonl is updated
-**Then** the [CONSENT] tab shows the updated consent gate counts and the [PODS] tab reflects the new ACL state
+As a **project lead and demo facilitator**,
+I want a web dashboard that queries CSS pod ACL state live and lets me probe enforcement,
+So that I can demonstrate to a funder that "private by default" is real and enforced.
 
-**Given** a non-technical reviewer watching the TUI during a demo
-**When** they see the multi-tab display
-**Then** the display is understandable without technical explanation — each tab has a clear label and uses color-coded status indicators (green=pass/active, yellow=partial, red=fail/revoked)
+_Done. See `_bmad-output/implementation-artifacts/6-2-acl-dashboard.md` for full spec and dev record._
 
-### Story 6.2: Funder Intervention Points
+**FRs covered:** FR39 (dashboard), FR6 (ACL state visibility)
+
+### Story 6.3: Funder Intervention Points
 
 As a **funder** (demo participant),
-I want interactive intervention points where I can talk to agents, trigger consent changes, and observe attack results,
-So that I shift from passive audience to active participant in the demo — building conviction through direct interaction.
+I want the dashboard to use OpenClaw's acl-manage skill for consent changes and display troll attack results live,
+So that I see the full consent lifecycle and adversarial validation through a single interface — not direct database calls.
 
-_(amended 2026-03-25: interventions happen via OpenClaw browser, not via dashboard buttons. The TUI is the observation terminal; OpenClaw is the interaction terminal.)_
-
-**Acceptance Criteria:**
-
-**Given** the mission control TUI is running in Terminal 1 and OpenClaw is open in Terminal 2
-**When** a funder talks to an agent in OpenClaw (e.g., asks Claire a cross-context question)
-**Then** the query executes through the agent layer and results display in the TUI [QUERY] tab
-
-**Given** a funder talks to Ayoub's agent and asks to revoke consent for a specific access
-**When** Ayoub's agent invokes the acl-manage skill
-**Then** the ACL change is visible on the TUI [CONSENT] and [PODS] tabs in real-time
-
-**Given** a funder wants to see a troll attack
-**When** a specific troll probe is triggered (via CLI: `python cross-inference.py --probe ci-001`)
-**Then** the result (pass/partial/fail) displays on the TUI [TROLL] tab in real-time with details
-
-**Given** any intervention
-**When** the funder does nothing (observes passively)
-**Then** the demo narrative continues — the system runs end-to-end whether funders intervene or not
-
-**Implementation note:** The funder doesn't need technical skills. The demo facilitator (Nicolas) operates both terminals, explaining the narrative while the funder watches the TUI. Advanced funders can interact with OpenClaw directly.
-
-### Story 6.3: Comprehensive Troll Run & Categorized Report
-
-As a **funder** (investment decision-maker),
-I want a comprehensive adversarial test run across all attack categories with results visible live on the dashboard and a categorized report generated for review,
-So that I see exactly where the architecture holds, where it needs investment, and can make an informed funding decision.
+_(amended 2026-04-02: scoped to acl-manage skill wiring, troll dashboard tab, and UI polish. Narrative context and stakeholder workflows deferred to Epic 4.)_
 
 **Acceptance Criteria:**
 
-**Given** the mission control TUI is running and all prior epic capabilities are deployed
-**When** the comprehensive troll run executes (`scripts/run-troll.sh`)
-**Then** all 5 attack categories are tested: ACL enforcement, SPARQL injection, cross-inference, vector privacy, deletion timing
-**And** results display live on the mission control TUI [TROLL] tab as each test completes
+**Given** the ACL dashboard is running and OpenClaw is available
+**When** operator clicks Grant or Revoke on a pod card
+**Then** the action is routed through the OpenClaw acl-manage skill (Story 5.1), not direct PodProvisioner calls
+**And** the skill emits a JSONL event to `data/consent-events.jsonl`
+**And** the pod card refreshes to reflect the new ACL state
 
-**Given** all attack categories have been tested
-**When** the report generator (`agents/troll-adversary/report/generator.py`) executes
-**Then** a categorized report is produced with pass/partial/fail ratings per attack surface
-**And** each entry includes: attack category, access path, test name, result, human-readable explanation, and evidence
+**Given** the dashboard has a Troll tab/page
+**When** operator navigates to it
+**Then** it displays troll attack categories with a launch button per category
+**And** shows progress as attacks run (reading `data/troll-run.jsonl`)
+**And** displays the categorized report with pass/partial/fail per attack surface
 
-**Given** the generated troll report
-**When** a non-technical reviewer reads it
-**Then** the report is understandable without technical background (FR34)
-**And** partial/fail results are presented as investment opportunities, not hidden failures
-**And** the report follows the template in `agents/troll-adversary/report/template.md`
+**Given** a troll attack completes
+**When** results are written to `data/troll-run.jsonl`
+**Then** the Troll tab updates live with the new result
 
-**Given** the comprehensive run
-**When** compared to individual troll tests from Epics 1, 2, 3, and 5
-**Then** results are consistent — the comprehensive run exercises the same tests with the addition of the unified report and live TUI display
+**Given** the dashboard after UI polish
+**When** a non-technical reviewer views it
+**Then** the interface is clean, visually coherent, and understandable without technical explanation
+
+**Deferred to Epic 4:**
+- Narrative context on pod cards (who is Ayoub, why does consent matter)
+- Pod content exploration (what resources are inside, who accesses what)
+- OpenClaw agent interaction for stakeholder workflows (Claire queries, Fatima views, etc.)
+- Fine-tune scenarios per stakeholder goals
+
+**FRs covered:** FR38 (intervention points)

@@ -102,6 +102,44 @@ Pipeline Python-level stdout is saved to `data/pipeline.log` when `--with-dashbo
 
 > ⚠️ `--wipe` permanently deletes all CSS pod data, Oxigraph triples, and Qdrant embeddings before rebuilding. Takes ~10 minutes.
 
+## ACL Dashboard (Story 6.2)
+
+The ACL Dashboard is a real-time web interface for demonstrating pod access control enforcement.
+
+### Starting the Dashboard
+
+1. Ensure all services are running:
+   ```bash
+   docker-compose up
+   ```
+
+2. In a separate terminal, activate the pipeline venv and start the dashboard:
+   ```bash
+   cd pipeline
+   source .venv/bin/activate
+   pocpod0-acl-dashboard
+   ```
+
+3. Open your browser and navigate to:
+   ```
+   http://localhost:8000
+   ```
+
+### Dashboard Features
+
+- **Pod Grid**: Shows all 6 real CSS pods with their ACL state (private/shared)
+- **Service Health**: Real-time status of CSS, Oxigraph, and Qdrant
+- **ACL Probing**: Test pod access with and without authentication headers
+- **Grant/Revoke**: Dynamically grant and revoke actor access to pods
+- **Demo Moment**: Prove "private by default" enforcement end-to-end
+
+### Key Concepts
+
+- **Private pod**: No grants (owner only) — returns 401 to unauthorized requests
+- **Shared pod**: Has at least one grant — returns 200 for granted actors
+- **Probe**: Test access to a pod with `GET /pod/` using optional WebID auth header
+- **WebID**: Simulated identity (e.g., `http://localhost:3000/isabelle/profile/card#me`)
+
 ## Development Workflow
 
 1. Make changes in code directories (`pipeline/`, `agents/`, `dashboard/`)

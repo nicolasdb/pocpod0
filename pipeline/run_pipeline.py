@@ -32,9 +32,10 @@ CSS_BASE_URL = os.environ.get("CSS_BASE_URL", "http://localhost:3000")
 
 POD_SLUGS = [
     "ayoub",
+    "claire",
     "claire-student-1",
     "claire-student-2",
-    "claire",
+    "fatima",
     "fatima-child-1",
     "fatima-child-2",
     "school-community",

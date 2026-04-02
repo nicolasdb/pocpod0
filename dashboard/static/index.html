@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>POCpod0 ACL Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+        }
+
+        .header {
+            background: #fff;
+            border-bottom: 1px solid #e0e0e0;
+            padding: 16px 24px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .header-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        .health-indicator {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+        }
+
+        .service-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: #f0f0f0;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .status-dot.ok {
+            background: #2e7d32; /* WCAG AA on light bg */
+        }
+
+        .status-dot.error {
+            background: #b71c1c; /* WCAG AA on light bg */
+        }
+
+        .sr-only {
+            position: absolute; width: 1px; height: 1px;
+            padding: 0; margin: -1px; overflow: hidden;
+            clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 24px auto;
+            padding: 0 24px;
+        }
+
+        .pod-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+            gap: 16px;
+        }
+
+        .pod-card {
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            transition: all 0.2s ease;
+        }
+
+        .pod-card:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+        }
+
+        .pod-card.private {
+            border-left: 4px solid #f44336;
+        }
+
+        .pod-card.shared {
+            border-left: 4px solid #4caf50;
+        }
+
+        .pod-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+
+        .pod-name {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .pod-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .badge-private {
+            background: #ffebee;
+            color: #b71c1c; /* ≥ 4.5:1 on #ffebee */
+        }
+
+        .badge-shared {
+            background: #e8f5e9;
+            color: #1b5e20; /* ≥ 4.5:1 on #e8f5e9 */
+        }
+
+        .grants-section {
+            margin-bottom: 12px;
+        }
+
+        .grants-label {
+            font-size: 12px;
+            font-weight: 500;
+            color: #595959; /* ≥ 4.5:1 on white */
+            margin-bottom: 6px;
+        }
+
+        .grant-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 0;
+            font-size: 13px;
+        }
+
+        .grant-info {
+            flex: 1;
+        }
+
+        .grant-actor {
+            font-weight: 500;
+        }
+
+        .grant-modes {
+            color: #595959; /* ≥ 4.5:1 on white */
+            font-size: 12px;
+        }
+
+        .revoke-btn {
+            padding: 4px 8px;
+            font-size: 11px;
+            background: #ffebee;
+            color: #c62828;
+            border: 1px solid #ef5350;
+            border-radius: 3px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .revoke-btn:hover {
+            background: #ef5350;
+            color: white;
+        }
+
+        .no-grants {
+            padding: 6px 0;
+            font-size: 13px;
+            color: #595959;
+            font-style: italic;
+        }
+
+        .probe-section {
+            margin-bottom: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #f0f0f0;
+        }
+
+        .probe-result {
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            margin-top: 4px;
+            display: none;
+        }
+
+        .probe-result.show {
+            display: block;
+        }
+
+        .probe-result.success {
+            background: #e8f5e9;
+            color: #1b5e20; /* ≥ 4.5:1 on #e8f5e9 */
+            border: 1px solid #388e3c;
+        }
+
+        .probe-result.failure {
+            background: #ffebee;
+            color: #b71c1c; /* ≥ 4.5:1 on #ffebee */
+            border: 1px solid #c62828;
+        }
+
+        .controls-section {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .control-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .control-row label {
+            font-size: 12px;
+            font-weight: 500;
+            color: #595959;
+            min-width: 60px;
+        }
+
+        /* WCAG 2.4.11 focus visible */
+        :focus-visible {
+            outline: 3px solid #1565c0;
+            outline-offset: 2px;
+        }
+
+        .actor-select {
+            flex: 1;
+            padding: 6px 8px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            font-size: 12px;
+            background: white;
+            cursor: pointer;
+        }
+
+        .btn {
+            padding: 6px 12px;
+            font-size: 12px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background: white;
+            color: #333;
+        }
+
+        .btn:hover {
+            background: #f5f5f5;
+            border-color: #999;
+        }
+
+        .btn-probe {
+            flex: 1;
+            border-color: #2196f3;
+            color: #2196f3;
+        }
+
+        .btn-probe:hover {
+            background: #e3f2fd;
+        }
+
+        .btn-grant {
+            flex: 1;
+            border-color: #4caf50;
+            color: #4caf50;
+            font-weight: 500;
+        }
+
+        .btn-grant:hover {
+            background: #e8f5e9;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            display: inline-block;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .page-intro {
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 16px 20px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            line-height: 1.6;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <header class="header" role="banner">
+        <div class="header-content">
+            <h1>POCpod0 — Pod Access Control</h1>
+            <nav class="health-indicator" aria-label="Service health">
+                <div class="service-status">
+                    <span class="status-dot" id="css-status" role="img" aria-label="CSS status"></span>
+                    <span aria-hidden="true">CSS</span>
+                    <span class="sr-only" id="css-status-text"></span>
+                </div>
+                <div class="service-status">
+                    <span class="status-dot" id="oxigraph-status" role="img" aria-label="Oxigraph status"></span>
+                    <span aria-hidden="true">Oxigraph</span>
+                    <span class="sr-only" id="oxigraph-status-text"></span>
+                </div>
+                <div class="service-status">
+                    <span class="status-dot" id="qdrant-status" role="img" aria-label="Qdrant status"></span>
+                    <span aria-hidden="true">Qdrant</span>
+                    <span class="sr-only" id="qdrant-status-text"></span>
+                </div>
+            </nav>
+        </div>
+    </header>
+
+    <main class="container">
+        <div class="page-intro" role="region" aria-label="About this page">
+            <p>
+                Each pod stores personal learning data and enforces access by default —
+                <strong>no external actor can read a pod unless explicitly granted.</strong>
+                This page lets you inspect live ACL state, probe access as any identity,
+                and temporarily grant or revoke permissions to demonstrate consent enforcement end-to-end.
+            </p>
+            <p style="margin-top:6px;font-size:13px;color:#595959;">
+                <strong>Grants</strong> show who currently has access (owner and system are always present but hidden here).
+                <strong>Test access</strong>: select an actor — or "Unknown (no auth)" — and probe to see the live HTTP response.
+                The <strong>Grant</strong> button is a temporary bypass for demo purposes; production consent flows through the OpenClaw skill.
+            </p>
+        </div>
+        <div class="pod-grid" id="pod-grid" role="list" aria-label="Pod cards" aria-live="polite" aria-atomic="false">
+            <!-- Pod cards will be inserted here by JavaScript -->
+        </div>
+    </main>
+
+    <script>
+        // Configuration
+        const ACTOR_OPTIONS = ['ayoub', 'claire', 'fatima', 'marc', 'isabelle', 'troll'];
+
+        // Pause auto-refresh while a dropdown is open to avoid destroying focused elements
+        let dropdownOpen = false;
+
+        // Global state
+        let pods = [];
+        let selectedActors = {};
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initial load
+            updateHealth();
+            updatePods();
+
+            // Poll health every 5 seconds
+            setInterval(updateHealth, 5000);
+
+            // Poll pods every 3 seconds
+            setInterval(updatePods, 3000);
+        });
+
+        // Fetch and update health status
+        async function updateHealth() {
+            try {
+                const response = await fetch('/api/health');
+                const data = await response.json();
+
+                function setStatus(id, ok) {
+                    document.getElementById(id).className = `status-dot ${ok ? 'ok' : 'error'}`;
+                    const txt = document.getElementById(id + '-text');
+                    if (txt) txt.textContent = ok ? id.replace('-status','') + ': up' : id.replace('-status','') + ': down';
+                }
+                setStatus('css-status', data.css);
+                setStatus('oxigraph-status', data.oxigraph);
+                setStatus('qdrant-status', data.qdrant);
+            } catch (error) {
+                console.error('Health check failed:', error);
+                // Mark all as error
+                ['css-status', 'oxigraph-status', 'qdrant-status'].forEach(id => {
+                    document.getElementById(id).className = 'status-dot error';
+                });
+            }
+        }
+
+        // Fetch and update pods
+        async function updatePods() {
+            if (dropdownOpen) return; // don't wipe DOM while user is selecting
+            try {
+                const response = await fetch('/api/pods');
+                pods = await response.json();
+                renderPods();
+            } catch (error) {
+                console.error('Failed to fetch pods:', error);
+            }
+        }
+
+        // Render pod grid
+        function renderPods() {
+            const grid = document.getElementById('pod-grid');
+
+            // Preserve per-pod UI state before wiping
+            const savedState = {};
+            grid.querySelectorAll('[id^="probe-"]').forEach(el => {
+                const pod = el.id.replace('probe-', '');
+                // Don't save transient "Probing…" state — it will never resolve on the new element
+                if (el.innerHTML && !el.textContent.includes('Probing')) {
+                    savedState[pod] = { probeClass: el.className, probeHTML: el.innerHTML };
+                }
+            });
+            grid.querySelectorAll('[id^="actor-"]').forEach(el => {
+                const pod = el.id.replace('actor-', '');
+                if (!savedState[pod]) savedState[pod] = {};
+                savedState[pod].actorValue = el.value;
+            });
+
+            grid.innerHTML = '';
+
+            pods.forEach(pod => {
+                const card = document.createElement('article');
+                card.className = `pod-card ${pod.is_private ? 'private' : 'shared'}`;
+                card.id = `card-${pod.pod}`;
+                card.setAttribute('role', 'listitem');
+                card.setAttribute('aria-label', `${pod.display_name} pod — ${pod.is_private ? 'private' : 'shared'}`);
+
+                // Header
+                const header = document.createElement('div');
+                header.className = 'pod-header';
+                const statusText = pod.is_private ? 'private, no external grants' : 'shared, external access granted';
+                header.innerHTML = `
+                    <div class="pod-name">${pod.display_name}</div>
+                    <span class="pod-badge ${pod.is_private ? 'badge-private' : 'badge-shared'}" aria-label="${statusText}">
+                        ${pod.is_private ? '🔒 private' : '🔓 access granted'}
+                    </span>
+                `;
+                card.appendChild(header);
+
+                // Grants section
+                const grantsSection = document.createElement('div');
+                grantsSection.className = 'grants-section';
+                grantsSection.setAttribute('aria-label', 'External grants');
+
+                const grantsLabel = document.createElement('div');
+                grantsLabel.className = 'grants-label';
+                grantsLabel.setAttribute('aria-hidden', 'true');
+                grantsLabel.textContent = 'External grants:';
+                grantsSection.appendChild(grantsLabel);
+
+                if (pod.grants.length === 0) {
+                    const empty = document.createElement('div');
+                    empty.className = 'no-grants';
+                    empty.textContent = 'no external access';
+                    grantsSection.appendChild(empty);
+                } else {
+                    pod.grants.forEach(grant => {
+                        const grantItem = document.createElement('div');
+                        grantItem.className = 'grant-item';
+                        grantItem.innerHTML = `
+                            <div class="grant-info">
+                                <div class="grant-actor">${grant.actor_label}</div>
+                                <div class="grant-modes" aria-label="Access modes: ${grant.modes.join(', ')}">${grant.modes.join(', ')}</div>
+                            </div>
+                            <button class="revoke-btn"
+                                    aria-label="Revoke ${grant.actor_label} access to ${pod.display_name}"
+                                    onclick="revokeAccess('${pod.pod}', '${grant.actor_label}')">Revoke</button>
+                        `;
+                        grantsSection.appendChild(grantItem);
+                    });
+                }
+                card.appendChild(grantsSection);
+
+                // Test access section (actor select + probe + grant in one area)
+                const testSection = document.createElement('div');
+                testSection.className = 'probe-section';
+
+                const selectId = `actor-${pod.pod}`;
+                const selectLabelEl = document.createElement('label');
+                selectLabelEl.setAttribute('for', selectId);
+                selectLabelEl.className = 'grants-label';
+                selectLabelEl.textContent = 'Test access as:';
+                testSection.appendChild(selectLabelEl);
+
+                const actorRow = document.createElement('div');
+                actorRow.className = 'control-row';
+
+                const select = document.createElement('select');
+                select.className = 'actor-select';
+                select.id = selectId;
+
+                // "Unknown actor" = no-auth probe
+                const optUnknown = document.createElement('option');
+                optUnknown.value = '__unknown__';
+                optUnknown.textContent = 'Unknown actor (no auth)';
+                select.appendChild(optUnknown);
+
+                ACTOR_OPTIONS.forEach(actor => {
+                    const opt = document.createElement('option');
+                    opt.value = actor;
+                    opt.textContent = actor;
+                    select.appendChild(opt);
+                });
+
+                select.addEventListener('focus', () => { dropdownOpen = true; });
+                select.addEventListener('blur', () => { dropdownOpen = false; });
+                select.addEventListener('change', function() {
+                    selectedActors[pod.pod] = this.value;
+                    // Grant button only makes sense for named actors
+                    const grantBtn = document.getElementById(`grant-btn-${pod.pod}`);
+                    if (grantBtn) grantBtn.disabled = (this.value === '__unknown__');
+                });
+
+                actorRow.appendChild(select);
+
+                const probeBtn = document.createElement('button');
+                probeBtn.className = 'btn btn-probe';
+                probeBtn.textContent = 'Probe';
+                probeBtn.setAttribute('aria-label', `Probe access to ${pod.display_name}`);
+                probeBtn.onclick = function() {
+                    const actor = document.getElementById(selectId).value;
+                    if (actor === '__unknown__') {
+                        probeNone(pod.pod);
+                    } else {
+                        probeAsActor(pod.pod, actor);
+                    }
+                };
+                actorRow.appendChild(probeBtn);
+
+                const grantBtn = document.createElement('button');
+                grantBtn.className = 'btn btn-grant';
+                grantBtn.id = `grant-btn-${pod.pod}`;
+                grantBtn.textContent = 'Grant (demo)';
+                grantBtn.setAttribute('aria-label', `Grant selected actor access to ${pod.display_name}`);
+                grantBtn.setAttribute('title', 'Temporary bypass — production consent uses the OpenClaw skill');
+                grantBtn.onclick = function() {
+                    const actor = document.getElementById(selectId).value;
+                    if (actor && actor !== '__unknown__') {
+                        grantAccess(pod.pod, actor);
+                    }
+                };
+                actorRow.appendChild(grantBtn);
+
+                testSection.appendChild(actorRow);
+
+                const probeResult = document.createElement('div');
+                probeResult.className = 'probe-result';
+                probeResult.id = `probe-${pod.pod}`;
+                probeResult.setAttribute('role', 'status');
+                probeResult.setAttribute('aria-live', 'polite');
+                testSection.appendChild(probeResult);
+
+                card.appendChild(testSection);
+
+                grid.appendChild(card);
+
+                // Restore probe result and actor selection after DOM insertion
+                const st = savedState[pod.pod];
+                if (st) {
+                    if (st.probeHTML) {
+                        const pr = document.getElementById(`probe-${pod.pod}`);
+                        pr.className = st.probeClass;
+                        pr.innerHTML = st.probeHTML;
+                    }
+                    if (st.actorValue) {
+                        const sel = document.getElementById(`actor-${pod.pod}`);
+                        sel.value = st.actorValue;
+                        const grantBtn = document.getElementById(`grant-btn-${pod.pod}`);
+                        if (grantBtn) grantBtn.disabled = (st.actorValue === '__unknown__');
+                    }
+                }
+            });
+        }
+
+        // Helper to display probe result (always re-queries DOM by id)
+        function showProbeResult(pod, statusCode, label, isError) {
+            const el = document.getElementById(`probe-${pod}`);
+            if (!el) return;
+            if (isError) {
+                el.className = 'probe-result show failure';
+                el.textContent = `✗ Error: ${label}`;
+            } else if (statusCode === 200) {
+                el.className = 'probe-result show success';
+                el.textContent = `✓ 200 OK${label ? ' (' + label + ')' : ''}`;
+            } else {
+                el.className = 'probe-result show failure';
+                el.textContent = `✗ ${statusCode}${label ? ' (' + label + ' denied)' : ' (denied)'}`;
+            }
+        }
+
+        // Probe without authentication
+        async function probeNone(pod) {
+            const el = document.getElementById(`probe-${pod}`);
+            if (el) { el.className = 'probe-result show'; el.textContent = 'Probing…'; }
+
+            try {
+                const response = await fetch(`/api/pods/${pod}/probe`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ as_actor: null })
+                });
+                const data = await response.json();
+                showProbeResult(pod, data.status_code, null, false);
+            } catch (error) {
+                showProbeResult(pod, 0, error.message, true);
+            }
+        }
+
+        // Probe as actor
+        async function probeAsActor(pod, actor) {
+            const el = document.getElementById(`probe-${pod}`);
+            if (el) { el.className = 'probe-result show'; el.textContent = 'Probing…'; }
+
+            try {
+                const response = await fetch(`/api/pods/${pod}/probe`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ as_actor: actor })
+                });
+                const data = await response.json();
+                showProbeResult(pod, data.status_code, actor, false);
+            } catch (error) {
+                showProbeResult(pod, 0, error.message, true);
+            }
+        }
+
+        // Grant access
+        async function grantAccess(pod, actor) {
+            try {
+                const response = await fetch(`/api/pods/${pod}/grant`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ actor: actor, access_level: 'read' })
+                });
+
+                if (response.ok) {
+                    // Refresh pods to show new grant
+                    await updatePods();
+                    alert(`✓ Granted ${actor} read access to ${pod}`);
+                } else {
+                    const error = await response.json();
+                    alert(`✗ Grant failed: ${error.detail}`);
+                }
+            } catch (error) {
+                alert(`✗ Error: ${error.message}`);
+            }
+        }
+
+        // Revoke access
+        async function revokeAccess(pod, actor) {
+            if (!confirm(`Revoke ${actor}'s access to ${pod}?`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/pods/${pod}/revoke`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ actor: actor })
+                });
+
+                if (response.ok) {
+                    // Refresh pods to show revocation
+                    await updatePods();
+                    alert(`✓ Revoked ${actor}'s access from ${pod}`);
+                } else {
+                    const error = await response.json();
+                    alert(`✗ Revoke failed: ${error.detail}`);
+                }
+            } catch (error) {
+                alert(`✗ Error: ${error.message}`);
+            }
+        }
+    </script>
+</body>
+</html>

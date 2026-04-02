@@ -1,116 +1,95 @@
-"""Mission Control — Consent Propagation Network Visualizer for pocpod0.
+"""Mission Control — Operations Control Room for pocpod0.
 
-A Textual TUI that shows operators (funders, demo observers) how consent decisions
-flow through a multi-level system:
-  STOP 1: Individual pods (where consent decisions originate)
-  STOP 2: School cluster aggregate
-  STOP 3: Regional hub
-  STOP 4: Federal civic layer (de-identified evidence)
+An offshore-operations-style TUI: default state is "all green."
+When something turns red the operator sees: what, where, why, cascade impact.
+
+Operator can answer 5 questions in <5 seconds each:
+  1. Are all backend services alive?           → SERVICE HEALTH widget
+  2. Are security boundaries holding?          → TROLL ALARM PANEL widget
+  3. What's each pod's consent state?          → POD GRID widget (8 real pods)
+  4. What's the overall consent distribution?  → CONSENT GATE widget
+  5. What just happened?                       → EVENT LOG widget
+
+Bonus: select a pod → CASCADE PREDICTOR shows downstream impact.
 
 Usage (from repo root, venv active):
     pocpod0-mission-control
     # or: python -m pocpod0_pipeline.mission_control
 
 Data sources:
-    data/consent-events.jsonl — consent/acl events
-    data/troll-run.jsonl — adversarial test results (surfaced in Story 6.3)
+    data/consent-events.jsonl  — consent/acl events (polled every 2 s)
+    data/troll-run.jsonl       — adversarial test results (polled every 2 s)
 
 Architecture:
-    - Textual reactive app with background worker for JSONL polling
-    - Left column: Gantt (Sparkline per pod) + Pod Grid + Consent Gate + Civic Panel
-    - Right column: Detail tabs (scenario timelines, pod history)
-    - Scenario selection via Switch widgets in header bar
-    - Pod click → filtered_pod reactive → POD detail tab updates
+    - Textual reactive app with background workers for JSONL polling
+    - Single-screen layout (no tabs — operator sees everything at once)
+    - 6 isolated widget classes, each with one data source and one render method
+    - Pod click → selected_pod reactive → Cascade Predictor updates
+
+Note (distrobox): use distrobox-host-exec to reach podman containers /
+    localhost ports when running from inside a distrobox environment.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+import os
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 
-from textual.app import App, ComposeResult, RenderableType
-from textual.containers import Horizontal, Vertical, VerticalScroll
+import httpx
+from textual.app import App, ComposeResult
+from textual.containers import Horizontal, Vertical
 from textual.css.query import NoMatches
 from textual.reactive import reactive
-from textual.widgets import (
-    Button,
-    Footer,
-    Label,
-    Sparkline,
-    Static,
-    Switch,
-    TabbedContent,
-    TabPane,
-)
+from textual.widgets import Button, Footer, Header, Label, Static
 
 
 # =========================================================================
 # Configuration
 # =========================================================================
 
-_CONSENT_EVENTS_FILE = (
-    Path(__file__).parent.parent.parent.parent / "data" / "consent-events.jsonl"
-)
-_TROLL_RUN_FILE = Path(__file__).parent.parent.parent.parent / "data" / "troll-run.jsonl"
+_REPO_ROOT = Path(__file__).parent.parent.parent.parent
+_CONSENT_EVENTS_FILE = _REPO_ROOT / "data" / "consent-events.jsonl"
+_TROLL_RUN_FILE = _REPO_ROOT / "data" / "troll-run.jsonl"
 
-_POLL_INTERVAL = 2.0  # seconds, per AC requirement
-_MIN_PODS_FOR_PUBLICATION = 10
-_MAX_EVENTS = 500   # P11: cap in-memory event lists
-_HISTORY_LEN = 20   # Sparkline data points per pod
+_POLL_INTERVAL = 2.0          # seconds
+_MAX_EVENTS = 500             # cap in-memory event lists
+_EVENT_LOG_LEN = 20           # events to show in Event Log widget
+_HEALTH_POLL_INTERVAL = 5.0  # health checks less frequent
 
-# Scenario-to-STOP mapping (AC2)
-SCENARIO_STOP_MAPPING = {
-    "Claire": [1, 2],
-    "Isabelle": [1, 2, 3, 4],
-    "Ayoub": [1, 2],
-    "Fatima": [1, 2],
-    "Marc": [1, 2, 3],
+# Real CSS pod identifiers (8 pods including fatima parent pod).
+# fatima is the co-consent authority over fatima-child-1 / fatima-child-2.
+POD_SLUGS: list[str] = [
+    "ayoub",
+    "claire",
+    "claire-student-1",
+    "claire-student-2",
+    "fatima",
+    "fatima-child-1",
+    "fatima-child-2",
+    "school-community",
+]
+
+# Downstream cascade relationships: pod → [pods it affects if removed]
+# Used by CascadePredictorWidget.
+CASCADE_MAP: dict[str, list[str]] = {
+    "fatima": ["fatima-child-1", "fatima-child-2"],  # co-consent authority
+    "claire": ["claire-student-1", "claire-student-2"],  # classroom delegation
 }
 
-# P6 fix: claire-pod moved to school-nl-1 (was incorrectly in school-fr-1
-# while SCENARIO_CLUSTER_MAPPING["Claire"] pointed to school-nl-1)
-CLUSTER_MAPPING = {
-    "school-nl-1": ["ayoub-pod", "sofia-pod", "fatima-pod", "karim-pod",
-                    "mehdi-pod", "yannick-pod", "amara-pod", "claire-pod"],
-    "school-fr-1": ["jean-pod", "marie-pod", "pierre-pod", "sophie-pod",
-                    "marc-pod", "isabelle-pod", "lucas-pod", "david-pod"],
+# Service health endpoints.  Override via env vars if needed.
+HEALTH_ENDPOINTS: dict[str, str] = {
+    "CSS": os.environ.get("CSS_BASE_URL", "http://localhost:3000") + "/",
+    "Oxigraph": os.environ.get("OXIGRAPH_BASE_URL", "http://localhost:7878") + "/",
+    "Qdrant": os.environ.get("QDRANT_BASE_URL", "http://localhost:6333") + "/",
 }
 
-REGION_MAPPING = {
-    "nl-region": ["school-nl-1"],
-    "fr-region": ["school-fr-1"],
-}
-
-ALL_PODS: set[str] = set()
-for _pods in CLUSTER_MAPPING.values():
-    ALL_PODS.update(_pods)
-
-SCENARIO_CLUSTER_MAPPING = {
-    "Claire": ["school-nl-1"],
-    "Isabelle": ["school-nl-1", "school-fr-1"],
-    "Ayoub": ["school-nl-1"],
-    "Fatima": ["school-nl-1"],
-    "Marc": ["school-nl-1", "school-fr-1"],
-}
-
-SCENARIO_REGION_MAPPING = {
-    "Isabelle": ["nl-region", "fr-region"],
-    "Marc": ["nl-region", "fr-region"],
-}
-
-ALL_SCENARIOS = ["Claire", "Isabelle", "Ayoub", "Fatima", "Marc"]
-
-# Pod state → sparkline float (for D2 history visualization)
-STATE_FLOAT = {
-    "active": 1.0,
-    "transitioning": 0.5,
-    "revoked": 0.0,
-    "anomaly": 0.0,
-}
+# Minimum consenting pods for aggregate to be "publication ready".
+_MIN_PODS_FOR_PUBLICATION = 6
 
 
 # =========================================================================
@@ -122,7 +101,8 @@ class PodStateEnum(str, Enum):
     ACTIVE = "active"
     REVOKED = "revoked"
     TRANSITIONING = "transitioning"
-    ANOMALY = "anomaly"
+    NO_CONSENT = "no_consent"   # no events yet — not an error
+    ANOMALY = "anomaly"         # unknown/error state
 
 
 @dataclass
@@ -133,14 +113,12 @@ class ConsentEvent:
     pod: str | None = None
     grantee_webid: str | None = None
     scope: str | None = None
-    cluster_id: str | None = None
-    region_id: str | None = None
     extra: dict = field(default_factory=dict)
 
 
 @dataclass
 class PodState:
-    """Track a single pod's consent status."""
+    """Consent status for a single pod."""
     pod_id: str
     current_state: PodStateEnum
     last_event: ConsentEvent | None = None
@@ -148,40 +126,26 @@ class PodState:
 
 
 @dataclass
-class ClusterAggregate:
-    """Track consent state for a school cluster."""
-    cluster_id: str
-    cluster_name: str
-    pods: list[str]
-    active_pods: int = 0
-    revoked_pods: int = 0
-    transitioning_pods: int = 0
-    total_pods: int = 0
-    last_updated: str = ""
+class TrollCategoryResult:
+    """Aggregated results for one troll attack category."""
+    category: str
+    passed: int = 0
+    partial: int = 0
+    failed: int = 0
 
+    @property
+    def total(self) -> int:
+        return self.passed + self.partial + self.failed
 
-@dataclass
-class RegionalAggregate:
-    """Track consent state across multiple clusters."""
-    region_id: str
-    region_name: str
-    clusters: list[str]
-    total_pods: int = 0
-    active_pods: int = 0
-    revoked_pods: int = 0
-    publication_ready: bool = False
-    last_updated: str = ""
-
-
-@dataclass
-class CivicAggregate:
-    """Evidence base visible to federal civic layer."""
-    evidence_name: str
-    regional_source: str
-    pods_in_base: int = 0
-    outcome: str = ""
-    privacy_boundary_respected: bool = True
-    publication_status: str = "at_risk"
+    @property
+    def severity(self) -> str:
+        if self.total == 0:
+            return "unknown"
+        if self.failed == 0 and self.partial == 0:
+            return "green"
+        if self.failed == 0:
+            return "yellow"
+        return "red"
 
 
 # =========================================================================
@@ -189,7 +153,7 @@ class CivicAggregate:
 # =========================================================================
 
 def parse_consent_event(line: str) -> ConsentEvent | None:
-    """Parse a JSONL line into a ConsentEvent."""
+    """Parse a JSONL line into a ConsentEvent. Returns None on parse error."""
     try:
         data = json.loads(line.strip())
         if not data:
@@ -200,8 +164,6 @@ def parse_consent_event(line: str) -> ConsentEvent | None:
             pod=data.get("pod"),
             grantee_webid=data.get("grantee_webid"),
             scope=data.get("scope"),
-            cluster_id=data.get("cluster_id"),
-            region_id=data.get("region_id"),
             extra=data,
         )
     except json.JSONDecodeError:
@@ -209,7 +171,7 @@ def parse_consent_event(line: str) -> ConsentEvent | None:
 
 
 def _parse_ts(ts: str) -> datetime:
-    """Parse ISO 8601 timestamp robustly (P12: tolerates Z suffix)."""
+    """Parse ISO 8601 timestamp robustly (tolerates Z suffix)."""
     try:
         return datetime.fromisoformat(ts)
     except ValueError:
@@ -217,23 +179,25 @@ def _parse_ts(ts: str) -> datetime:
 
 
 def calculate_pod_state(pod_id: str, events: list[ConsentEvent]) -> PodState:
-    """Determine pod's current state from consent history (Task 2.1)."""
+    """Determine pod's current consent state from event history.
+
+    A pod with no events is NO_CONSENT (waiting), not ANOMALY.
+    """
     pod_events = [e for e in events if e.pod == pod_id]
     if not pod_events:
-        return PodState(pod_id=pod_id, current_state=PodStateEnum.ANOMALY, event_count=0)
+        return PodState(pod_id=pod_id, current_state=PodStateEnum.NO_CONSENT, event_count=0)
 
-    # P12 fix: sort by parsed datetime, not lexicographic string
     try:
         pod_events.sort(key=lambda e: _parse_ts(e.timestamp))
     except (ValueError, TypeError):
         pod_events.sort(key=lambda e: e.timestamp)
     last = pod_events[-1]
 
-    if last.event_type in ["consent.revoke", "consent.expired"]:
+    if last.event_type in ("consent.revoke", "consent.expired"):
         state = PodStateEnum.REVOKED
     elif last.event_type == "acl.governance.transition":
         state = PodStateEnum.TRANSITIONING
-    elif last.event_type in ["consent.grant", "acl.grant"]:
+    elif last.event_type in ("consent.grant", "acl.grant"):
         state = PodStateEnum.ACTIVE
     else:
         state = PodStateEnum.ANOMALY
@@ -241,519 +205,421 @@ def calculate_pod_state(pod_id: str, events: list[ConsentEvent]) -> PodState:
     return PodState(pod_id=pod_id, current_state=state, last_event=last, event_count=len(pod_events))
 
 
-def calculate_cluster_aggregate(
-    cluster_id: str, pod_states: dict[str, PodState]
-) -> ClusterAggregate:
-    """Sum pod states to get cluster-level counts (Task 3.1)."""
-    pods_in_cluster = CLUSTER_MAPPING.get(cluster_id, [])
-    active = sum(1 for p in pods_in_cluster if pod_states.get(p, PodState(p, PodStateEnum.ANOMALY)).current_state == PodStateEnum.ACTIVE)
-    revoked = sum(1 for p in pods_in_cluster if pod_states.get(p, PodState(p, PodStateEnum.ANOMALY)).current_state == PodStateEnum.REVOKED)
-    transitioning = sum(1 for p in pods_in_cluster if pod_states.get(p, PodState(p, PodStateEnum.ANOMALY)).current_state == PodStateEnum.TRANSITIONING)
-    return ClusterAggregate(
-        cluster_id=cluster_id,
-        cluster_name=cluster_id.replace("-", " ").title(),
-        pods=pods_in_cluster,
-        active_pods=active,
-        revoked_pods=revoked,
-        transitioning_pods=transitioning,
-        total_pods=len(pods_in_cluster),
-        last_updated=datetime.now().isoformat(),
+def build_pod_states(events: list[ConsentEvent]) -> dict[str, PodState]:
+    """Compute current state for every known pod."""
+    return {pod: calculate_pod_state(pod, events) for pod in POD_SLUGS}
+
+
+def compute_cascade_impact(
+    selected_pod: str,
+    pod_states: dict[str, PodState],
+) -> str:
+    """Describe downstream impact if selected_pod were to revoke consent.
+
+    Shows how the school aggregate would change.
+    """
+    if selected_pod not in POD_SLUGS:
+        return "No pod selected — click a pod in the grid."
+
+    current_state = pod_states.get(selected_pod)
+    if current_state is None:
+        return f"Unknown pod: {selected_pod}"
+
+    state_label = current_state.current_state.value.replace("_", " ")
+
+    # Count currently active pods (excluding the selected one)
+    active_without = sum(
+        1 for p, s in pod_states.items()
+        if p != selected_pod and s.current_state == PodStateEnum.ACTIVE
     )
+    total = len(POD_SLUGS)
 
-
-def calculate_regional_aggregate(
-    region_id: str, cluster_aggregates: dict[str, ClusterAggregate]
-) -> RegionalAggregate:
-    """Sum cluster aggregates to get regional counts (Task 4.1)."""
-    clusters_in_region = REGION_MAPPING.get(region_id, [])
-    total = sum(cluster_aggregates.get(c, ClusterAggregate(c, c, [])).total_pods for c in clusters_in_region)
-    active = sum(cluster_aggregates.get(c, ClusterAggregate(c, c, [])).active_pods for c in clusters_in_region)
-    revoked = sum(cluster_aggregates.get(c, ClusterAggregate(c, c, [])).revoked_pods for c in clusters_in_region)
-    return RegionalAggregate(
-        region_id=region_id,
-        region_name=region_id.replace("-", " ").title(),
-        clusters=clusters_in_region,
-        total_pods=total,
-        active_pods=active,
-        revoked_pods=revoked,
-        publication_ready=active >= _MIN_PODS_FOR_PUBLICATION,
-        last_updated=datetime.now().isoformat(),
-    )
-
-
-def calculate_civic_aggregate(
-    regional_agg: RegionalAggregate, pod_states: dict[str, PodState]
-) -> CivicAggregate:
-    """Derive civic-layer aggregate from regional + pod data (Task 5.1)."""
-    pods_in_region: list[str] = []
-    for cluster_id in regional_agg.clusters:
-        pods_in_region.extend(CLUSTER_MAPPING.get(cluster_id, []))
-
-    privacy_ok = all(
-        pod_states.get(p, PodState(p, PodStateEnum.ANOMALY)).current_state != PodStateEnum.REVOKED
-        for p in pods_in_region
-    )
-    publication_ok = regional_agg.publication_ready
-
-    # P7 fix: "ready" when clean, "at_risk" when violated (was inverted)
-    # P8 fix: outcome derived from region, not hardcoded "+12% engagement"
-    outcome = (
-        f"+N% engagement ({regional_agg.region_name})" if publication_ok else "insufficient data"
-    )
-    return CivicAggregate(
-        evidence_name=f"Evidence Base ({regional_agg.region_name})",
-        regional_source=regional_agg.region_id,
-        pods_in_base=regional_agg.active_pods,
-        outcome=outcome,
-        privacy_boundary_respected=privacy_ok,
-        publication_status="ready" if (privacy_ok and publication_ok) else "at_risk",
-    )
-
-
-def should_fire_keyframe_stop1(event: ConsentEvent) -> bool:
-    """Fire keyframe at STOP 1 on consent/acl events (Task 6.1)."""
-    return event.event_type in [
-        "consent.grant",
-        "consent.revoke",
-        "consent.expired",
-        "acl.grant",
-        "acl.revoke",
-        "acl.governance.transition",  # P1 fix: was missing
+    # Direct cascade: pods this one controls
+    cascaded = CASCADE_MAP.get(selected_pod, [])
+    cascaded_active = [
+        p for p in cascaded
+        if pod_states.get(p, PodState(p, PodStateEnum.NO_CONSENT)).current_state == PodStateEnum.ACTIVE
     ]
 
+    after_revoke = active_without - len(cascaded_active)
+    threshold_met = after_revoke >= _MIN_PODS_FOR_PUBLICATION
 
-def should_fire_keyframe_stop2(
-    event: ConsentEvent,
-    previous_agg: ClusterAggregate | None,
-    current_agg: ClusterAggregate | None = None,
-) -> bool:
-    """Fire keyframe when cluster active_pods count changes (Task 6.2).
-
-    P2 fix: now compares actual counts instead of always returning True.
-    current_agg defaults to None for backward compatibility; when None,
-    fires if previous_agg exists (conservative: assume change occurred).
-    """
-    if previous_agg is None:
-        return False
-    if current_agg is None:
-        return True  # backward compat: no current provided, assume change
-    return current_agg.active_pods != previous_agg.active_pods
-
-
-def should_fire_keyframe_stop3(
-    event: ConsentEvent,
-    previous_regional: RegionalAggregate | None,
-    current_regional: RegionalAggregate | None = None,
-) -> bool:
-    """Fire keyframe when regional active_pods count changes (Task 6.3).
-
-    P2 fix: same pattern as stop2.
-    """
-    if previous_regional is None:
-        return False
-    if current_regional is None:
-        return True
-    return current_regional.active_pods != previous_regional.active_pods
-
-
-def should_fire_keyframe_stop4(event: ConsentEvent) -> bool:
-    """Fire keyframe on explicit civic events (Task 6.4)."""
-    return event.event_type in [
-        "civic.aggregate.locked",
-        "civic.threshold.breach",
-        "deletion.complete",
+    lines = [
+        f"Selected: [bold]{selected_pod}[/bold] (state: {state_label})",
+        "",
+        "If this pod revokes consent:",
+        f"  School: {active_without}/{total - 1} would remain consented",
     ]
+    if cascaded_active:
+        lines.append(f"  Also removes: {', '.join(cascaded_active)}")
+        lines.append(f"  Net active: {after_revoke}/{total}")
+    threshold_str = "[green]MET ✓[/green]" if threshold_met else "[red]NOT MET ✗[/red]"
+    lines.append(f"  Publication threshold: {threshold_str}")
+
+    return "\n".join(lines)
+
+
+def aggregate_troll_results(lines: list[str]) -> dict[str, TrollCategoryResult]:
+    """Parse troll JSONL lines and aggregate by category.
+
+    Uses troll.probe.done events (result field) to compute counts.
+    Falls back to troll.category.done summary events if probes absent.
+    """
+    # Prefer troll.category.done summary (authoritative)
+    from_summary: dict[str, TrollCategoryResult] = {}
+    from_probes: dict[str, TrollCategoryResult] = {}
+
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            data = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+
+        event_type = data.get("event_type", "")
+        category = data.get("category", "unknown")
+
+        if event_type == "troll.category.done":
+            from_summary[category] = TrollCategoryResult(
+                category=category,
+                passed=data.get("passed", 0),
+                partial=data.get("partial", 0),
+                failed=data.get("failed", 0),
+            )
+        elif event_type == "troll.probe.done":
+            result = data.get("result", "unknown")
+            if category not in from_probes:
+                from_probes[category] = TrollCategoryResult(category=category)
+            r = from_probes[category]
+            if result == "pass":
+                r.passed += 1
+            elif result == "partial":
+                r.partial += 1
+            elif result == "fail":
+                r.failed += 1
+
+    # troll.category.done takes precedence; fall back to probe aggregation
+    return from_summary if from_summary else from_probes
 
 
 # =========================================================================
 # Widgets
 # =========================================================================
 
-class PodSparklineRow(Horizontal):
-    """One pod row in the Gantt: label + Sparkline history (D2)."""
+_STATE_ICON: dict[PodStateEnum, tuple[str, str]] = {
+    PodStateEnum.ACTIVE:      ("✓", "green"),
+    PodStateEnum.REVOKED:     ("✗", "red"),
+    PodStateEnum.TRANSITIONING: ("⟳", "yellow"),
+    PodStateEnum.NO_CONSENT:  ("·", "red"),
+    PodStateEnum.ANOMALY:     ("⚠", "magenta"),
+}
 
-    DEFAULT_CSS = """
-    PodSparklineRow {
-        height: 1;
-        margin: 0;
-    }
-    PodSparklineRow Label {
-        width: 20;
-    }
-    PodSparklineRow Sparkline {
-        width: 1fr;
-        height: 1;
-    }
-    """
-
-    def __init__(self, pod_id: str, **kwargs) -> None:
-        super().__init__(**kwargs)
-        self._pod_id = pod_id
-        self._safe = pod_id.replace("-", "_")
-
-    def compose(self) -> ComposeResult:
-        yield Label(f"[dim]{self._pod_id[:18]:18}[/dim]", id=f"lbl_{self._safe}")
-        yield Sparkline([0.0] * _HISTORY_LEN, id=f"spark_{self._safe}")
-
-    def update_pod(self, state: PodStateEnum, history: list[float]) -> None:
-        """Update label with state icon and Sparkline with history data."""
-        icon_map = {
-            PodStateEnum.ACTIVE: ("✓", "green"),
-            PodStateEnum.REVOKED: ("✗", "red"),
-            PodStateEnum.TRANSITIONING: ("⟳", "yellow"),
-            PodStateEnum.ANOMALY: ("⚠", "magenta"),
-        }
-        icon, color = icon_map[state]
-        try:
-            self.query_one(f"#lbl_{self._safe}", Label).update(
-                f"[{color}]{self._pod_id[:16]:16} {icon}[/{color}]"
-            )
-            self.query_one(f"#spark_{self._safe}", Sparkline).data = (
-                history if history else [0.0] * _HISTORY_LEN
-            )
-        except NoMatches:
-            pass
+_SEVERITY_COLOR: dict[str, str] = {
+    "green": "green",
+    "yellow": "yellow",
+    "red": "red",
+    "unknown": "dim",
+}
 
 
-class ConsentPropagationGantt(VerticalScroll):
-    """STOP 1-4 Gantt with per-pod Sparkline timelines (Task 7, D2).
+class ServiceHealthWidget(Static):
+    """Widget 1: Are all backend services alive?
 
-    Pre-mounts rows for all pods; shows/hides per active scenario.
-    P9 fix: STOP visibility filtered per-scenario (not union-wide).
+    Polls HTTP health endpoints every _HEALTH_POLL_INTERVAL seconds.
+    Answers: CSS ✓/✗  Oxigraph ✓/✗  Qdrant ✓/✗
     """
 
     DEFAULT_CSS = """
-    ConsentPropagationGantt {
+    ServiceHealthWidget {
         border: solid $accent;
-        height: 14;
+        height: 6;
+        padding: 0 1;
     }
     """
 
-    def __init__(self, **kwargs) -> None:
-        super().__init__(**kwargs)
-        self._scenarios: list[str] = []
-        self._pod_states: dict = {}
-        self._cluster_aggregates: dict = {}
-        self._regional_aggregates: dict = {}
-        self._civic_aggregates: dict = {}
-        self._pod_history: dict = {}
-
-    def compose(self) -> ComposeResult:
-        yield Label("[bold cyan]CONSENT PROPAGATION GANTT — STOP 1-4[/bold cyan]")
-        yield Label("[dim]No scenarios selected.[/dim]", id="gantt-empty-msg")
-        for pod_id in sorted(ALL_PODS):
-            safe = pod_id.replace("-", "_")
-            row = PodSparklineRow(pod_id, id=f"gantt-row-{safe}", classes="pod-row")
-            row.display = False  # hidden until first update_state call
-            yield row
-        yield Static("", id="gantt-cluster-status")
-        yield Static("", id="gantt-regional-status")
-        yield Static("", id="gantt-civic-status")
-
-    def update_state(
-        self,
-        scenarios: list[str],
-        pod_states: dict,
-        cluster_aggs: dict,
-        regional_aggs: dict,
-        civic_aggs: dict,
-        pod_history: dict,
-    ) -> None:
-        """Refresh all Gantt rows and aggregate panels."""
-        self._scenarios = scenarios
-        self._pod_states = pod_states
-        self._cluster_aggregates = cluster_aggs
-        self._regional_aggregates = regional_aggs
-        self._civic_aggregates = civic_aggs
-        self._pod_history = pod_history
-
-        try:
-            self.query_one("#gantt-empty-msg", Label).display = not scenarios
-        except NoMatches:
-            pass
-
-        if not scenarios:
-            return
-
-        # Determine visible pods (union across selected scenarios for STOP 1)
-        visible_pods: set[str] = set()
-        for scenario in scenarios:
-            for cluster_id in SCENARIO_CLUSTER_MAPPING.get(scenario, []):
-                visible_pods.update(CLUSTER_MAPPING.get(cluster_id, []))
-
-        for pod_id in sorted(ALL_PODS):
-            safe = pod_id.replace("-", "_")
-            try:
-                row = self.query_one(f"#gantt-row-{safe}", PodSparklineRow)
-                row.display = pod_id in visible_pods
-                if pod_id in visible_pods:
-                    state = pod_states.get(
-                        pod_id, PodState(pod_id, PodStateEnum.ANOMALY)
-                    ).current_state
-                    history = pod_history.get(pod_id, [0.0] * _HISTORY_LEN)
-                    row.update_pod(state, history)
-            except NoMatches:
-                pass
-
-        self._refresh_aggregate_panels(scenarios)
-
-    def _refresh_aggregate_panels(self, scenarios: list[str]) -> None:
-        """Update STOP 2/3/4 text panels (P9 fix: per-scenario STOP filtering)."""
-        cluster_lines: list[str] = []
-        regional_lines: list[str] = []
-        civic_lines: list[str] = []
-        shown_clusters: set[str] = set()
-        shown_regions: set[str] = set()
-
-        for scenario in scenarios:
-            # P9 fix: use scenario-specific stops, not the union
-            scenario_stops = SCENARIO_STOP_MAPPING.get(scenario, [])
-
-            if 2 in scenario_stops:
-                if not cluster_lines:
-                    cluster_lines.append("[green]▼ STOP 2: School Clusters[/green]")
-                for cluster_id in SCENARIO_CLUSTER_MAPPING.get(scenario, []):
-                    if cluster_id not in shown_clusters:
-                        shown_clusters.add(cluster_id)
-                        agg = self._cluster_aggregates.get(cluster_id)
-                        if agg:
-                            cluster_lines.append(
-                                f"  {agg.cluster_name}: {agg.active_pods}/{agg.total_pods} active"
-                            )
-
-            if 3 in scenario_stops:
-                if not regional_lines:
-                    regional_lines.append("[yellow]▼ STOP 3: Regional Hubs[/yellow]")
-                for region_id in SCENARIO_REGION_MAPPING.get(scenario, []):
-                    if region_id not in shown_regions:
-                        shown_regions.add(region_id)
-                        agg = self._regional_aggregates.get(region_id)
-                        if agg:
-                            ready = "READY ✓" if agg.publication_ready else "AT RISK ✗"
-                            regional_lines.append(
-                                f"  {agg.region_name}: {agg.active_pods}/{agg.total_pods} ({ready})"
-                            )
-
-            if 4 in scenario_stops:
-                if not civic_lines:
-                    civic_lines.append("[magenta]▼ STOP 4: Federal Civic Layer[/magenta]")
-                for region_id in SCENARIO_REGION_MAPPING.get(scenario, []):
-                    agg = self._civic_aggregates.get(region_id)
-                    if agg:
-                        privacy = "✓" if agg.privacy_boundary_respected else "✗ VIOLATED"
-                        civic_lines.append(
-                            f"  {agg.evidence_name}: {agg.pods_in_base} pods | {privacy} | {agg.publication_status}"
-                        )
-
-        try:
-            self.query_one("#gantt-cluster-status", Static).update(
-                "\n".join(cluster_lines) if cluster_lines else ""
-            )
-            self.query_one("#gantt-regional-status", Static).update(
-                "\n".join(regional_lines) if regional_lines else ""
-            )
-            self.query_one("#gantt-civic-status", Static).update(
-                "\n".join(civic_lines) if civic_lines else ""
-            )
-        except NoMatches:
-            pass
-
-
-class PodSpaceGrid(Vertical):
-    """4×4 pod grid with clickable Button widgets (Task 8, P4)."""
-
-    DEFAULT_CSS = """
-    PodSpaceGrid {
-        border: solid $accent;
-        height: auto;
-    }
-    PodSpaceGrid Horizontal {
-        height: 3;
-    }
-    PodSpaceGrid Button {
-        min-width: 18;
-        height: 3;
-    }
-    """
-
-    def compose(self) -> ComposeResult:
-        yield Label("[bold cyan]POD SPACE (4×4)[/bold cyan]")
-        pods = sorted(ALL_PODS)
-        for row_start in range(0, len(pods), 4):
-            with Horizontal():
-                for pod_id in pods[row_start:row_start + 4]:
-                    safe = pod_id.replace("-", "_")
-                    yield Button(pod_id[:14], id=f"pod-btn-{safe}", variant="default")
-
-    def update_state(self, pod_states: dict) -> None:
-        """Update each pod button with state color and icon."""
-        variant_map = {
-            PodStateEnum.ACTIVE: ("success", "✓"),
-            PodStateEnum.REVOKED: ("error", "✗"),
-            PodStateEnum.TRANSITIONING: ("warning", "⟳"),
-            PodStateEnum.ANOMALY: ("default", "⚠"),
-        }
-        for pod_id in sorted(ALL_PODS):
-            safe = pod_id.replace("-", "_")
-            try:
-                btn = self.query_one(f"#pod-btn-{safe}", Button)
-                state = pod_states.get(pod_id, PodState(pod_id, PodStateEnum.ANOMALY)).current_state
-                variant, icon = variant_map[state]
-                btn.label = f"{pod_id[:12]:12} {icon}"
-                btn.variant = variant
-            except NoMatches:
-                pass
-
-
-class ConsentGateCounts(Static):
-    """Live consent counts: Active, Revoked, Expired, Transitioning (Task 9)."""
-
-    DEFAULT_CSS = "ConsentGateCounts { height: 3; border: solid $accent; }"
+    # Map service name → True (up) / False (down) / None (unknown)
+    _statuses: reactive[dict[str, bool | None]] = reactive(dict)
 
     def __init__(self, **kwargs) -> None:
-        super().__init__(**kwargs)
-        self.pod_states: dict = {}
-
-    def render(self) -> RenderableType:
-        active = sum(1 for p in self.pod_states.values() if p.current_state == PodStateEnum.ACTIVE)
-        transitioning = sum(1 for p in self.pod_states.values() if p.current_state == PodStateEnum.TRANSITIONING)
-        # P10 fix: revoked and expired are distinct subsets of REVOKED state
-        revoked = sum(
-            1 for p in self.pod_states.values()
-            if p.current_state == PodStateEnum.REVOKED
-            and p.last_event is not None
-            and p.last_event.event_type == "consent.revoke"
+        super().__init__(
+            "[bold cyan]SERVICE HEALTH[/bold cyan]\n\n"
+            "  [dim]? CSS[/dim]\n  [dim]? Oxigraph[/dim]\n  [dim]? Qdrant[/dim]",
+            **kwargs,
         )
-        expired = sum(
-            1 for p in self.pod_states.values()
-            if p.current_state == PodStateEnum.REVOKED
-            and p.last_event is not None
-            and p.last_event.event_type == "consent.expired"
-        )
-        return (
-            "[bold cyan]CONSENT GATE[/bold cyan]\n"
-            f"Active: [green]{active}[/green] | "
-            f"Revoked: [red]{revoked}[/red] | "
-            f"Expired: [dim]{expired}[/dim] | "
-            f"Transitioning: [yellow]{transitioning}[/yellow]"
-        )
+        self._statuses = {name: None for name in HEALTH_ENDPOINTS}
 
-    def update_state(self, pod_states: dict) -> None:
-        self.pod_states = pod_states
-        self.update(self.render())
+    def on_mount(self) -> None:
+        self.run_worker(self._poll_health(), exclusive=False)
 
+    async def _poll_health(self) -> None:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            while True:
+                new_statuses: dict[str, bool | None] = {}
+                for name, url in HEALTH_ENDPOINTS.items():
+                    try:
+                        resp = await client.get(url)
+                        new_statuses[name] = resp.status_code < 500
+                    except Exception:
+                        new_statuses[name] = False
+                self._statuses = new_statuses
+                self._refresh_display()
+                await asyncio.sleep(_HEALTH_POLL_INTERVAL)
 
-class CivicAggregatePanel(Static):
-    """Civic evidence base + alerts panel (Task 10)."""
-
-    DEFAULT_CSS = "CivicAggregatePanel { height: auto; border: solid $accent; overflow-y: auto; }"
-
-    def __init__(self, **kwargs) -> None:
-        super().__init__(**kwargs)
-        self.scenarios: list[str] = []
-        self.civic_aggregates: dict = {}
-        self.alerts: list[str] = []
-
-    def render(self) -> RenderableType:
-        lines = ["[bold magenta]CIVIC AGGREGATE + ALERTS[/bold magenta]"]
-
-        if "Isabelle" not in self.scenarios:
-            lines.append("[dim]Select 'Isabelle' to view civic layer.[/dim]")
-        else:
-            for agg in self.civic_aggregates.values():
-                privacy = "✓ Respected" if agg.privacy_boundary_respected else "✗ VIOLATED"
-                lines.append(f"\n{agg.evidence_name}:")
-                lines.append(f"  Pods: {agg.pods_in_base} | Outcome: {agg.outcome}")
-                lines.append(f"  Privacy: {privacy} | Status: {agg.publication_status}")
-
-        if self.alerts:
-            lines.append("\n[yellow]⚠ Alerts:[/yellow]")
-            for alert in self.alerts[:10]:  # P14 fix: was [:5], cap matches _add_alert
-                lines.append(f"  {alert}")
-
-        return "\n".join(lines)
-
-    def update_state(self, scenarios: list[str], civic_aggs: dict, alerts: list[str]) -> None:
-        self.scenarios = scenarios
-        self.civic_aggregates = civic_aggs
-        self.alerts = alerts
-        self.update(self.render())
-
-
-# =========================================================================
-# Detail Tabs (D1)
-# =========================================================================
-
-class ScenarioDetailPanel(Static):
-    """Scenario-specific event timeline for a detail tab."""
-
-    def __init__(self, scenario: str, **kwargs) -> None:
-        super().__init__(**kwargs)
-        self._scenario = scenario
-
-    def render(self) -> RenderableType:
-        return f"[dim]{self._scenario} — waiting for events...[/dim]"
-
-    def update_events(self, events: list[ConsentEvent], pod_states: dict) -> None:
-        """Refresh with events relevant to this scenario (last 20)."""
-        clusters = SCENARIO_CLUSTER_MAPPING.get(self._scenario, [])
-        relevant_pods: set[str] = set()
-        for c in clusters:
-            relevant_pods.update(CLUSTER_MAPPING.get(c, []))
-
-        recent = [e for e in events if e.pod in relevant_pods][-20:]
-
-        stops = SCENARIO_STOP_MAPPING.get(self._scenario, [])
-        lines = [f"[bold]{self._scenario} — STOP {min(stops)}-{max(stops)} journey[/bold]"]
-
-        if not recent:
-            lines.append("[dim]No events yet.[/dim]")
-        else:
-            for e in reversed(recent):
-                ts = e.timestamp[-8:] if len(e.timestamp) >= 8 else e.timestamp
-                pod = (e.pod or "—")[:12]
-                lines.append(f"  [{ts}] {pod:12} → {e.event_type}")
-
-        # Cluster summary for this scenario
-        for cluster_id in clusters:
-            agg = pod_states.get(f"__cluster_{cluster_id}")  # not a pod, skip
-            _ = agg  # cluster summaries come from the Gantt, not here
-
+    def _refresh_display(self) -> None:
+        lines = ["[bold cyan]SERVICE HEALTH[/bold cyan]", ""]
+        for name, up in self._statuses.items():
+            if up is None:
+                icon, color = "?", "dim"
+            elif up:
+                icon, color = "✓", "green"
+            else:
+                icon, color = "✗", "red"
+            lines.append(f"  [{color}]{icon}[/{color}] {name}")
         self.update("\n".join(lines))
 
 
-class PodDetailPanel(Static):
-    """Consent history for a selected pod (POD tab, D1)."""
+class TrollAlarmWidget(Static):
+    """Widget 2: Are security boundaries holding?
 
-    DEFAULT_CSS = "PodDetailPanel { height: auto; }"
+    Shows one row per attack category with pass/partial/fail counts
+    and color severity (green = all pass, yellow = some partial, red = any fail).
+    """
 
-    def render(self) -> RenderableType:
-        return "[dim]Click a pod in the grid to see its consent history.[/dim]"
+    DEFAULT_CSS = """
+    TrollAlarmWidget {
+        border: solid $accent;
+        height: 6;
+        padding: 0 1;
+    }
+    """
 
-    def update_pod(
-        self, pod_id: str | None, events: list[ConsentEvent], pod_states: dict
+    def __init__(self, **kwargs) -> None:
+        super().__init__(
+            "[bold cyan]TROLL ALARM PANEL[/bold cyan]\n\n  [dim]Loading...[/dim]",
+            **kwargs,
+        )
+        self._results: dict[str, TrollCategoryResult] = {}
+
+    def update_results(self, results: dict[str, TrollCategoryResult]) -> None:
+        self._results = results
+        self._refresh_display()
+
+    def _refresh_display(self) -> None:
+        lines = ["[bold cyan]TROLL ALARM PANEL[/bold cyan]", ""]
+        if not self._results:
+            lines.append("  [dim]No troll run data.[/dim]")
+        else:
+            for name, r in sorted(self._results.items()):
+                color = _SEVERITY_COLOR[r.severity]
+                icon = "✓" if r.severity == "green" else ("⚠" if r.severity == "yellow" else "✗")
+                lines.append(
+                    f"  [{color}]{icon}[/{color}] {name:<22} "
+                    f"[green]{r.passed}p[/green] "
+                    f"[yellow]{r.partial}w[/yellow] "
+                    f"[red]{r.failed}f[/red]"
+                    f" / {r.total}"
+                )
+        self.update("\n".join(lines))
+
+
+class PodGridWidget(Vertical):
+    """Widget 3: What's each pod's consent state?
+
+    Shows 8 real CSS pods as clickable buttons, color-coded:
+      green  = active (consent granted)
+      red    = revoked or no consent
+      yellow = transitioning
+      magenta = anomaly
+    """
+
+    DEFAULT_CSS = """
+    PodGridWidget {
+        border: solid $accent;
+        height: auto;
+        padding: 0 1;
+    }
+    PodGridWidget Horizontal {
+        height: 3;
+    }
+    PodGridWidget Button {
+        min-width: 15;
+        height: 3;
+    }
+    """
+
+    def compose(self) -> ComposeResult:
+        yield Label("[bold cyan]POD GRID[/bold cyan]")
+        # 2 rows of 4 pods
+        for row_start in range(0, len(POD_SLUGS), 4):
+            with Horizontal():
+                for pod_id in POD_SLUGS[row_start : row_start + 4]:
+                    safe = pod_id.replace("-", "_")
+                    yield Button(
+                        f"{pod_id[:18]:18} ·",
+                        id=f"pod-btn-{safe}",
+                        variant="default",
+                    )
+
+    def update_state(self, pod_states: dict[str, PodState]) -> None:
+        variant_map: dict[PodStateEnum, str] = {
+            PodStateEnum.ACTIVE: "success",
+            PodStateEnum.REVOKED: "error",
+            PodStateEnum.TRANSITIONING: "warning",
+            PodStateEnum.NO_CONSENT: "error",
+            PodStateEnum.ANOMALY: "default",
+        }
+        for pod_id in POD_SLUGS:
+            safe = pod_id.replace("-", "_")
+            try:
+                btn = self.query_one(f"#pod-btn-{safe}", Button)
+                ps = pod_states.get(pod_id, PodState(pod_id, PodStateEnum.NO_CONSENT))
+                icon, _ = _STATE_ICON[ps.current_state]
+                btn.label = f"{pod_id[:18]:18} {icon}"
+                btn.variant = variant_map[ps.current_state]
+            except NoMatches:
+                pass
+
+
+class CascadePredictorWidget(Static):
+    """Widget 4: What breaks if pod X revokes?
+
+    Updates when a pod is selected in PodGridWidget.
+    Shows downstream impact: which dependents lose consent, whether
+    the school aggregate stays above the publication threshold.
+    """
+
+    DEFAULT_CSS = """
+    CascadePredictorWidget {
+        border: solid $accent;
+        height: auto;
+        padding: 0 1;
+    }
+    """
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(
+            "[bold cyan]CASCADE PREDICTOR[/bold cyan]\n\n"
+            "[dim]Click a pod in the grid to predict cascade impact.[/dim]",
+            **kwargs,
+        )
+        self._pod_states: dict[str, PodState] = {}
+        self._selected: str | None = None
+
+    def update_state(
+        self,
+        pod_states: dict[str, PodState],
+        selected_pod: str | None,
     ) -> None:
-        if pod_id is None:
-            self.update("[dim]No pod selected.[/dim]")
+        self._pod_states = pod_states
+        self._selected = selected_pod
+        self._refresh_display()
+
+    def _refresh_display(self) -> None:
+        header = "[bold cyan]CASCADE PREDICTOR[/bold cyan]\n"
+        if self._selected is None:
+            self.update(header + "\n[dim]Click a pod in the grid to predict cascade impact.[/dim]")
+            return
+        impact = compute_cascade_impact(self._selected, self._pod_states)
+        self.update(header + "\n" + impact)
+
+
+class ConsentGateWidget(Static):
+    """Widget 5: Overall consent distribution.
+
+    Counts: Active | No consent | Revoked | Transitioning
+    """
+
+    DEFAULT_CSS = """
+    ConsentGateWidget {
+        border: solid $accent;
+        height: 4;
+        padding: 0 1;
+    }
+    """
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(
+            "[bold cyan]CONSENT GATE[/bold cyan]\n\n[dim]Waiting for consent events...[/dim]",
+            **kwargs,
+        )
+        self._pod_states: dict[str, PodState] = {}
+
+    def update_state(self, pod_states: dict[str, PodState]) -> None:
+        self._pod_states = pod_states
+        self._refresh_display()
+
+    def _refresh_display(self) -> None:
+        ps = self._pod_states
+        active = sum(1 for s in ps.values() if s.current_state == PodStateEnum.ACTIVE)
+        no_consent = sum(1 for s in ps.values() if s.current_state == PodStateEnum.NO_CONSENT)
+        revoked = sum(1 for s in ps.values() if s.current_state == PodStateEnum.REVOKED)
+        transitioning = sum(1 for s in ps.values() if s.current_state == PodStateEnum.TRANSITIONING)
+        anomaly = sum(1 for s in ps.values() if s.current_state == PodStateEnum.ANOMALY)
+        total = len(POD_SLUGS)
+
+        if not ps:
+            self.update(
+                "[bold cyan]CONSENT GATE[/bold cyan]\n\n"
+                "[dim]Waiting for consent events...[/dim]"
+            )
             return
 
-        pod_events = [e for e in events if e.pod == pod_id][-30:]
-        state = pod_states.get(pod_id)
-        current = state.current_state.value if state else "unknown"
+        self.update(
+            "[bold cyan]CONSENT GATE[/bold cyan]  [dim]— how many pods have consented?[/dim]\n\n"
+            f"  [green]✓ Active: {active}[/green]"
+            f"  [red]· No consent: {no_consent}[/red]"
+            f"  [red]✗ Revoked: {revoked}[/red]"
+            f"  [yellow]⟳ Transitioning: {transitioning}[/yellow]"
+            f"  [magenta]⚠ Anomaly: {anomaly}[/magenta]"
+            f"  [dim]/ {total} pods total[/dim]"
+        )
 
-        lines = [
-            f"[bold cyan]Pod: {pod_id}[/bold cyan]",
-            f"State: [bold]{current}[/bold]  |  Events: {len(pod_events)}",
-            "",
-            "[bold]Recent events (newest first):[/bold]",
-        ]
-        if not pod_events:
-            lines.append("[dim]No events recorded.[/dim]")
+
+class EventLogWidget(Static):
+    """Widget 6: What just happened?
+
+    Shows last _EVENT_LOG_LEN consent events, newest first.
+    """
+
+    DEFAULT_CSS = """
+    EventLogWidget {
+        border: solid $accent;
+        height: 10;
+        padding: 0 1;
+    }
+    """
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(
+            "[bold cyan]EVENT LOG[/bold cyan]\n\n[dim]  Waiting for consent events...[/dim]",
+            **kwargs,
+        )
+        self._events: list[ConsentEvent] = []
+
+    def update_events(self, events: list[ConsentEvent]) -> None:
+        self._events = events
+        self._refresh_display()
+
+    def _refresh_display(self) -> None:
+        lines = ["[bold cyan]EVENT LOG[/bold cyan]  (newest first)"]
+        if not self._events:
+            lines.append("")
+            lines.append("[dim]  Waiting for consent events...[/dim]")
         else:
-            for e in reversed(pod_events):
-                ts = e.timestamp[-8:] if len(e.timestamp) >= 8 else e.timestamp
-                lines.append(f"  [{ts}] {e.event_type}")
-
+            # newest first
+            for ev in reversed(self._events[-_EVENT_LOG_LEN:]):
+                ts = ev.timestamp[:19] if len(ev.timestamp) >= 19 else ev.timestamp
+                pod_str = f"[bold]{ev.pod}[/bold]" if ev.pod else "[dim]—[/dim]"
+                color = "green" if "grant" in ev.event_type else (
+                    "red" if "revok" in ev.event_type or "expir" in ev.event_type else "dim"
+                )
+                lines.append(
+                    f"  [{color}]{ev.event_type}[/{color}]"
+                    f"  {pod_str}"
+                    f"  [dim]{ts}[/dim]"
+                )
         self.update("\n".join(lines))
 
 
@@ -762,340 +628,183 @@ class PodDetailPanel(Static):
 # =========================================================================
 
 class MissionControlApp(App):
-    """Main Mission Control application (Task 1)."""
+    """pocpod0 Mission Control — single-screen operations control room."""
 
-    TITLE = "Mission Control — Consent Propagation Network"
-    BINDINGS = [
-        ("q", "quit", "Quit"),
-        ("c", "clear_filter", "Clear pod filter"),
-    ]
+    TITLE = "pocpod0 Mission Control"
+    SUB_TITLE = "Operations Control Room"
 
-    # Reactive attributes (Task 1.2)
-    consent_events: reactive[list] = reactive([])
-    troll_events: reactive[list] = reactive([])
-    pod_states: reactive[dict] = reactive({})
-    cluster_aggregates: reactive[dict] = reactive({})
-    regional_aggregates: reactive[dict] = reactive({})
-    civic_aggregates: reactive[dict] = reactive({})
-    selected_scenarios: reactive[list] = reactive(["Claire", "Isabelle"])
-    filtered_pod: reactive[str | None] = reactive(None)
-    alerts: reactive[list] = reactive([])
-
-    DEFAULT_CSS = """
-    Screen { layout: vertical; }
-
-    #scenario-bar {
-        height: 5;
-        border: solid $primary;
+    CSS = """
+    Screen {
+        layout: vertical;
     }
-    #scenario-bar Label { width: auto; margin: 1 1; }
-    #scenario-bar Switch { width: 6; margin: 1 0; }
-
-    #filtered-pod-bar {
-        height: 1;
-        background: $surface-darken-1;
-        display: none;
+    #top-row {
+        height: 8;
+        layout: horizontal;
     }
-
-    #main-panels {
-        height: 1fr;
-    }
-
-    #left-column {
-        width: 2fr;
-        height: 100%;
-    }
-
-    #detail-tabs {
+    #top-row ServiceHealthWidget {
         width: 1fr;
-        height: 100%;
-        border: solid $accent;
     }
-
-    #gantt-section { height: 14; }
-    #pod-grid { height: auto; }
-    #consent-gate { height: 3; }
-    #civic-panel { height: 1fr; }
+    #top-row TrollAlarmWidget {
+        width: 2fr;
+    }
+    #mid-row {
+        height: auto;
+        layout: horizontal;
+    }
+    #mid-row PodGridWidget {
+        width: 1fr;
+    }
+    #mid-row CascadePredictorWidget {
+        width: 1fr;
+    }
+    ConsentGateWidget {
+        width: 100%;
+    }
+    EventLogWidget {
+        width: 100%;
+    }
     """
 
-    def __init__(self) -> None:
-        super().__init__()
-        # Per-pod Sparkline history (not reactive; updated directly)
-        self._pod_history: dict[str, list[float]] = {
-            pod: [0.0] * _HISTORY_LEN for pod in ALL_PODS
-        }
+    # Reactive state
+    _consent_events: reactive[list[ConsentEvent]] = reactive(list)
+    _troll_lines: reactive[list[str]] = reactive(list)
+    _pod_states: reactive[dict[str, PodState]] = reactive(dict)
+    _troll_results: reactive[dict[str, TrollCategoryResult]] = reactive(dict)
+    _selected_pod: reactive[str | None] = reactive(None)
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._consent_events = []
+        self._troll_lines = []
+        self._pod_states = {}
+        self._troll_results = {}
+        self._selected_pod = None
+        self._consent_seek = 0
+        self._troll_seek = 0
 
     def compose(self) -> ComposeResult:
-        """Compose layout: scenario bar + main panels (Gantt/Grid/Gate/Civic) + detail tabs."""
-        # P3 fix: Switch widgets instead of static label
-        with Horizontal(id="scenario-bar"):
-            yield Label("[bold]Scenarios:[/bold]")
-            for scenario in ALL_SCENARIOS:
-                active = scenario in ["Claire", "Isabelle"]
-                yield Switch(value=active, id=f"switch-{scenario}", name=scenario)
-                yield Label(scenario)
-
-        yield Label("", id="filtered-pod-bar")
-
-        with Horizontal(id="main-panels"):
-            with Vertical(id="left-column"):
-                yield ConsentPropagationGantt(id="gantt-section")
-                yield PodSpaceGrid(id="pod-grid")
-                yield ConsentGateCounts(id="consent-gate")
-                yield CivicAggregatePanel(id="civic-panel")
-
-            # D1: TabbedContent with 5 tabs
-            with TabbedContent(id="detail-tabs"):
-                with TabPane("Claire", id="tab-claire"):
-                    yield ScenarioDetailPanel("Claire", id="panel-claire")
-                with TabPane("Isabelle", id="tab-isabelle"):
-                    yield ScenarioDetailPanel("Isabelle", id="panel-isabelle")
-                with TabPane("Ayoub", id="tab-ayoub"):
-                    yield ScenarioDetailPanel("Ayoub", id="panel-ayoub")
-                with TabPane("Pod", id="tab-pod"):
-                    yield PodDetailPanel(id="panel-pod")
-                with TabPane("Attacks ⏳", id="tab-attacks"):
-                    yield Static(
-                        "[dim]Attack summary deferred to Story 6.3 (Funder Intervention Points).[/dim]"
-                    )
-
+        yield Header()
+        with Horizontal(id="top-row"):
+            yield ServiceHealthWidget(id="service-health")
+            yield TrollAlarmWidget(id="troll-alarm")
+        with Horizontal(id="mid-row"):
+            yield PodGridWidget(id="pod-grid")
+            yield CascadePredictorWidget(id="cascade-predictor")
+        yield ConsentGateWidget(id="consent-gate")
+        yield EventLogWidget(id="event-log")
         yield Footer()
 
-    async def on_mount(self) -> None:
-        """Start JSONL polling on app mount (Task 1.3)."""
-        # Initial render with default scenarios (no waiting for first poll)
-        self._update_calculated_state()
-        self._poll_jsonl_task = asyncio.create_task(self._poll_jsonl_loop())
+    def on_mount(self) -> None:
+        self.run_worker(self._poll_jsonl_task(), exclusive=False, name="jsonl-poller")
 
-    # -----------------------------------------------------------------------
-    # Event handlers
-
-    def on_switch_changed(self, event: Switch.Changed) -> None:
-        """Handle scenario toggle (P3)."""
-        scenario = event.switch.name
-        if scenario is None:
-            return
-        scenarios = list(self.selected_scenarios)
-        if event.value and scenario not in scenarios:
-            scenarios.append(scenario)
-        elif not event.value and scenario in scenarios:
-            scenarios.remove(scenario)
-        self.selected_scenarios = scenarios
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        """Handle pod button click → set filtered_pod (P4)."""
-        btn_id = event.button.id or ""
-        if btn_id.startswith("pod-btn-"):
-            pod_safe = btn_id[len("pod-btn-"):]
-            pod_id = pod_safe.replace("_", "-")
-            if pod_id in ALL_PODS:
-                self.filtered_pod = pod_id
-                try:
-                    self.query_one("#detail-tabs", TabbedContent).active = "tab-pod"
-                except NoMatches:
-                    pass
-
-    def action_clear_filter(self) -> None:
-        """Clear pod filter (AC2 — clear filter returns to multi-scenario view)."""
-        self.filtered_pod = None
-
-    # -----------------------------------------------------------------------
-    # Polling
-
-    async def _poll_jsonl_loop(self) -> None:
-        """Background JSONL polling worker (P11: bounded lists, P13: truncation reset)."""
-        last_consent_pos = 0
-        last_troll_pos = 0
-
+    async def _poll_jsonl_task(self) -> None:
+        """Background worker: poll both JSONL files every _POLL_INTERVAL seconds."""
         while True:
-            try:
-                # P13: detect file truncation (demo reset via compose down -v)
-                if _CONSENT_EVENTS_FILE.exists():
-                    if _CONSENT_EVENTS_FILE.stat().st_size < last_consent_pos:
-                        last_consent_pos = 0
-                    with open(_CONSENT_EVENTS_FILE, "r") as f:
-                        f.seek(last_consent_pos)
-                        new_events = [
-                            e for line in f
-                            if (e := parse_consent_event(line)) is not None
-                        ]
-                        last_consent_pos = f.tell()
-                    if new_events:
-                        # P11: cap at _MAX_EVENTS
-                        self.consent_events = (list(self.consent_events) + new_events)[-_MAX_EVENTS:]
-
-                if _TROLL_RUN_FILE.exists():
-                    if _TROLL_RUN_FILE.stat().st_size < last_troll_pos:
-                        last_troll_pos = 0
-                    with open(_TROLL_RUN_FILE, "r") as f:
-                        f.seek(last_troll_pos)
-                        new_troll = []
-                        for line in f:
-                            try:
-                                evt = json.loads(line.strip())
-                                if evt:
-                                    new_troll.append(evt)
-                            except json.JSONDecodeError:
-                                pass
-                        last_troll_pos = f.tell()
-                    if new_troll:
-                        self.troll_events = (list(self.troll_events) + new_troll)[-_MAX_EVENTS:]
-
-                # Recalculate after reading both files
-                self._update_calculated_state()
-
-            except Exception as e:
-                self._add_alert(f"Poll error: {e}")
-
+            await self._read_consent_events()
+            await self._read_troll_events()
             await asyncio.sleep(_POLL_INTERVAL)
 
-    # -----------------------------------------------------------------------
-    # State calculation
-
-    def _update_pod_history(self, pod_states: dict) -> None:
-        """Append current state value to each pod's Sparkline history (D2)."""
-        for pod_id in ALL_PODS:
-            state = pod_states.get(pod_id, PodState(pod_id, PodStateEnum.ANOMALY)).current_state
-            val = STATE_FLOAT.get(state.value, 0.0)
-            prev = self._pod_history.get(pod_id, [0.0] * _HISTORY_LEN)
-            self._pod_history[pod_id] = (prev + [val])[-_HISTORY_LEN:]
-
-    def _update_calculated_state(self) -> None:
-        """Recalculate all aggregates (P5 fix: pod_states assigned last so watcher sees fresh aggregates)."""
-        pod_states = {
-            pod_id: calculate_pod_state(pod_id, self.consent_events)
-            for pod_id in ALL_PODS
-        }
-        cluster_aggs = {
-            cluster_id: calculate_cluster_aggregate(cluster_id, pod_states)
-            for cluster_id in CLUSTER_MAPPING
-        }
-        regional_aggs = {
-            region_id: calculate_regional_aggregate(region_id, cluster_aggs)
-            for region_id in REGION_MAPPING
-        }
-        civic_aggs = {
-            region_id: calculate_civic_aggregate(regional_aggs[region_id], pod_states)
-            for region_id in REGION_MAPPING
-        }
-
-        self._update_pod_history(pod_states)
-
-        # P5 fix: set aggregates BEFORE pod_states so watch_pod_states sees fresh data
-        self.cluster_aggregates = cluster_aggs
-        self.regional_aggregates = regional_aggs
-        self.civic_aggregates = civic_aggs
-        self.pod_states = pod_states  # triggers watch_pod_states last
-
-    def _add_alert(self, message: str) -> None:
-        alerts = list(self.alerts)
-        alerts.append(message)
-        self.alerts = alerts[-10:]
-
-    # -----------------------------------------------------------------------
-    # Watchers (P16 fix: narrow except to NoMatches only)
-
-    def watch_pod_states(self) -> None:
-        """Update Gantt, grid, gate, and tabs when pod states change."""
+    async def _read_consent_events(self) -> None:
+        """Read new lines from consent-events.jsonl since last seek position."""
+        if not _CONSENT_EVENTS_FILE.exists():
+            return
         try:
-            self.query_one("#gantt-section", ConsentPropagationGantt).update_state(
-                self.selected_scenarios,
-                self.pod_states,
-                self.cluster_aggregates,
-                self.regional_aggregates,
-                self.civic_aggregates,
-                self._pod_history,
+            with _CONSENT_EVENTS_FILE.open() as f:
+                size = _CONSENT_EVENTS_FILE.stat().st_size
+                # P13: detect truncation (demo reset via compose down -v)
+                if self._consent_seek > size:
+                    self._consent_seek = 0
+                    self._consent_events = []
+                f.seek(self._consent_seek)
+                new_lines = f.readlines()
+                self._consent_seek = f.tell()
+
+            new_events: list[ConsentEvent] = []
+            for line in new_lines:
+                ev = parse_consent_event(line)
+                if ev and ev.event_type.startswith("consent.") or (
+                    ev and ev.event_type.startswith("acl.")
+                ):
+                    new_events.append(ev)
+
+            if new_events:
+                all_events = self._consent_events + new_events
+                # Cap to prevent unbounded growth
+                if len(all_events) > _MAX_EVENTS:
+                    all_events = all_events[-_MAX_EVENTS:]
+                self._consent_events = all_events
+                self._pod_states = build_pod_states(self._consent_events)
+                self._refresh_consent_widgets()
+        except OSError:
+            pass
+
+    async def _read_troll_events(self) -> None:
+        """Read new lines from troll-run.jsonl since last seek position."""
+        if not _TROLL_RUN_FILE.exists():
+            return
+        try:
+            with _TROLL_RUN_FILE.open() as f:
+                size = _TROLL_RUN_FILE.stat().st_size
+                if self._troll_seek > size:
+                    self._troll_seek = 0
+                    self._troll_lines = []
+                f.seek(self._troll_seek)
+                new_lines = f.readlines()
+                self._troll_seek = f.tell()
+
+            if new_lines:
+                all_lines = self._troll_lines + new_lines
+                if len(all_lines) > _MAX_EVENTS:
+                    all_lines = all_lines[-_MAX_EVENTS:]
+                self._troll_lines = all_lines
+                self._troll_results = aggregate_troll_results(self._troll_lines)
+                self._refresh_troll_widget()
+        except OSError:
+            pass
+
+    def _refresh_consent_widgets(self) -> None:
+        """Push updated pod state to consent-related widgets."""
+        try:
+            self.query_one("#pod-grid", PodGridWidget).update_state(self._pod_states)
+            self.query_one("#cascade-predictor", CascadePredictorWidget).update_state(
+                self._pod_states, self._selected_pod
+            )
+            self.query_one("#consent-gate", ConsentGateWidget).update_state(self._pod_states)
+            self.query_one("#event-log", EventLogWidget).update_events(self._consent_events)
+        except (NoMatches, Exception):
+            pass
+
+    def _refresh_troll_widget(self) -> None:
+        """Push troll results to the alarm panel."""
+        try:
+            self.query_one("#troll-alarm", TrollAlarmWidget).update_results(self._troll_results)
+        except (NoMatches, Exception):
+            pass
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle pod grid button clicks → update selected_pod + cascade predictor."""
+        btn_id: str = event.button.id or ""
+        if not btn_id.startswith("pod-btn-"):
+            return
+        safe = btn_id[len("pod-btn-"):]
+        pod_id = safe.replace("_", "-")
+        # Toggle: clicking the same pod again deselects
+        if self._selected_pod == pod_id:
+            self._selected_pod = None
+        else:
+            self._selected_pod = pod_id
+        try:
+            self.query_one("#cascade-predictor", CascadePredictorWidget).update_state(
+                self._pod_states, self._selected_pod
             )
         except NoMatches:
             pass
-
-        try:
-            self.query_one("#pod-grid", PodSpaceGrid).update_state(self.pod_states)
-        except NoMatches:
-            pass
-
-        try:
-            self.query_one("#consent-gate", ConsentGateCounts).update_state(self.pod_states)
-        except NoMatches:
-            pass
-
-        self._refresh_detail_tabs()
-
-    def watch_civic_aggregates(self) -> None:
-        """Update civic panel when civic aggregates change."""
-        try:
-            self.query_one("#civic-panel", CivicAggregatePanel).update_state(
-                self.selected_scenarios, self.civic_aggregates, self.alerts
-            )
-        except NoMatches:
-            pass
-
-    def watch_selected_scenarios(self) -> None:
-        """Update Gantt and civic panel when scenario selection changes."""
-        try:
-            self.query_one("#gantt-section", ConsentPropagationGantt).update_state(
-                self.selected_scenarios,
-                self.pod_states,
-                self.cluster_aggregates,
-                self.regional_aggregates,
-                self.civic_aggregates,
-                self._pod_history,
-            )
-        except NoMatches:
-            pass
-
-        try:
-            self.query_one("#civic-panel", CivicAggregatePanel).update_state(
-                self.selected_scenarios, self.civic_aggregates, self.alerts
-            )
-        except NoMatches:
-            pass
-
-    def watch_filtered_pod(self, pod_id: str | None) -> None:
-        """Update POD detail tab and filtered-pod indicator bar."""
-        try:
-            bar = self.query_one("#filtered-pod-bar", Label)
-            if pod_id:
-                bar.display = True
-                bar.update(f"[bold]Pod filter: {pod_id}[/bold]  [dim](press C to clear)[/dim]")
-            else:
-                bar.display = False
-        except NoMatches:
-            pass
-
-        try:
-            self.query_one("#panel-pod", PodDetailPanel).update_pod(
-                pod_id, self.consent_events, self.pod_states
-            )
-        except NoMatches:
-            pass
-
-    # -----------------------------------------------------------------------
-    # Detail tab refresh
-
-    def _refresh_detail_tabs(self) -> None:
-        """Refresh all scenario + pod detail panels."""
-        for scenario in ALL_SCENARIOS:
-            panel_id = f"panel-{scenario.lower()}"
-            try:
-                self.query_one(f"#{panel_id}", ScenarioDetailPanel).update_events(
-                    self.consent_events, self.pod_states
-                )
-            except NoMatches:
-                pass
-
-        if self.filtered_pod:
-            try:
-                self.query_one("#panel-pod", PodDetailPanel).update_pod(
-                    self.filtered_pod, self.consent_events, self.pod_states
-                )
-            except NoMatches:
-                pass
 
 
 def main() -> None:
-    """Main entry point."""
-    MissionControlApp().run()
+    """Entry point: pocpod0-mission-control."""
+    app = MissionControlApp()
+    app.run()
 
 
 if __name__ == "__main__":
