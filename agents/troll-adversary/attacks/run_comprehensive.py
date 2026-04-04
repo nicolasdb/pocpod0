@@ -265,21 +265,18 @@ def run_comprehensive(
 ) -> ComprehensiveRunResult:
     """Run attack categories and aggregate results.
 
-    If category is None, runs all 5 categories (truncates JSONL first).
-    If category is set, runs only that category (appends to JSONL, no truncation).
+    Always truncates troll-run.jsonl at start — each run owns the file.
+    If category is None, runs all 5 categories.
+    If category is set, runs only that one category.
 
     Emits JSONL events to data/troll-run.jsonl as each category completes.
 
     Returns: ComprehensiveRunResult with aggregated summary.
     """
     JSONL_LOG.parent.mkdir(parents=True, exist_ok=True)
-    if category is None:
-        # Full run: truncate JSONL at start (same pattern as run_pipeline.py)
-        JSONL_LOG.write_text("")
-        categories_to_run = VALID_CATEGORIES
-    else:
-        # Category-specific run: append (preserves other categories' results)
-        categories_to_run = [category]
+    # Always truncate JSONL at start — each run (full or category) owns the file
+    JSONL_LOG.write_text("")
+    categories_to_run = VALID_CATEGORIES if category is None else [category]
 
     # Emit run start event
     _emit_event(
@@ -295,6 +292,7 @@ def run_comprehensive(
 
     # 1. ACL Enforcement
     if "acl_enforcement" in categories_to_run:
+        _emit_event("troll.category.started", category="acl_enforcement")
         try:
             print("Running acl_enforcement...", file=sys.stderr, flush=True)
             acl_category, acl_results = run_acl_enforcement(css_base_url)
@@ -309,6 +307,11 @@ def run_comprehensive(
             )
         except Exception as exc:
             print(f"ERROR in acl_enforcement: {exc}", file=sys.stderr, flush=True)
+            _emit_event(
+                "troll.category.failed",
+                category="acl_enforcement",
+                reason=str(exc),
+            )
             all_categories.append(
                 CategorySummary(
                     attack_category="acl_enforcement",
@@ -332,6 +335,7 @@ def run_comprehensive(
 
     # 2. SPARQL Injection
     if "sparql_injection" in categories_to_run:
+        _emit_event("troll.category.started", category="sparql_injection")
         try:
             print("Running sparql_injection...", file=sys.stderr, flush=True)
             sparql_category, sparql_results = run_sparql_injection(oxigraph_url)
@@ -346,6 +350,11 @@ def run_comprehensive(
             )
         except Exception as exc:
             print(f"ERROR in sparql_injection: {exc}", file=sys.stderr, flush=True)
+            _emit_event(
+                "troll.category.failed",
+                category="sparql_injection",
+                reason=str(exc),
+            )
             all_categories.append(
                 CategorySummary(
                     attack_category="sparql_injection",
@@ -369,6 +378,7 @@ def run_comprehensive(
 
     # 3. Vector Privacy
     if "vector_privacy" in categories_to_run:
+        _emit_event("troll.category.started", category="vector_privacy")
         try:
             print("Running vector_privacy...", file=sys.stderr, flush=True)
             vector_category, vector_results = run_vector_privacy(qdrant_url)
@@ -383,6 +393,11 @@ def run_comprehensive(
             )
         except Exception as exc:
             print(f"ERROR in vector_privacy: {exc}", file=sys.stderr, flush=True)
+            _emit_event(
+                "troll.category.failed",
+                category="vector_privacy",
+                reason=str(exc),
+            )
             all_categories.append(
                 CategorySummary(
                     attack_category="vector_privacy",
@@ -406,6 +421,7 @@ def run_comprehensive(
 
     # 4. Cross-Inference
     if "cross_inference" in categories_to_run:
+        _emit_event("troll.category.started", category="cross_inference")
         try:
             print("Running cross_inference...", file=sys.stderr, flush=True)
             cross_category, cross_results = run_cross_inference(openclaw_base_url, openclaw_token)
@@ -420,6 +436,11 @@ def run_comprehensive(
             )
         except Exception as exc:
             print(f"ERROR in cross_inference: {exc}", file=sys.stderr, flush=True)
+            _emit_event(
+                "troll.category.failed",
+                category="cross_inference",
+                reason=str(exc),
+            )
             all_categories.append(
                 CategorySummary(
                     attack_category="cross_inference",
@@ -443,6 +464,7 @@ def run_comprehensive(
 
     # 5. Deletion Timing
     if "deletion_timing" in categories_to_run:
+        _emit_event("troll.category.started", category="deletion_timing")
         try:
             print("Running deletion_timing...", file=sys.stderr, flush=True)
             deletion_category, deletion_results = run_deletion_timing()
@@ -457,6 +479,11 @@ def run_comprehensive(
             )
         except Exception as exc:
             print(f"ERROR in deletion_timing: {exc}", file=sys.stderr, flush=True)
+            _emit_event(
+                "troll.category.failed",
+                category="deletion_timing",
+                reason=str(exc),
+            )
             all_categories.append(
                 CategorySummary(
                     attack_category="deletion_timing",
@@ -526,7 +553,7 @@ def main() -> int:
         "--category",
         default=None,
         choices=VALID_CATEGORIES,
-        help="Run a single attack category only (appends to JSONL, no truncation)",
+        help="Run a single attack category only (truncates JSONL, same as full run)",
     )
     args = parser.parse_args()
     result = run_comprehensive(category=args.category)

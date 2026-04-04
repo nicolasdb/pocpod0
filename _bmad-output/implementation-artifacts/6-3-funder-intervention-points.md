@@ -1,6 +1,6 @@
 # Story 6.3: Funder Intervention Points
 
-Status: review
+Status: done
 
 ## Story
 
@@ -211,6 +211,24 @@ The acl-manage handler also defaults to CSS_CONNECT_URL=http://localhost:3000, c
 - run_comprehensive.py: `agents/troll-adversary/attacks/run_comprehensive.py`
 - Story 6.2 ACL dashboard: `_bmad-output/implementation-artifacts/6-2-acl-dashboard.md`
 - Story 5.1 (acl-manage origin): `_bmad-output/implementation-artifacts/5-1-ayoub-governance-transition.md`
+
+---
+
+## Review Findings
+
+- [x] [Review][Decision] D1: Category-run polling termination strategy — resolved: truncate JSONL for category runs too (Option A) + add 10-minute polling timeout. [run_comprehensive.py, dashboard/static/index.html]
+- [x] [Review][Decision] D2: "Yellow = transitioning" pod card state — resolved: implemented `.pod-card.transitioning` CSS + `setCardTransitioning()` wired to grant/revoke. [dashboard/static/index.html]
+- [x] [Review][Patch] P1: `switchTab()` uses implicit global `event` — fixed: event passed as parameter `switchTab(tabName, evt)`, onclick updated. [dashboard/static/index.html]
+- [x] [Review][Patch] P2: `parse_troll_results()` silently swallows all exceptions — fixed: added `logger.warning()` call. [pipeline/src/pocpod0_pipeline/dashboard_api.py]
+- [x] [Review][Patch] P3: Launch button label — fixed: `'Run'` → `'Launch'`. [dashboard/static/index.html]
+- [x] [Review][Patch] P4: Actor selector dropdowns show raw slugs — fixed: `ACTOR_DISPLAY_NAMES` map added, option labels use display names. [dashboard/static/index.html]
+- [x] [Review][Patch] P5: `btn-run-troll` stays enabled during category runs — fixed: disabled at start of `runTrollCategory()`, re-enabled on error/completion. [dashboard/static/index.html]
+- [x] [Review][Patch] P6: `border-color: #ccc` on hover overrides pod status left-border — fixed: only `border-top/right/bottom-color` set on hover. [dashboard/static/index.html]
+- [x] [Review][Defer] W1: consent-events.jsonl emission untested — AC1 requires this as observable outcome but it's a subprocess side effect that can't be exercised through mocked subprocess. Pre-existing architectural limitation of subprocess-based skills. [pipeline/tests/test_dashboard_api.py] — deferred, pre-existing
+- [x] [Review][Defer] W2: Popen handle discarded — zombie processes accumulate on repeated troll runs. Acceptable for PoC demo context (single operator, bounded number of runs). [pipeline/src/pocpod0_pipeline/dashboard_api.py] — deferred, pre-existing
+- [x] [Review][Defer] W3: Concurrent full+category run JSONL race — now moot: category runs also truncate (D1 resolution). [run_comprehensive.py] — deferred, resolved by D1
+- [x] [Review][Defer] W4: `HANDLER_PATH`/`TROLL_PATH` break in non-standard pip install — `Path(__file__).parent×4` layout assumption. Only affects non-editable installs; demo uses editable dev install. [pipeline/src/pocpod0_pipeline/dashboard_api.py] — deferred, pre-existing
+- [x] [Review][Defer] W5: Polling never stops if subprocess crashes before `troll.run.done` — resolved by D1 timeout: 10-minute timeout added to `pollTrollResults()`. [dashboard/static/index.html] — resolved by D1
 
 ---
 

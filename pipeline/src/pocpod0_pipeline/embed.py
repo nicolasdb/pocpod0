@@ -406,15 +406,19 @@ def verify_forward_traceability(
 ) -> Dict:
     """Given a Qdrant point ID, verify the full forward traceability chain.
 
-    Chain: embedding → triple_uris → Oxigraph triples → pod_resource_uri → Pod resource
+    Chain: embedding → triple_uris → Oxigraph triples
 
-    Returns dict with keys: point_id, triple_uris, pod_resource_uri,
+    Note: Post-PRIV-1, pod URIs are hashed for privacy. pod_resource_uri field
+    is kept for backward compatibility but will be empty for new embeddings.
+
+    Returns dict with keys: point_id, triple_uris, pod_resource_uri, pod_uri_hash,
     oxigraph_ok (bool), pod_ok (bool), error (str or None).
     """
     result: Dict = {
         "point_id": point_id,
         "triple_uris": [],
         "pod_resource_uri": None,
+        "pod_uri_hash": None,
         "oxigraph_ok": False,
         "pod_ok": False,
         "error": None,
@@ -433,8 +437,10 @@ def verify_forward_traceability(
         payload = points[0].payload or {}
         triple_uris = payload.get("triple_uris", [])
         pod_uri = payload.get("pod_resource_uri", "")
+        pod_uri_hash = payload.get("pod_uri_hash", "")
         result["triple_uris"] = triple_uris
         result["pod_resource_uri"] = pod_uri
+        result["pod_uri_hash"] = pod_uri_hash
 
         # Verify each triple_uri resolves in Oxigraph
         if not triple_uris:

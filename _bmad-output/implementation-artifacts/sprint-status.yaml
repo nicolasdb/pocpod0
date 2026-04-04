@@ -1,7 +1,7 @@
 ---
 project_name: pocpod0
 sprint_generated: 2026-03-18
-last_updated: 2026-04-02  # Story 6.3 implementation complete: review (acl-manage wired, troll tab added, tests passing)
+last_updated: 2026-04-04  # Story 6.3 code review: approved, 8 patches applied (switchTab fix, transitioning state, Launch label, actor names, hover border, logging, truncate-on-category-run, poll timeout)
 tracking_system: file-system
 project_key: NOKEY
 communication_language: English
@@ -75,7 +75,7 @@ development_status:
   story-6-1-troll-comprehensive-run-and-report: done
   story-6-2-mission-control-dashboard-implementation: superseded  # TUI approach abandoned — see 6-2-acl-dashboard.md
   story-6-2-acl-dashboard: done  # PIVOT 2026-04-01: FastAPI + HTML, queries CSS ACLs directly. Code review 2026-04-02: approved with 4 minor test fixes applied.
-  story-6-3-funder-intervention-points: review
+  story-6-3-funder-intervention-points: done  # Code review 2026-04-04: approved, 8 patches applied
   epic-6-retrospective: optional
 
   # Implementation Gaps to Address in 6.3 review

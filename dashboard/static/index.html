@@ -98,7 +98,10 @@
 
         .pod-card:hover {
             box-shadow: 0 4px 12px rgba(0,0,0,0.12);
-            border-color: #ccc;
+            /* Only override non-left borders — left border carries the private/shared/transitioning color */
+            border-top-color: #ccc;
+            border-right-color: #ccc;
+            border-bottom-color: #ccc;
         }
 
         .pod-card.private {
@@ -107,6 +110,15 @@
 
         .pod-card.shared {
             border-left: 5px solid #388e3c;
+        }
+
+        .pod-card.transitioning {
+            border-left: 5px solid #f57c00;
+        }
+
+        .badge-transitioning {
+            background: #fff3e0;
+            color: #bf360c; /* ≥ 4.5:1 on #fff3e0 */
         }
 
         .pod-header {
@@ -536,6 +548,48 @@
             cursor: not-allowed;
         }
 
+        .category-state-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+
+        .state-not-run {
+            background: #f5f5f5;
+            color: #999;
+        }
+
+        .state-running {
+            background: #e3f2fd;
+            color: #1565c0;
+            animation: pulse 1.5s infinite;
+        }
+
+        .state-done {
+            background: #e8f5e9;
+            color: #1b5e20;
+        }
+
+        .state-failed {
+            background: #ffebee;
+            color: #b71c1c;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+
+        .category-error {
+            display: block;
+            font-size: 12px;
+            color: #b71c1c;
+            margin-top: 4px;
+            font-weight: normal;
+        }
+
         .troll-empty {
             text-align: center;
             padding: 40px 20px;
@@ -577,16 +631,21 @@
                     <span aria-hidden="true">Qdrant</span>
                     <span class="sr-only" id="qdrant-status-text"></span>
                 </div>
+                <div class="service-status">
+                    <span class="status-dot" id="openclaw-status" role="img" aria-label="OpenClaw status"></span>
+                    <span aria-hidden="true">OpenClaw</span>
+                    <span class="sr-only" id="openclaw-status-text"></span>
+                </div>
             </nav>
         </div>
     </header>
 
     <main class="container">
         <div class="tab-navigation" role="tablist" aria-label="Dashboard tabs">
-            <button class="tab-button active" role="tab" aria-selected="true" aria-controls="acl-tab" onclick="switchTab('acl')">
+            <button class="tab-button active" role="tab" aria-selected="true" aria-controls="acl-tab" onclick="switchTab('acl', event)">
                 ACL Dashboard
             </button>
-            <button class="tab-button" role="tab" aria-selected="false" aria-controls="troll-tab" onclick="switchTab('troll')">
+            <button class="tab-button" role="tab" aria-selected="false" aria-controls="troll-tab" onclick="switchTab('troll', event)">
                 Troll Attacks
             </button>
         </div>
@@ -641,8 +700,13 @@
     <script>
         // Configuration
         const ACTOR_OPTIONS = ['ayoub', 'claire', 'fatima', 'marc', 'isabelle', 'troll'];
+        const ACTOR_DISPLAY_NAMES = {
+            'ayoub': 'Ayoub', 'claire': 'Claire', 'fatima': 'Fatima',
+            'marc': 'Marc', 'isabelle': 'Isabelle', 'troll': 'Troll'
+        };
         const TROLL_CATEGORIES = ['acl_enforcement', 'sparql_injection', 'vector_privacy', 'cross_inference', 'deletion_timing'];
         const BLOCKING_CATEGORIES = ['acl_enforcement', 'sparql_injection'];
+        const TROLL_CATEGORY_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes per category
 
         // Pause auto-refresh while a dropdown is open to avoid destroying focused elements
         let dropdownOpen = false;
@@ -652,6 +716,7 @@
         let selectedActors = {};
         let trollRunInProgress = false;
         let trollPollingInterval = null;
+        let trollCategoryStartTimes = {}; // Track start time per category for timeout logic
 
         // Initialize
         document.addEventListener('DOMContentLoaded', function() {
@@ -668,7 +733,7 @@
         });
 
         // Tab switching
-        function switchTab(tabName) {
+        function switchTab(tabName, evt) {
             // Hide all tabs
             document.querySelectorAll('.tab-content').forEach(tab => {
                 tab.classList.remove('active');
@@ -685,8 +750,10 @@
             }
 
             // Mark button as active
-            event.target.classList.add('active');
-            event.target.setAttribute('aria-selected', 'true');
+            if (evt && evt.target) {
+                evt.target.classList.add('active');
+                evt.target.setAttribute('aria-selected', 'true');
+            }
 
             // Load troll results when switching to troll tab
             if (tabName === 'troll') {
@@ -708,10 +775,11 @@
                 setStatus('css-status', data.css);
                 setStatus('oxigraph-status', data.oxigraph);
                 setStatus('qdrant-status', data.qdrant);
+                setStatus('openclaw-status', data.openclaw);
             } catch (error) {
                 console.error('Health check failed:', error);
                 // Mark all as error
-                ['css-status', 'oxigraph-status', 'qdrant-status'].forEach(id => {
+                ['css-status', 'oxigraph-status', 'qdrant-status', 'openclaw-status'].forEach(id => {
                     document.getElementById(id).className = 'status-dot error';
                 });
             }
@@ -830,7 +898,7 @@
                 ACTOR_OPTIONS.forEach(actor => {
                     const opt = document.createElement('option');
                     opt.value = actor;
-                    opt.textContent = actor;
+                    opt.textContent = ACTOR_DISPLAY_NAMES[actor] || actor;
                     select.appendChild(opt);
                 });
 
@@ -956,8 +1024,23 @@
             }
         }
 
+        // Set a pod card to transitioning visual state (call before async ACL changes)
+        function setCardTransitioning(pod) {
+            const card = document.getElementById(`card-${pod}`);
+            if (!card) return;
+            card.classList.remove('private', 'shared');
+            card.classList.add('transitioning');
+            const badge = card.querySelector('.pod-badge');
+            if (badge) {
+                badge.className = 'pod-badge badge-transitioning';
+                badge.setAttribute('aria-label', 'transitioning, updating access');
+                badge.textContent = '⏳ transitioning';
+            }
+        }
+
         // Grant access
         async function grantAccess(pod, actor) {
+            setCardTransitioning(pod);
             try {
                 const response = await fetch(`/api/pods/${pod}/grant`, {
                     method: 'POST',
@@ -966,14 +1049,16 @@
                 });
 
                 if (response.ok) {
-                    // Refresh pods to show new grant
+                    // Refresh pods to show new grant (clears transitioning state)
                     await updatePods();
                     alert(`✓ Granted ${actor} read access to ${pod}`);
                 } else {
+                    await updatePods(); // restore state on error
                     const error = await response.json();
                     alert(`✗ Grant failed: ${error.detail}`);
                 }
             } catch (error) {
+                await updatePods(); // restore state on error
                 alert(`✗ Error: ${error.message}`);
             }
         }
@@ -984,6 +1069,7 @@
                 return;
             }
 
+            setCardTransitioning(pod);
             try {
                 const response = await fetch(`/api/pods/${pod}/revoke`, {
                     method: 'POST',
@@ -992,14 +1078,16 @@
                 });
 
                 if (response.ok) {
-                    // Refresh pods to show revocation
+                    // Refresh pods to show revocation (clears transitioning state)
                     await updatePods();
                     alert(`✓ Revoked ${actor}'s access from ${pod}`);
                 } else {
+                    await updatePods(); // restore state on error
                     const error = await response.json();
                     alert(`✗ Revoke failed: ${error.detail}`);
                 }
             } catch (error) {
+                await updatePods(); // restore state on error
                 alert(`✗ Error: ${error.message}`);
             }
         }
@@ -1020,7 +1108,7 @@
             }
         }
 
-        // Render troll categories
+        // Render troll categories with state tracking
         function renderTrollResults(data) {
             const grid = document.getElementById('troll-grid');
             const summary = document.getElementById('troll-summary');
@@ -1035,38 +1123,62 @@
 
             TROLL_CATEGORIES.forEach(category => {
                 const result = data.categories[category];
-                if (!result) return;
+                if (!result) return; // Safety check
 
                 const isBlocking = BLOCKING_CATEGORIES.includes(category);
+                const state = result.state || 'not_run';
+                const stateLabel = state === 'not_run' ? 'Not run'
+                                 : state === 'running' ? 'Running...'
+                                 : state === 'done' ? 'Done'
+                                 : state === 'failed' ? 'Failed'
+                                 : 'Unknown';
+
                 const card = document.createElement('div');
                 card.className = 'troll-category';
 
                 const header = document.createElement('div');
                 header.className = 'category-header';
-                header.innerHTML = `
+                const headerHTML = `
                     <span class="category-name">${category}</span>
                     ${isBlocking ? '<span class="badge-blocking">BLOCKING</span>' : ''}
+                    <span class="category-state-badge state-${state}">${stateLabel}</span>
                 `;
+                header.innerHTML = headerHTML;
                 card.appendChild(header);
 
                 const resultsDiv = document.createElement('div');
                 resultsDiv.className = 'category-results';
-                resultsDiv.innerHTML = `
-                    <span class="result-pass">✓ ${result.passed}</span>
-                    <span class="result-partial">~ ${result.partial}</span>
-                    <span class="result-fail">✗ ${result.failed}</span>
-                `;
+
+                // Show results only if done or failed
+                if (state === 'done' || state === 'failed') {
+                    resultsDiv.innerHTML = `
+                        <span class="result-pass">✓ ${result.passed}</span>
+                        <span class="result-partial">~ ${result.partial}</span>
+                        <span class="result-fail">✗ ${result.failed}</span>
+                    `;
+                } else if (state === 'running') {
+                    resultsDiv.innerHTML = '<span style="font-size: 12px; color: #1565c0;">Testing in progress...</span>';
+                }
 
                 const launchBtn = document.createElement('button');
                 launchBtn.className = 'btn-launch-category';
-                launchBtn.textContent = 'Run';
-                launchBtn.disabled = trollRunInProgress;
+                launchBtn.textContent = 'Launch';
+                launchBtn.disabled = trollRunInProgress || state === 'running';
                 launchBtn.onclick = function() {
                     runTrollCategory(category);
                 };
                 resultsDiv.appendChild(launchBtn);
 
                 card.appendChild(resultsDiv);
+
+                // Show error message if failed
+                if (state === 'failed' && result.error) {
+                    const errorSpan = document.createElement('span');
+                    errorSpan.className = 'category-error';
+                    errorSpan.textContent = `Error: ${result.error}`;
+                    card.appendChild(errorSpan);
+                }
+
                 grid.appendChild(card);
             });
 
@@ -1097,7 +1209,12 @@
 
             trollRunInProgress = true;
             document.getElementById('btn-run-troll').disabled = true;
-            document.getElementById('troll-status').textContent = 'Running...';
+            trollCategoryStartTimes = {}; // Reset category timers
+
+            // Clear previous results
+            document.getElementById('troll-grid').innerHTML = '';
+            document.getElementById('troll-summary').style.display = 'none';
+            document.getElementById('troll-status').textContent = 'Running full test suite (all 5 categories)...';
 
             try {
                 const response = await fetch('/api/troll/run', { method: 'POST' });
@@ -1119,7 +1236,13 @@
         async function runTrollCategory(category) {
             if (trollRunInProgress) return;
             trollRunInProgress = true;
-            document.getElementById('troll-status').textContent = `Running ${category}...`;
+            document.getElementById('btn-run-troll').disabled = true;
+            trollCategoryStartTimes = {}; // Reset category timers
+
+            // Clear previous results
+            document.getElementById('troll-grid').innerHTML = '';
+            document.getElementById('troll-summary').style.display = 'none';
+            document.getElementById('troll-status').textContent = `Running ${category} category only...`;
 
             try {
                 const response = await fetch(`/api/troll/run/${encodeURIComponent(category)}`, { method: 'POST' });
@@ -1136,33 +1259,93 @@
                 console.error('Failed to start troll category:', error);
                 document.getElementById('troll-status').textContent = 'Error: ' + error.message;
                 trollRunInProgress = false;
+                document.getElementById('btn-run-troll').disabled = false;
             }
         }
 
-        // Poll for troll results
+        // Poll for troll results with per-category timeout
         async function pollTrollResults() {
             try {
                 const response = await fetch('/api/troll/results');
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
                 const data = await response.json();
+
+                // Track category start times when they transition to "running"
+                if (data.categories) {
+                    Object.entries(data.categories).forEach(([category, result]) => {
+                        if (result.state === 'running' && !trollCategoryStartTimes[category]) {
+                            trollCategoryStartTimes[category] = Date.now();
+                        }
+                    });
+
+                    // Check for per-category timeouts
+                    Object.entries(data.categories).forEach(([category, result]) => {
+                        if (result.state === 'running' && trollCategoryStartTimes[category]) {
+                            const elapsed = Date.now() - trollCategoryStartTimes[category];
+                            if (elapsed > TROLL_CATEGORY_TIMEOUT_MS) {
+                                // Category has timed out — mark it as failed
+                                result.state = 'failed';
+                                result.error = `Timed out after ${Math.round(elapsed / 1000 / 60)} minutes`;
+                                result.failed = 1;
+                                result.total = 1;
+                            }
+                        }
+                    });
+                }
+
                 renderTrollResults(data);
 
-                // Check if run is complete (has run_summary)
-                if (data.run_summary) {
+                // Determine if we should stop polling
+                let allCategoriesDone = true;
+                let anyRunning = false;
+                if (data.categories) {
+                    Object.values(data.categories).forEach(result => {
+                        if (result.state === 'running') {
+                            anyRunning = true;
+                        }
+                        if (result.state !== 'not_run') {
+                            // Category has been started
+                            if (result.state !== 'done' && result.state !== 'failed') {
+                                allCategoriesDone = false;
+                            }
+                        }
+                    });
+                }
+
+                // Check if run is complete (has run_summary or all categories are done/failed)
+                if (data.run_summary || (!anyRunning && allCategoriesDone)) {
                     document.getElementById('troll-status').textContent = 'Test suite complete';
                     trollRunInProgress = false;
                     document.getElementById('btn-run-troll').disabled = false;
+                    trollCategoryStartTimes = {}; // Clear start times
                     if (trollPollingInterval) {
                         clearInterval(trollPollingInterval);
                         trollPollingInterval = null;
                     }
+                } else if (anyRunning) {
+                    document.getElementById('troll-status').textContent = 'Running... (polling for results)';
                 } else {
-                    document.getElementById('troll-status').textContent = 'Running... (check results above)';
+                    document.getElementById('troll-status').textContent = 'Waiting for tests to start...';
                 }
             } catch (error) {
                 console.error('Polling failed:', error);
-                // Continue polling even if one request fails
+                // Try to fetch and display any subprocess error
+                try {
+                    const errResp = await fetch('/api/troll/error');
+                    const errData = await errResp.json();
+                    if (errData.error) {
+                        document.getElementById('troll-status').textContent = `Process error:\n${errData.error}`;
+                        clearInterval(trollPollingInterval);
+                        trollPollingInterval = null;
+                        trollRunInProgress = false;
+                        document.getElementById('btn-run-troll').disabled = false;
+                        trollCategoryStartTimes = {};
+                        return;
+                    }
+                } catch (e) {
+                    // Continue polling even if error fetch fails
+                }
             }
         }
     </script>

@@ -120,7 +120,8 @@ def test_forward_traceability(oxigraph_healthy, qdrant_healthy, openrouter_key):
 
         assert result["error"] is None, f"Traceability error: {result['error']}"
         assert len(result["triple_uris"]) > 0
-        assert result["pod_resource_uri"]
+        # Post-PRIV-1: pod_uri_hash is present (pod_resource_uri is hashed for privacy)
+        assert result["pod_uri_hash"], f"Missing pod_uri_hash in embedding payload"
         assert result["oxigraph_ok"], (
             f"Triple URIs not found in Oxigraph: {result['triple_uris']}"
         )

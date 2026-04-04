@@ -5,11 +5,14 @@ FastAPI backend that queries CSS pod ACL state live and demonstrates
 displays troll attack results live.
 """
 
+import logging
 import os
 import httpx
 import json
 import subprocess
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 from typing import Optional
 from fastapi import FastAPI, HTTPException, status
 from fastapi.staticfiles import StaticFiles
@@ -69,6 +72,7 @@ HANDLER_PATH = REPO_ROOT / "agents" / "skills" / "acl-manage" / "handler.py"
 # Troll attack constants
 TROLL_PATH = REPO_ROOT / "agents" / "troll-adversary" / "attacks" / "run_comprehensive.py"
 TROLL_JSONL_PATH = REPO_ROOT / "data" / "troll-run.jsonl"
+TROLL_ERROR_PATH = REPO_ROOT / "data" / "troll-run.error"
 BLOCKING_CATEGORIES = {"acl_enforcement", "sparql_injection"}
 VALID_TROLL_CATEGORIES = {"acl_enforcement", "sparql_injection", "vector_privacy", "cross_inference", "deletion_timing"}
 
@@ -112,18 +116,35 @@ def call_acl_manage(action: str, pod: str, webid: str | None = None, actor: str 
 
 
 def parse_troll_results() -> dict:
-    """Parse troll-run.jsonl and return categorized summary.
+    """Parse troll-run.jsonl and return categorized summary with per-category state.
 
     Returns:
         {
             "categories": {
-                "acl_enforcement": {"blocking": True, "passed": X, "partial": Y, "failed": Z, "total": T},
+                "acl_enforcement": {
+                    "blocking": True,
+                    "passed": X, "partial": Y, "failed": Z, "total": T,
+                    "state": "not_run" | "running" | "done" | "failed",
+                    "error": "..." (if failed)
+                },
                 ...
             },
             "run_summary": {"total_tests": X, "total_passed": Y, ...} or None
         }
     """
-    categories = {}
+    # Initialize all categories as "not_run"
+    categories = {
+        cat: {
+            "blocking": cat in BLOCKING_CATEGORIES,
+            "passed": 0,
+            "partial": 0,
+            "failed": 0,
+            "total": 0,
+            "state": "not_run",
+            "error": None,
+        }
+        for cat in VALID_TROLL_CATEGORIES
+    }
     run_summary = None
 
     if not TROLL_JSONL_PATH.exists():
@@ -137,29 +158,34 @@ def parse_troll_results() -> dict:
                 try:
                     event = json.loads(line)
                     event_type = event.get("event_type")
+                    category = event.get("category")
 
-                    if event_type == "troll.category.done":
-                        category = event.get("category")  # JSONL key is "category", not "attack_category"
-                        if category:
-                            categories[category] = {
-                                "blocking": category in BLOCKING_CATEGORIES,
-                                "passed": event.get("passed", 0),
-                                "partial": event.get("partial", 0),
-                                "failed": event.get("failed", 0),
-                                "total": event.get("total", event.get("passed", 0) + event.get("partial", 0) + event.get("failed", 0)),
-                            }
+                    if event_type == "troll.category.started" and category:
+                        categories[category]["state"] = "running"
+                    elif event_type == "troll.category.done" and category:
+                        categories[category]["state"] = "done"
+                        categories[category]["passed"] = event.get("passed", 0)
+                        categories[category]["partial"] = event.get("partial", 0)
+                        categories[category]["failed"] = event.get("failed", 0)
+                        categories[category]["total"] = event.get("total",
+                            event.get("passed", 0) + event.get("partial", 0) + event.get("failed", 0))
+                    elif event_type == "troll.category.failed" and category:
+                        categories[category]["state"] = "failed"
+                        categories[category]["error"] = event.get("reason", "Unknown error")
+                        categories[category]["failed"] = 1
+                        categories[category]["total"] = 1
                     elif event_type == "troll.run.done":
                         run_summary = {
                             "total_tests": event.get("total_tests", 0),
-                            "total_passed": event.get("passed", 0),   # JSONL key is "passed", not "total_passed"
-                            "total_partial": event.get("partial", 0), # JSONL key is "partial", not "total_partial"
-                            "total_failed": event.get("failed", 0),   # JSONL key is "failed", not "total_failed"
+                            "total_passed": event.get("passed", 0),
+                            "total_partial": event.get("partial", 0),
+                            "total_failed": event.get("failed", 0),
                             "blocking_pass": event.get("blocking_pass", False),
                         }
                 except json.JSONDecodeError:
                     continue
     except Exception as e:
-        pass
+        logger.warning("Failed to read troll results: %s", e)
 
     return {"categories": categories, "run_summary": run_summary}
 
@@ -190,6 +216,7 @@ class HealthResponse(BaseModel):
     css: bool
     oxigraph: bool
     qdrant: bool
+    openclaw: bool
 
 
 class PodAclGrant(BaseModel):
@@ -222,10 +249,11 @@ class TrollCategory(BaseModel):
 # Health check endpoint
 @app.get("/api/health", response_model=HealthResponse)
 async def health():
-    """Check service health (CSS, Oxigraph, Qdrant)."""
+    """Check service health (CSS, Oxigraph, Qdrant, OpenClaw)."""
     css_ok = False
     oxigraph_ok = False
     qdrant_ok = False
+    openclaw_ok = False
 
     async with httpx.AsyncClient(timeout=3.0) as client:
         # Check CSS by querying a known pod (avoids identifier space validation on root)
@@ -249,7 +277,15 @@ async def health():
         except httpx.RequestError:
             pass
 
-    return HealthResponse(css=css_ok, oxigraph=oxigraph_ok, qdrant=qdrant_ok)
+        # Check OpenClaw
+        try:
+            openclaw_url = os.environ.get("OPENCLAW_BASE_URL", "http://localhost:8000")
+            resp = await client.get(f"{openclaw_url}/health", follow_redirects=True)
+            openclaw_ok = resp.status_code < 500
+        except httpx.RequestError:
+            pass
+
+    return HealthResponse(css=css_ok, oxigraph=oxigraph_ok, qdrant=qdrant_ok, openclaw=openclaw_ok)
 
 
 # Get all pods with ACL state
@@ -384,12 +420,18 @@ def _troll_env() -> dict:
 async def run_troll():
     """Trigger troll comprehensive attack suite (runs in background)."""
     try:
-        subprocess.Popen(
-            ["python", str(TROLL_PATH)],
-            env=_troll_env(),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        # Clear error file before starting
+        if TROLL_ERROR_PATH.exists():
+            TROLL_ERROR_PATH.unlink()
+
+        TROLL_ERROR_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(TROLL_ERROR_PATH, "w") as err_file:
+            subprocess.Popen(
+                ["python", str(TROLL_PATH)],
+                env=_troll_env(),
+                stdout=subprocess.DEVNULL,
+                stderr=err_file,
+            )
         return {"status": "accepted", "message": "Troll comprehensive run started"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to start troll: {str(e)}")
@@ -398,16 +440,22 @@ async def run_troll():
 # Troll category run endpoint - triggers a single attack category
 @app.post("/api/troll/run/{category}", status_code=status.HTTP_202_ACCEPTED)
 async def run_troll_category(category: str):
-    """Trigger a single troll attack category in background (appends to JSONL)."""
+    """Trigger a single troll attack category in background (truncates JSONL, captures stderr)."""
     if category not in VALID_TROLL_CATEGORIES:
         raise HTTPException(status_code=400, detail=f"Unknown category: {category}. Valid: {sorted(VALID_TROLL_CATEGORIES)}")
     try:
-        subprocess.Popen(
-            ["python", str(TROLL_PATH), "--category", category],
-            env=_troll_env(),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        # Clear error file before starting
+        if TROLL_ERROR_PATH.exists():
+            TROLL_ERROR_PATH.unlink()
+
+        TROLL_ERROR_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(TROLL_ERROR_PATH, "w") as err_file:
+            subprocess.Popen(
+                ["python", str(TROLL_PATH), "--category", category],
+                env=_troll_env(),
+                stdout=subprocess.DEVNULL,
+                stderr=err_file,
+            )
         return {"status": "accepted", "message": f"Troll category '{category}' started"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to start troll category: {str(e)}")
@@ -422,6 +470,20 @@ async def get_troll_results() -> TrollResultsResponse:
         categories=results["categories"],
         run_summary=results["run_summary"]
     )
+
+
+# Troll error endpoint - get any subprocess error message
+@app.get("/api/troll/error")
+async def get_troll_error():
+    """Get subprocess error output if troll process failed."""
+    if not TROLL_ERROR_PATH.exists():
+        return {"error": None}
+    try:
+        error_text = TROLL_ERROR_PATH.read_text().strip()
+        return {"error": error_text if error_text else None}
+    except Exception as e:
+        logger.warning("Failed to read troll error file: %s", e)
+        return {"error": None}
 
 
 # Mount static files (AFTER all /api/* routes so they take precedence)
