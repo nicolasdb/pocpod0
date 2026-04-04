@@ -252,28 +252,39 @@ def run_deletion_timing(
 # ---------------------------------------------------------------------------
 
 
+VALID_CATEGORIES = ["acl_enforcement", "sparql_injection", "vector_privacy", "cross_inference", "deletion_timing"]
+
+
 def run_comprehensive(
     css_base_url: str = CSS_BASE_URL,
     oxigraph_url: str = OXIGRAPH_URL,
     qdrant_url: str = QDRANT_URL,
     openclaw_base_url: str = OPENCLAW_BASE_URL,
     openclaw_token: str = OPENCLAW_GATEWAY_TOKEN,
+    category: Optional[str] = None,
 ) -> ComprehensiveRunResult:
-    """Run all 5 attack categories in sequence and aggregate results.
+    """Run attack categories and aggregate results.
+
+    If category is None, runs all 5 categories (truncates JSONL first).
+    If category is set, runs only that category (appends to JSONL, no truncation).
 
     Emits JSONL events to data/troll-run.jsonl as each category completes.
-    Truncates the JSONL file at the start to avoid stale data.
 
     Returns: ComprehensiveRunResult with aggregated summary.
     """
-    # Truncate JSONL file at start (same pattern as run_pipeline.py)
     JSONL_LOG.parent.mkdir(parents=True, exist_ok=True)
-    JSONL_LOG.write_text("")
+    if category is None:
+        # Full run: truncate JSONL at start (same pattern as run_pipeline.py)
+        JSONL_LOG.write_text("")
+        categories_to_run = VALID_CATEGORIES
+    else:
+        # Category-specific run: append (preserves other categories' results)
+        categories_to_run = [category]
 
     # Emit run start event
     _emit_event(
         "troll.run.start",
-        categories=["acl_enforcement", "sparql_injection", "vector_privacy", "cross_inference", "deletion_timing"],
+        categories=categories_to_run,
     )
 
     run_start = time.time()
@@ -283,184 +294,189 @@ def run_comprehensive(
     all_tests: List[dict] = []
 
     # 1. ACL Enforcement
-    try:
-        print("Running acl_enforcement...", file=sys.stderr, flush=True)
-        acl_category, acl_results = run_acl_enforcement(css_base_url)
-        all_categories.append(acl_category)
-        all_tests.extend([asdict(r) for r in acl_results])
-        _emit_event(
-            "troll.category.done",
-            category="acl_enforcement",
-            passed=acl_category.passed,
-            partial=acl_category.partial,
-            failed=acl_category.failed,
-        )
-    except Exception as exc:
-        print(f"ERROR in acl_enforcement: {exc}", file=sys.stderr, flush=True)
-        all_categories.append(
-            CategorySummary(
-                attack_category="acl_enforcement",
-                blocking=True,
-                passed=0,
-                partial=0,
-                failed=1,
-                total=1,
+    if "acl_enforcement" in categories_to_run:
+        try:
+            print("Running acl_enforcement...", file=sys.stderr, flush=True)
+            acl_category, acl_results = run_acl_enforcement(css_base_url)
+            all_categories.append(acl_category)
+            all_tests.extend([asdict(r) for r in acl_results])
+            _emit_event(
+                "troll.category.done",
+                category="acl_enforcement",
+                passed=acl_category.passed,
+                partial=acl_category.partial,
+                failed=acl_category.failed,
             )
-        )
-        all_tests.append(
-            {
-                "attack_category": "acl_enforcement",
-                "access_path": "direct",
-                "test_name": "orchestrator-exception",
-                "result": "fail",
-                "details": f"Exception during acl_enforcement orchestration: {exc}",
-                "evidence": {},
-            }
-        )
+        except Exception as exc:
+            print(f"ERROR in acl_enforcement: {exc}", file=sys.stderr, flush=True)
+            all_categories.append(
+                CategorySummary(
+                    attack_category="acl_enforcement",
+                    blocking=True,
+                    passed=0,
+                    partial=0,
+                    failed=1,
+                    total=1,
+                )
+            )
+            all_tests.append(
+                {
+                    "attack_category": "acl_enforcement",
+                    "access_path": "direct",
+                    "test_name": "orchestrator-exception",
+                    "result": "fail",
+                    "details": f"Exception during acl_enforcement orchestration: {exc}",
+                    "evidence": {},
+                }
+            )
 
     # 2. SPARQL Injection
-    try:
-        print("Running sparql_injection...", file=sys.stderr, flush=True)
-        sparql_category, sparql_results = run_sparql_injection(oxigraph_url)
-        all_categories.append(sparql_category)
-        all_tests.extend([asdict(r) for r in sparql_results])
-        _emit_event(
-            "troll.category.done",
-            category="sparql_injection",
-            passed=sparql_category.passed,
-            partial=sparql_category.partial,
-            failed=sparql_category.failed,
-        )
-    except Exception as exc:
-        print(f"ERROR in sparql_injection: {exc}", file=sys.stderr, flush=True)
-        all_categories.append(
-            CategorySummary(
-                attack_category="sparql_injection",
-                blocking=True,
-                passed=0,
-                partial=0,
-                failed=1,
-                total=1,
+    if "sparql_injection" in categories_to_run:
+        try:
+            print("Running sparql_injection...", file=sys.stderr, flush=True)
+            sparql_category, sparql_results = run_sparql_injection(oxigraph_url)
+            all_categories.append(sparql_category)
+            all_tests.extend([asdict(r) for r in sparql_results])
+            _emit_event(
+                "troll.category.done",
+                category="sparql_injection",
+                passed=sparql_category.passed,
+                partial=sparql_category.partial,
+                failed=sparql_category.failed,
             )
-        )
-        all_tests.append(
-            {
-                "attack_category": "sparql_injection",
-                "access_path": "direct",
-                "test_name": "orchestrator-exception",
-                "result": "fail",
-                "details": f"Exception during sparql_injection orchestration: {exc}",
-                "evidence": {},
-            }
-        )
+        except Exception as exc:
+            print(f"ERROR in sparql_injection: {exc}", file=sys.stderr, flush=True)
+            all_categories.append(
+                CategorySummary(
+                    attack_category="sparql_injection",
+                    blocking=True,
+                    passed=0,
+                    partial=0,
+                    failed=1,
+                    total=1,
+                )
+            )
+            all_tests.append(
+                {
+                    "attack_category": "sparql_injection",
+                    "access_path": "direct",
+                    "test_name": "orchestrator-exception",
+                    "result": "fail",
+                    "details": f"Exception during sparql_injection orchestration: {exc}",
+                    "evidence": {},
+                }
+            )
 
     # 3. Vector Privacy
-    try:
-        print("Running vector_privacy...", file=sys.stderr, flush=True)
-        vector_category, vector_results = run_vector_privacy(qdrant_url)
-        all_categories.append(vector_category)
-        all_tests.extend([asdict(r) for r in vector_results])
-        _emit_event(
-            "troll.category.done",
-            category="vector_privacy",
-            passed=vector_category.passed,
-            partial=vector_category.partial,
-            failed=vector_category.failed,
-        )
-    except Exception as exc:
-        print(f"ERROR in vector_privacy: {exc}", file=sys.stderr, flush=True)
-        all_categories.append(
-            CategorySummary(
-                attack_category="vector_privacy",
-                blocking=False,
-                passed=0,
-                partial=0,
-                failed=1,
-                total=1,
+    if "vector_privacy" in categories_to_run:
+        try:
+            print("Running vector_privacy...", file=sys.stderr, flush=True)
+            vector_category, vector_results = run_vector_privacy(qdrant_url)
+            all_categories.append(vector_category)
+            all_tests.extend([asdict(r) for r in vector_results])
+            _emit_event(
+                "troll.category.done",
+                category="vector_privacy",
+                passed=vector_category.passed,
+                partial=vector_category.partial,
+                failed=vector_category.failed,
             )
-        )
-        all_tests.append(
-            {
-                "attack_category": "vector_privacy",
-                "access_path": "direct",
-                "test_name": "orchestrator-exception",
-                "result": "fail",
-                "details": f"Exception during vector_privacy orchestration: {exc}",
-                "evidence": {},
-            }
-        )
+        except Exception as exc:
+            print(f"ERROR in vector_privacy: {exc}", file=sys.stderr, flush=True)
+            all_categories.append(
+                CategorySummary(
+                    attack_category="vector_privacy",
+                    blocking=False,
+                    passed=0,
+                    partial=0,
+                    failed=1,
+                    total=1,
+                )
+            )
+            all_tests.append(
+                {
+                    "attack_category": "vector_privacy",
+                    "access_path": "direct",
+                    "test_name": "orchestrator-exception",
+                    "result": "fail",
+                    "details": f"Exception during vector_privacy orchestration: {exc}",
+                    "evidence": {},
+                }
+            )
 
     # 4. Cross-Inference
-    try:
-        print("Running cross_inference...", file=sys.stderr, flush=True)
-        cross_category, cross_results = run_cross_inference(openclaw_base_url, openclaw_token)
-        all_categories.append(cross_category)
-        all_tests.extend([asdict(r) for r in cross_results])
-        _emit_event(
-            "troll.category.done",
-            category="cross_inference",
-            passed=cross_category.passed,
-            partial=cross_category.partial,
-            failed=cross_category.failed,
-        )
-    except Exception as exc:
-        print(f"ERROR in cross_inference: {exc}", file=sys.stderr, flush=True)
-        all_categories.append(
-            CategorySummary(
-                attack_category="cross_inference",
-                blocking=False,
-                passed=0,
-                partial=0,
-                failed=1,
-                total=1,
+    if "cross_inference" in categories_to_run:
+        try:
+            print("Running cross_inference...", file=sys.stderr, flush=True)
+            cross_category, cross_results = run_cross_inference(openclaw_base_url, openclaw_token)
+            all_categories.append(cross_category)
+            all_tests.extend([asdict(r) for r in cross_results])
+            _emit_event(
+                "troll.category.done",
+                category="cross_inference",
+                passed=cross_category.passed,
+                partial=cross_category.partial,
+                failed=cross_category.failed,
             )
-        )
-        all_tests.append(
-            {
-                "attack_category": "cross_inference",
-                "access_path": "through_agent",
-                "test_name": "orchestrator-exception",
-                "result": "fail",
-                "details": f"Exception during cross_inference orchestration: {exc}",
-                "evidence": {},
-            }
-        )
+        except Exception as exc:
+            print(f"ERROR in cross_inference: {exc}", file=sys.stderr, flush=True)
+            all_categories.append(
+                CategorySummary(
+                    attack_category="cross_inference",
+                    blocking=False,
+                    passed=0,
+                    partial=0,
+                    failed=1,
+                    total=1,
+                )
+            )
+            all_tests.append(
+                {
+                    "attack_category": "cross_inference",
+                    "access_path": "through_agent",
+                    "test_name": "orchestrator-exception",
+                    "result": "fail",
+                    "details": f"Exception during cross_inference orchestration: {exc}",
+                    "evidence": {},
+                }
+            )
 
     # 5. Deletion Timing
-    try:
-        print("Running deletion_timing...", file=sys.stderr, flush=True)
-        deletion_category, deletion_results = run_deletion_timing()
-        all_categories.append(deletion_category)
-        all_tests.extend([asdict(r) for r in deletion_results])
-        _emit_event(
-            "troll.category.done",
-            category="deletion_timing",
-            passed=deletion_category.passed,
-            partial=deletion_category.partial,
-            failed=deletion_category.failed,
-        )
-    except Exception as exc:
-        print(f"ERROR in deletion_timing: {exc}", file=sys.stderr, flush=True)
-        all_categories.append(
-            CategorySummary(
-                attack_category="deletion_timing",
-                blocking=False,
-                passed=0,
-                partial=0,
-                failed=1,
-                total=1,
+    if "deletion_timing" in categories_to_run:
+        try:
+            print("Running deletion_timing...", file=sys.stderr, flush=True)
+            deletion_category, deletion_results = run_deletion_timing()
+            all_categories.append(deletion_category)
+            all_tests.extend([asdict(r) for r in deletion_results])
+            _emit_event(
+                "troll.category.done",
+                category="deletion_timing",
+                passed=deletion_category.passed,
+                partial=deletion_category.partial,
+                failed=deletion_category.failed,
             )
-        )
-        all_tests.append(
-            {
-                "attack_category": "deletion_timing",
-                "access_path": "direct",
-                "test_name": "orchestrator-exception",
-                "result": "fail",
-                "details": f"Exception during deletion_timing orchestration: {exc}",
-                "evidence": {},
-            }
-        )
+        except Exception as exc:
+            print(f"ERROR in deletion_timing: {exc}", file=sys.stderr, flush=True)
+            all_categories.append(
+                CategorySummary(
+                    attack_category="deletion_timing",
+                    blocking=False,
+                    passed=0,
+                    partial=0,
+                    failed=1,
+                    total=1,
+                )
+            )
+            all_tests.append(
+                {
+                    "attack_category": "deletion_timing",
+                    "access_path": "direct",
+                    "test_name": "orchestrator-exception",
+                    "result": "fail",
+                    "details": f"Exception during deletion_timing orchestration: {exc}",
+                    "evidence": {},
+                }
+            )
 
     # Aggregate results
     total_elapsed = (time.time() - run_start) * 1000
@@ -504,7 +520,16 @@ def run_comprehensive(
 
 def main() -> int:
     """Main entry point. Runs comprehensive test and returns exit code."""
-    result = run_comprehensive()
+    import argparse
+    parser = argparse.ArgumentParser(description="Run troll adversary attack suite")
+    parser.add_argument(
+        "--category",
+        default=None,
+        choices=VALID_CATEGORIES,
+        help="Run a single attack category only (appends to JSONL, no truncation)",
+    )
+    args = parser.parse_args()
+    result = run_comprehensive(category=args.category)
 
     # Print summary to stdout
     result_dict = asdict(result)

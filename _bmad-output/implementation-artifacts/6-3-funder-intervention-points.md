@@ -64,6 +64,7 @@ so that I see the full consent lifecycle and adversarial validation through a si
   - [x] 2.1: Add `POST /api/troll/run` — runs `run_comprehensive.py` as subprocess (background, HTTP 202 Accepted); emits to troll-run.jsonl
   - [x] 2.2: Add `GET /api/troll/results` — reads `data/troll-run.jsonl` and returns parsed summary (latest `troll.category.done` events per category + `troll.run.done` if present)
   - [x] 2.3: Server-side troll result parsing functional (polling happens client-side in JS every 2s)
+  - [x] 2.4: Add `POST /api/troll/run/{category}` — category-specific run (appends to JSONL, no truncation); validates against VALID_TROLL_CATEGORIES; passes `--category` arg to run_comprehensive.py
 
 - [x] **Task 3: Add Troll tab to index.html** (AC2, AC3, AC4)
   - [x] 3.1: Add tab/section navigation (ACL tab + Troll tab) — pure JS tab switching, no page reload
@@ -84,7 +85,8 @@ so that I see the full consent lifecycle and adversarial validation through a si
   - [x] 5.2: Test grant/revoke: handler exits 0 (ok) → 200 response; handler exits 1 (denied) → 400 response
   - [x] 5.3: Test `GET /api/troll/results` with mocked troll-run.jsonl content (happy path + empty file)
   - [x] 5.4: Test `POST /api/troll/run` triggers subprocess.Popen (mock it, returns 202 Accepted)
-  - [x] 5.5: All 26 tests pass (no regressions); 197+ tests suite still clean
+  - [x] 5.5: All 29 tests pass (no regressions); 197 unit tests still clean
+  - [x] 5.6: Added test_troll_run_category_valid, test_troll_run_category_invalid, test_troll_run_sets_required_env_vars
 
 ---
 
@@ -228,11 +230,13 @@ Claude Haiku 4.5
 - Grant/Revoke now return HTTP 400 on denial (not 500), matching AC6
 - PodProvisioner.view_acl_state() unchanged (still used for GET /api/pods)
 
-✅ **Task 2 (AC2, AC3): Troll backend routes** — Implemented three endpoints:
+✅ **Task 2 (AC2, AC3): Troll backend routes** — Implemented four endpoints:
 - `POST /api/troll/run` (HTTP 202 Accepted): Spawns `run_comprehensive.py` as background Popen process (no blocking)
 - `GET /api/troll/results`: Reads `data/troll-run.jsonl` and parses JSONL events (troll.category.done, troll.run.done)
 - Returns TrollResultsResponse with categories dict (latest event per category) + run_summary if present
-- parse_troll_results() function handles file I/O and missing files gracefully
+- `POST /api/troll/run/{category}` (HTTP 202): Validates category, spawns with `--category` arg; preserves other categories in JSONL (no truncation)
+- parse_troll_results() function handles file I/O and missing files gracefully; fixed JSONL key mapping (`category` not `attack_category`) and run_summary keys (`passed` not `total_passed`)
+- _troll_env() helper explicitly sets OXIGRAPH_URL, QDRANT_URL, OPENCLAW_BASE_URL for subprocess
 
 ✅ **Task 3 (AC2, AC3, AC4): Troll tab UI** — Added to index.html:
 - Tab navigation bar with "ACL Dashboard" and "Troll Attacks" buttons (JavaScript tab switching)
@@ -260,6 +264,7 @@ Claude Haiku 4.5
 
 ### File List
 
-- `pipeline/src/pocpod0_pipeline/dashboard_api.py` — Modified: Added imports (json, subprocess, status); Added acl-manage handler constants and call_acl_manage() function; Added troll constants and parse_troll_results() function; Updated grant/revoke endpoints to use call_acl_manage(); Added POST /api/troll/run and GET /api/troll/results endpoints; Added TrollResultsResponse and TrollCategory models
+- `agents/troll-adversary/attacks/run_comprehensive.py` — Modified: Added VALID_CATEGORIES list; `run_comprehensive()` accepts `category=None` param; full run truncates JSONL, category run appends; each of 5 blocks wrapped in `if category in categories_to_run`; `main()` adds argparse `--category` flag
+- `pipeline/src/pocpod0_pipeline/dashboard_api.py` — Modified: Added VALID_TROLL_CATEGORIES; added _troll_env() helper (explicit env vars); added POST /api/troll/run/{category} endpoint; fixed parse_troll_results() JSONL key mapping; added POST /api/troll/run and GET /api/troll/results endpoints; Added TrollResultsResponse and TrollCategory models
 - `dashboard/static/index.html` — Modified: Added 150+ lines of CSS for tabs, troll grid, buttons, color coding; Added HTML for tab navigation and troll tab structure; Added 200+ lines of JavaScript for tab switching, troll result rendering, run triggering, and polling logic
 - `pipeline/tests/test_dashboard_api.py` — Modified: Updated imports (added json, subprocess); Updated 10 grant/revoke tests to mock subprocess.run/Popen; Updated demo_moment_workflow test to use subprocess mocks; Added 3 new troll tests; Updated docstrings to reference AC numbers and Story 6.3

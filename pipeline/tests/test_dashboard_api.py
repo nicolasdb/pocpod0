@@ -544,3 +544,48 @@ def test_troll_run_returns_accepted(mock_popen):
     assert response.status_code == 202
     data = response.json()
     assert "status" in data or "message" in data
+
+
+# ============================================================================
+# AC2: Category-specific troll runs (gap fix)
+# ============================================================================
+
+@patch('pocpod0_pipeline.dashboard_api.subprocess.Popen')
+def test_troll_run_category_valid(mock_popen):
+    """AC2: POST /api/troll/run/{category} → 202, Popen called with --category arg."""
+    mock_popen.return_value = MagicMock()
+
+    response = client.post("/api/troll/run/acl_enforcement")
+
+    assert response.status_code == 202
+    assert mock_popen.called
+    cmd = mock_popen.call_args[0][0]
+    assert "run_comprehensive.py" in cmd[1]
+    assert "--category" in cmd
+    assert "acl_enforcement" in cmd
+
+
+@patch('pocpod0_pipeline.dashboard_api.subprocess.Popen')
+def test_troll_run_category_invalid(mock_popen):
+    """AC2: POST /api/troll/run/{unknown} → 400, no subprocess spawned."""
+    mock_popen.return_value = MagicMock()
+
+    response = client.post("/api/troll/run/unknown_attack")
+
+    assert response.status_code == 400
+    assert not mock_popen.called
+
+
+@patch('pocpod0_pipeline.dashboard_api.subprocess.Popen')
+def test_troll_run_sets_required_env_vars(mock_popen):
+    """Troll subprocess receives OXIGRAPH_URL, QDRANT_URL, OPENCLAW_BASE_URL env vars."""
+    mock_popen.return_value = MagicMock()
+
+    client.post("/api/troll/run")
+
+    assert mock_popen.called
+    env = mock_popen.call_args[1]["env"]
+    assert "OXIGRAPH_URL" in env
+    assert "QDRANT_URL" in env
+    assert "OPENCLAW_BASE_URL" in env
+    assert "CSS_BASE_URL" in env

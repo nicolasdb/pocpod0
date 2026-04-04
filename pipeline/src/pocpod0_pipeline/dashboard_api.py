@@ -70,6 +70,7 @@ HANDLER_PATH = REPO_ROOT / "agents" / "skills" / "acl-manage" / "handler.py"
 TROLL_PATH = REPO_ROOT / "agents" / "troll-adversary" / "attacks" / "run_comprehensive.py"
 TROLL_JSONL_PATH = REPO_ROOT / "data" / "troll-run.jsonl"
 BLOCKING_CATEGORIES = {"acl_enforcement", "sparql_injection"}
+VALID_TROLL_CATEGORIES = {"acl_enforcement", "sparql_injection", "vector_privacy", "cross_inference", "deletion_timing"}
 
 
 def call_acl_manage(action: str, pod: str, webid: str | None = None, actor: str | None = None) -> tuple[bool, str]:
@@ -138,20 +139,21 @@ def parse_troll_results() -> dict:
                     event_type = event.get("event_type")
 
                     if event_type == "troll.category.done":
-                        category = event.get("attack_category")
-                        categories[category] = {
-                            "blocking": event.get("blocking", False),
-                            "passed": event.get("passed", 0),
-                            "partial": event.get("partial", 0),
-                            "failed": event.get("failed", 0),
-                            "total": event.get("total", 0),
-                        }
+                        category = event.get("category")  # JSONL key is "category", not "attack_category"
+                        if category:
+                            categories[category] = {
+                                "blocking": category in BLOCKING_CATEGORIES,
+                                "passed": event.get("passed", 0),
+                                "partial": event.get("partial", 0),
+                                "failed": event.get("failed", 0),
+                                "total": event.get("total", event.get("passed", 0) + event.get("partial", 0) + event.get("failed", 0)),
+                            }
                     elif event_type == "troll.run.done":
                         run_summary = {
                             "total_tests": event.get("total_tests", 0),
-                            "total_passed": event.get("total_passed", 0),
-                            "total_partial": event.get("total_partial", 0),
-                            "total_failed": event.get("total_failed", 0),
+                            "total_passed": event.get("passed", 0),   # JSONL key is "passed", not "total_passed"
+                            "total_partial": event.get("partial", 0), # JSONL key is "partial", not "total_partial"
+                            "total_failed": event.get("failed", 0),   # JSONL key is "failed", not "total_failed"
                             "blocking_pass": event.get("blocking_pass", False),
                         }
                 except json.JSONDecodeError:
@@ -366,27 +368,49 @@ async def revoke_access(pod: str, req: RevokeRequest):
     return {"ok": True, "message": msg}
 
 
+def _troll_env() -> dict:
+    """Build environment for troll subprocess with all required URLs."""
+    return {
+        **os.environ,
+        "CSS_BASE_URL": CSS_BASE_URL,
+        "OXIGRAPH_URL": os.environ.get("OXIGRAPH_URL", "http://localhost:7878"),
+        "QDRANT_URL": os.environ.get("QDRANT_URL", "http://localhost:6333"),
+        "OPENCLAW_BASE_URL": os.environ.get("OPENCLAW_BASE_URL", "http://localhost:8000"),
+    }
+
+
 # Troll run endpoint - triggers comprehensive attack suite
 @app.post("/api/troll/run", status_code=status.HTTP_202_ACCEPTED)
 async def run_troll():
     """Trigger troll comprehensive attack suite (runs in background)."""
-    env = {
-        **os.environ,
-        "CSS_BASE_URL": CSS_BASE_URL,
-        # Also include other required env vars for troll
-    }
-
     try:
-        # Run troll in background (don't wait for completion)
         subprocess.Popen(
             ["python", str(TROLL_PATH)],
-            env=env,
+            env=_troll_env(),
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
         return {"status": "accepted", "message": "Troll comprehensive run started"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to start troll: {str(e)}")
+
+
+# Troll category run endpoint - triggers a single attack category
+@app.post("/api/troll/run/{category}", status_code=status.HTTP_202_ACCEPTED)
+async def run_troll_category(category: str):
+    """Trigger a single troll attack category in background (appends to JSONL)."""
+    if category not in VALID_TROLL_CATEGORIES:
+        raise HTTPException(status_code=400, detail=f"Unknown category: {category}. Valid: {sorted(VALID_TROLL_CATEGORIES)}")
+    try:
+        subprocess.Popen(
+            ["python", str(TROLL_PATH), "--category", category],
+            env=_troll_env(),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return {"status": "accepted", "message": f"Troll category '{category}' started"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to start troll category: {str(e)}")
 
 
 # Troll results endpoint - get latest test results

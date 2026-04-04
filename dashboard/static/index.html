@@ -1117,8 +1117,26 @@
 
         // Run single troll category
         async function runTrollCategory(category) {
-            console.log('Launching category:', category);
-            // TODO: Implement category-specific runs if needed
+            if (trollRunInProgress) return;
+            trollRunInProgress = true;
+            document.getElementById('troll-status').textContent = `Running ${category}...`;
+
+            try {
+                const response = await fetch(`/api/troll/run/${encodeURIComponent(category)}`, { method: 'POST' });
+                if (!response.ok) {
+                    const err = await response.json().catch(() => ({ detail: `HTTP ${response.status}` }));
+                    throw new Error(err.detail || `HTTP ${response.status}`);
+                }
+
+                // Start polling for results
+                if (trollPollingInterval) clearInterval(trollPollingInterval);
+                trollPollingInterval = setInterval(pollTrollResults, 2000);
+
+            } catch (error) {
+                console.error('Failed to start troll category:', error);
+                document.getElementById('troll-status').textContent = 'Error: ' + error.message;
+                trollRunInProgress = false;
+            }
         }
 
         // Poll for troll results
