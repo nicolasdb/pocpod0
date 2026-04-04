@@ -4,7 +4,7 @@ import pytest
 import httpx
 import json
 import subprocess
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import patch, MagicMock, AsyncMock, mock_open
 from fastapi.testclient import TestClient
 from pocpod0_pipeline.dashboard_api import app, REAL_PODS, ACTOR_WEBIDS
 
@@ -228,6 +228,8 @@ def test_grant_calls_acl_manage_handler(mock_subprocess):
     assert "acl-manage" in cmd[1]  # Handler path should contain "acl-manage"
     assert "--action" in cmd and "grant" in cmd
     assert "--pod-name" in cmd and "ayoub" in cmd
+    assert "--identity" in cmd  # WebID must be passed
+    assert "--role" in cmd and "isabelle" in cmd  # Actor role for grant
 
 
 @patch('pocpod0_pipeline.dashboard_api.subprocess.run')
@@ -318,6 +320,8 @@ def test_revoke_calls_acl_manage_handler(mock_subprocess):
     assert "acl-manage" in cmd[1]  # Handler path
     assert "--action" in cmd and "revoke" in cmd
     assert "--pod-name" in cmd and "ayoub" in cmd
+    assert "--identity" in cmd  # WebID must be passed
+    assert "--role" not in cmd  # Revoke never passes --role (unlike grant)
 
 
 @patch('pocpod0_pipeline.dashboard_api.subprocess.run')
@@ -509,29 +513,46 @@ def test_troll_run_triggers_subprocess(mock_popen):
     assert "run_comprehensive.py" in cmd[1]
 
 
-@patch('pocpod0_pipeline.dashboard_api.Path')
+@patch('pocpod0_pipeline.dashboard_api.TROLL_JSONL_PATH')
 def test_troll_results_reads_jsonl_file(mock_path):
-    """AC3: GET /api/troll/results reads troll-run.jsonl and returns summary."""
-    # Mock the troll-run.jsonl file with JSONL events
+    """AC3: GET /api/troll/results parses troll-run.jsonl and returns category data."""
+    # Keys match what run_comprehensive.py emits via _emit_event():
+    # "category" (not "attack_category"), "passed/partial/failed" (not "total_*")
     troll_content = (
-        '{"timestamp": "2026-04-02T12:00:00", "event_type": "troll.run.start", "total_categories": 5}\n'
-        '{"timestamp": "2026-04-02T12:05:00", "event_type": "troll.category.done", "attack_category": "acl_enforcement", "blocking": true, "passed": 45, "partial": 2, "failed": 1, "total": 48}\n'
-        '{"timestamp": "2026-04-02T12:10:00", "event_type": "troll.category.done", "attack_category": "sparql_injection", "blocking": true, "passed": 30, "partial": 0, "failed": 0, "total": 30}\n'
-        '{"timestamp": "2026-04-02T12:15:00", "event_type": "troll.run.done", "total_tests": 150, "total_passed": 140, "total_partial": 5, "total_failed": 5, "blocking_pass": true}\n'
+        '{"event_type": "troll.run.start", "categories": ["acl_enforcement", "sparql_injection"]}\n'
+        '{"event_type": "troll.category.done", "category": "acl_enforcement", "passed": 45, "partial": 2, "failed": 1}\n'
+        '{"event_type": "troll.category.done", "category": "sparql_injection", "passed": 30, "partial": 0, "failed": 0}\n'
+        '{"event_type": "troll.run.done", "total_tests": 78, "passed": 75, "partial": 2, "failed": 1, "blocking_pass": true}\n'
     )
+    mock_path.exists.return_value = True
 
-    # Mock file operations
-    mock_file = MagicMock()
-    mock_file.read_text.return_value = troll_content
-    mock_file.exists.return_value = True
-
-    with patch('pocpod0_pipeline.dashboard_api.REPO_ROOT', '/fake/repo'):
-        with patch('builtins.open', MagicMock(return_value=MagicMock(__enter__=MagicMock(return_value=MagicMock(readlines=MagicMock(return_value=troll_content.split('\n'))))))):
-            response = client.get("/api/troll/results")
+    with patch('builtins.open', mock_open(read_data=troll_content)):
+        response = client.get("/api/troll/results")
 
     assert response.status_code == 200
     data = response.json()
-    assert "categories" in data or "troll_run" in data or len(data) > 0
+    assert "acl_enforcement" in data["categories"]
+    assert data["categories"]["acl_enforcement"]["passed"] == 45
+    assert data["categories"]["acl_enforcement"]["failed"] == 1
+    assert data["categories"]["acl_enforcement"]["blocking"] is True  # acl_enforcement is a blocking category
+    assert "sparql_injection" in data["categories"]
+    assert data["categories"]["sparql_injection"]["passed"] == 30
+    assert data["run_summary"] is not None
+    assert data["run_summary"]["total_passed"] == 75
+    assert data["run_summary"]["blocking_pass"] is True
+
+
+@patch('pocpod0_pipeline.dashboard_api.TROLL_JSONL_PATH')
+def test_troll_results_empty_when_no_file(mock_path):
+    """AC3: GET /api/troll/results returns empty categories when JSONL file missing."""
+    mock_path.exists.return_value = False
+
+    response = client.get("/api/troll/results")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["categories"] == {}
+    assert data["run_summary"] is None
 
 
 @patch('pocpod0_pipeline.dashboard_api.subprocess.Popen')
@@ -585,7 +606,7 @@ def test_troll_run_sets_required_env_vars(mock_popen):
 
     assert mock_popen.called
     env = mock_popen.call_args[1]["env"]
-    assert "OXIGRAPH_URL" in env
-    assert "QDRANT_URL" in env
-    assert "OPENCLAW_BASE_URL" in env
-    assert "CSS_BASE_URL" in env
+    assert env["OXIGRAPH_URL"] == "http://localhost:7878"
+    assert env["QDRANT_URL"] == "http://localhost:6333"
+    assert env["OPENCLAW_BASE_URL"] == "http://localhost:8000"
+    assert env["CSS_BASE_URL"] == "http://localhost:3000"

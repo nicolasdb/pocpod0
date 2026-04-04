@@ -78,6 +78,24 @@ development_status:
   story-6-3-funder-intervention-points: review
   epic-6-retrospective: optional
 
+  # Implementation Gaps to Address in 6.3 review
+
+  # 1. Category-specific troll runs not implemented
+  #   - AC2 specifies POST /api/troll/run/{category} for per-category launches
+  #   - Current implementation only has POST /api/troll/run (full suite)
+  #   - HTML buttons exist but don't call any endpoint (TODO in JS)
+  #   - Action: Either implement the category endpoints or update AC2 to match reality
+  # 2. Missing environment variables for troll subprocess
+  #   - POST /api/troll/run doesn't set OXIGRAPH_URL, QDRANT_URL, OPENCLAW_BASE_URL
+  #   - These are required by run_comprehensive.py but will only work if already in current environment
+  #   - Subprocess will fail silently if they're not set
+  #   - Action: Add env var setup in POST /api/troll/run handler, or verify they're always available in demo environment
+  # 3. CSS_CONNECT_URL vs CSS_BASE_URL subtle distinction
+  #   - acl-manage handler uses CSS_CONNECT_URL for direct pod access
+  #   - PodProvisioner uses CSS_BASE_URL for WebID construction
+  #   - Both default to :3000, so it works, but could cause issues if they ever differ
+  #   - Action: Document this clearly in dashboard_api.py comments for future maintainers
+
   # Epic 4: Student Transfer & Data Portability (RESEQUENCED: was next, now CAPSTONE)
   # NOTE (2026-03-25): Marc's transfer becomes the integration test for the full stack.
   # Built WITH dashboard running — first epic where project lead watches live.
