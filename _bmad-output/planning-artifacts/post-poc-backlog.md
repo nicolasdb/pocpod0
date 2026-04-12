@@ -256,6 +256,103 @@ curl -s http://localhost:6333/collections/pocpod0_embeddings \
 
 ---
 
+## Idea: Troll as Autonomous White-Hat Researcher
+
+**Captured:** 2026-04-12 (Epic 6 Retrospective)
+**Status:** backlog — pilot research branch
+**Depends on:** Epic 4 complete (Discord + heartbeat infrastructure)
+
+### Concept
+
+Evolve the troll agent from scripted probe executor to an autonomous security researcher using [autoresearch](https://github.com/karpathy/autoresearch)-style capabilities. The troll periodically tests boundaries, discovers new attack vectors, researches protection methods, and reports findings — without breaking anything.
+
+### How it works
+
+- **Heartbeat-driven:** HEARTBEAT.md triggers periodic security sweeps (already built for Epic 4)
+- **Research loop:** After each probe run, troll analyzes results, identifies weak points, searches for known vulnerability patterns, proposes new test cases
+- **Self-improvement:** New attack modules generated and validated in sandboxed runs before being added to the suite
+- **Reporting:** Short findings posted to #security_logs on Discord, detailed analysis on request via DM
+- **Safety:** Read-only access to infrastructure by default; destructive probes require explicit approval
+
+### Reuse from POC
+
+- 100% of troll attack modules (5 categories)
+- JSONL event stream for audit trail
+- OpenClaw skill system for new attack module registration
+- Discord channel for reporting (from Epic 4)
+- HEARTBEAT.md periodic execution (from Epic 4)
+
+### Notes
+
+- Nicolas: "This is for pilot, not POC. Or a research branch of the pilot."
+- Natural evolution: scripted probes (POC) → heartbeat periodic runs (Epic 4) → autonomous research (pilot)
+- Could be a compelling demo for security-focused funders: "our AI security auditor evolves its own attack surface"
+
+---
+
+## Idea: POC→Pilot Bridge — Container to VPS Migration Path
+
+**Captured:** 2026-04-12 (Epic 6 Retrospective)
+**Status:** backlog — pilot infrastructure
+
+### Concept
+
+Gradual migration from containerized demo agents to a workable alpha product on a VPS, pairing agents with real users and real data.
+
+### Migration path
+
+1. **POC (current):** Local compose, seeded data, Discord bot for agent interaction
+2. **Alpha:** Same compose on VPS, real Discord server, same seeded data — validates remote operation
+3. **Beta:** Swap seeded data for real data, add real user pods (Nicolas first), agent-assistants personalized
+4. **Pilot:** Replace debug-auth-header with Solid-OIDC, real provisioning flow, real consent lifecycle
+
+### Key architecture decisions that enable this (from Epic 6 retro)
+
+- Seed-on-boot pattern: image contains factory defaults, named volume holds evolved state
+- Discord as interaction layer: same bot, same channels, local or remote
+- Named volume isolation: per-scenario volumes, independently resettable
+- No code changes required between stages — only configuration and data
+
+### What changes per stage
+
+| Component | POC → Alpha | Alpha → Beta | Beta → Pilot |
+|---|---|---|---|
+| Infrastructure | localhost → VPS domain | Same | Same |
+| Data | Seeded synthetic | Real user data | Real + historical |
+| Auth | debug-auth-header | Same | Solid-OIDC |
+| Users | 6 fictional + Nicolas | Nicolas + early testers | Open enrollment |
+| Agent evolution | Session-scoped | Persistent across sessions | Persistent + backup |
+
+### Notes
+
+- Nicolas: "How do we gradually move from agents in a container to a workable alpha product living on my VPS pairing agents with real users and real data?"
+- Winston: "No architecture change needed. The migration path is configuration, not code."
+- CSS `baseUrl` config is the only infrastructure change (localhost → domain)
+
+---
+
+## Idea: Time-Compressed Scenario Simulation
+
+**Captured:** 2026-04-12 (Epic 6 Retrospective)
+**Status:** backlog — extends Stakeholder Simulation System below
+**Depends on:** Epic 4 complete (heartbeat + Discord infrastructure)
+
+### Concept
+
+Run a 3-month school timeline in compressed time. Agents generate realistic activities according to their role: Claire posts observations weekly, Fatima checks parental view monthly, Marc processes a transfer mid-term, Isabelle pulls quarterly aggregates. Consent changes propagate through the timeline, affecting all downstream views.
+
+### Key insight
+
+Nicolas: "We can accelerate time to run timeframe like 3 months storyline." This is the bridge between Epic 4's interactive demo and the full simulation system. Epic 4 builds the heartbeat infrastructure; time-compression adds a scenario clock that accelerates heartbeat intervals.
+
+### Emergent behavior example
+
+Nicolas: "I'm easily thinking about Ayoub revoking consent on his data, and Isabelle reacting on #general channel like 'hey @school, I just noticed a change in your student_total_count, is everything alright?'"
+
+This requires: heartbeat (Isabelle checks aggregates) + consent propagation (Ayoub revokes) + cross-agent visibility (Isabelle notices delta) + Discord posting (reaction on #general). All building blocks available after Epic 4.
+
+---
+
 ## Idea: Stakeholder Simulation System — Autonomous Multi-Agent Scenario Runner
 
 **Captured:** 2026-03-25 (Story 3.8 party mode review)

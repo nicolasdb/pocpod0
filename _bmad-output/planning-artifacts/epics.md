@@ -172,14 +172,22 @@ Role agents (Claire, Fatima, Isabelle) query across institutional silos, compare
 **Priority tags:** Claire stories tagged [must-ship], Fatima and Isabelle stories tagged [target] per PRD fallback strategy (plan for 5, fallback to 3)
 **Dashboard backlog:** Query monitor (SPARQL + hybrid), agent activity log, graph-vs-hybrid comparison display
 
-### Epic 4: Student Transfer & Data Portability _(RESEQUENCED: now last / capstone — 2026-03-25; scope expanded 2026-04-02)_
+### Epic 4: Student Transfer & Data Portability _(RESEQUENCED: now last / capstone — 2026-03-25; scope expanded 2026-04-02; architecture amended 2026-04-12)_
 The school transfer scenario (NL→FR) executes end-to-end — ACL grants, revocations, cross-community data handling — proving data moves with the learner, not the institution. Built with dashboard running (Epic 6 complete): first epic where project lead watches the full stack live.
 
 _(amended 2026-04-02: Epic 4 absorbs narrative context and stakeholder workflow scope deferred from Epic 6. Epic 6 proved the boundary (ACLs hold). Epic 4 proves the value inside the boundary — what resources are accessed, by whom, and why it matters to each stakeholder. OpenClaw agents become the primary interaction model. Fine-tune seeded data against scenarios.)_
 
+_(amended 2026-04-12 — Epic 6 Retro decisions:)_
+- _**Discord as interaction layer:** One Discord server, one channel per agent + #general + #security_logs. All agents reachable via Discord DM/channels. Replaces webui single-agent limitation._
+- _**Seed-on-boot agent workspaces:** Dockerfile COPY agents to image, entrypoint seeds writable named volume on first boot. Agents evolve through interaction (MEMORY.md, SOUL.md). Factory reset = `compose down -v`._
+- _**Troll on Discord:** Troll uses HEARTBEAT.md for periodic probe runs, posts short reports to #security_logs. Funders interact via DM. Replaces dashboard troll tab._
+- _**Nicolas as new user:** Own pod + own agent-assistant proves onboarding flow. Tests: add content, grant/revoke, observe propagation._
+- _**Named volume isolation:** Per-scenario volumes enable parallel simulation without contamination._
+- _**ACL dashboard (keeper):** Runs alongside Discord — first POC artifact that persists across epics._
+
 **FRs covered:** FR21, FR22, FR23
 **Priority:** [must-ship] — Marc's journey is one of the 3 must-ship journeys
-**Additional scope (from Epic 6 deferral):** Narrative context on dashboard cards, pod content exploration, stakeholder workflows via OpenClaw agents, scenario fine-tuning
+**Additional scope (from Epic 6 deferral + retro):** Narrative context on dashboard cards, pod content exploration, stakeholder workflows via OpenClaw agents, scenario fine-tuning, Discord multi-agent interaction, agent workspace evolution, Nicolas onboarding proof
 
 ### Epic 5: Data Sovereignty Lifecycle _(RESEQUENCED: now before Epic 6 and 4 — 2026-03-25)_
 Governance contracts execute (age-based sovereignty transition), deletion cascades propagate across all three data layers, the consent lifecycle is agent-driven (acl-manage skill), and ephemeral time-scoped consent (Anagnorisis double-aveugle pattern) demonstrates that sensitive data can flow without identity exposure.
@@ -188,10 +196,10 @@ Governance contracts execute (age-based sovereignty transition), deletion cascad
 **Dashboard backlog:** Governance event log, deletion cascade status, consent gate counts, timing metrics
 **Anagnorisis integration:** Stories 5.4, 5.5, 5.6 implement the consent-as-architecture principles from the Anagnorisis narrative — access receipts (BP-1), consent grant as RDF (BP-3), ephemeral time-scoped tokens (BP-5)
 
-### Epic 6: Adversarial Trust Report & Mission Control _(RESEQUENCED: before Epic 4 — 2026-03-25)_
-The comprehensive troll run generates a funder-readable categorized report, the mission control dashboard surfaces all evidence from Epics 1-5, and intervention points let funders shift from audience to participant.
+### Epic 6: Adversarial Trust Report & Mission Control _(RESEQUENCED: before Epic 4 — 2026-03-25; COMPLETED 2026-04-12)_
+The comprehensive troll run generates a funder-readable categorized report, the ACL enforcement dashboard proves boundaries are real and visible, and intervention points let funders shift from audience to participant.
 **FRs covered:** FR33, FR34, FR38, FR39
-**Note:** Dashboard design happens here, informed by the component backlog built through Epics 1-5. UX Design spike precedes dashboard implementation.
+**Note:** Original TUI approach (mission_control.py) superseded by FastAPI + HTML ACL dashboard pivot (Story 6.2). ACL dashboard is a keeper into Epic 4. Troll interaction migrates to Discord (#security_logs + DM) per Epic 6 retro decision.
 
 ## Epic 1: Pod Sovereignty & Access Control
 
@@ -634,7 +642,56 @@ So that I understand whether an agent can be tricked into revealing data it shou
 
 The school transfer scenario (NL→FR) executes end-to-end — ACL grants, revocations, cross-community data handling — proving data moves with the learner, not the institution. [must-ship] — Marc's journey.
 
+### Story 4.0: [must-ship] Discord & Seed-on-Boot Infrastructure
+
+As **project lead** (Nicolas),
+I want all 6 OpenClaw agents reachable via Discord channels with evolvable workspaces and periodic heartbeat behaviors,
+So that funders and external visitors can interact with every persona-agent directly, and agent identities can evolve through conversation.
+
+**Prerequisite checklist (5 Epic 5/6 carried items — resolve before dev starts):**
+- [ ] NFR-LAG: Latency baseline documented (NFR1 <500ms, NFR2 <2s — confirm with real run or note as known gap)
+- [ ] IG-1: CSS 404 semantics documented (resource not found vs. unauthorized — note behavior in architecture.md)
+- [ ] ACL-DRIFT: ACL dashboard known drift scenario documented (what causes false positives — noted in Story 6.2 code review)
+- [ ] Consent events catalog: All emitted event types listed (`acl.grant`, `acl.revoke`, `token.issued`, `token.expired`, `receipt.written`) in architecture.md or a dedicated doc
+- [ ] Invalidated assumptions template: Added to story template in `.claude/skills/bmad-create-story/` so SM pre-populates from memory going forward
+
+**Acceptance Criteria:**
+
+**Given** the Dockerfile
+**When** `docker-compose up` runs for the first time
+**Then** the entrypoint copies agent seed files from `/app/agents-seed/{id}/` to `/home/node/.openclaw/workspaces/{id}/` for each agent that has no workspace yet
+**And** subsequent restarts do NOT overwrite existing workspace files (idempotent seed)
+**And** `docker-compose down -v && docker-compose up` performs a full factory reset to seeded state
+
+**Given** the Discord bot token configured in `.env`
+**When** `docker-compose up` completes
+**Then** all 6 agents (claire-teacher, marc-admin, isabelle-policy, fatima-parent, ayoub-student, troll-adversary) are bound to individual Discord channels in `openclaw.json`
+**And** a #general channel is bound for cross-agent visibility
+**And** a #security_logs channel is bound for troll reports
+**And** each agent is reachable via Discord DM and its bound channel
+
+**Given** a HEARTBEAT.md file in each agent's seeded workspace
+**When** the OpenClaw heartbeat fires
+**Then** troll-adversary runs a probe subset and posts a short report to #security_logs
+**And** isabelle-policy posts an aggregate check to #general
+**And** claire-teacher sends a student check-in to her channel
+
+**Given** per-scenario named volumes configured (`openclaw-data-{scenario}`)
+**When** multiple scenario containers run
+**Then** workspace state does not leak between scenarios
+
+**Implementation notes:**
+- Dockerfile: `COPY agents/ /app/agents-seed/` + entrypoint script seeds on first boot
+- `openclaw.json`: add `bindings` array per agent with Discord channel IDs
+- Discord bot: bot token in `.env` as `DISCORD_BOT_TOKEN`, server ID as `DISCORD_GUILD_ID`
+- HEARTBEAT.md: per-agent schedule + behavior description (troll: probe 3 categories; Isabelle: aggregate query; Claire: check-in message)
+- Named volumes: `openclaw-data` → `openclaw-data-default` (rename), document pattern in README
+
+---
+
 ### Story 4.1: [must-ship] Marc — School Transfer Scenario (NL→FR)
+
+**Prerequisite:** Story 4.0 complete (Discord bindings + seed-on-boot).
 
 As **Marc** (school administrator, Liège),
 I want to execute a complete school transfer — granting my school access to the student's pod, revoking the old school's access, and querying the student's full learning profile,
@@ -663,6 +720,142 @@ So that the student's data follows them seamlessly across the NL→FR community 
 **Given** the transfer scenario
 **When** the ACL state is audited (FR6, from Epic 1)
 **Then** the audit shows: Marc's school has read access, old school has no access, consent history is traceable
+
+**Discord interaction note:** Marc executes the transfer by sending a natural language instruction to his agent via the #marc-admin Discord channel (e.g., "Transfer Ayoub to Liège school — grant access, revoke old school"). The agent calls the `acl-manage` skill. The ACL dashboard updates in real time. Funders observe the full flow without a terminal.
+
+---
+
+### Story 4.2: [must-ship] Cross-Community Data Handling
+
+**Prerequisite:** Story 4.1 complete (transfer executed, ACLs updated).
+
+As **Marc** (school administrator, Liège),
+I want to verify that Ayoub's complete learning history — gathered across Flemish (NL) and French-speaking (FR) institutions — is fully accessible and coherent after the transfer,
+So that the receiving school never needs to ask the student to re-submit records that already exist.
+
+**Acceptance Criteria:**
+
+**Given** the transfer is complete and Marc's school has ACL read access
+**When** Marc's agent queries Ayoub's pod for the full learning profile
+**Then** records from NL institutions and FR institutions are returned in a single coherent response (FR22)
+**And** no records are missing or duplicated due to community boundary
+
+**Given** Ayoub's records use both NL-language and FR-language content fields
+**When** Marc's agent retrieves the profile
+**Then** OSLO-mapped RDF renders cross-community data seamlessly — language field is preserved, not stripped (FR23)
+**And** provenance shows source institution (school-nl, school-fr) per triple (FR20)
+
+**Given** the NL school's ACL has been revoked
+**When** Marc's agent queries data that originated from the NL school
+**Then** the data is still accessible — revocation removes institutional *write* access, not the *data already transferred to Ayoub's pod*
+**And** this distinction is explicitly visible in the ACL audit trail
+
+**Given** a SPARQL query against Oxigraph for Ayoub's post-transfer profile
+**When** executed with Marc's WebID authorization
+**Then** triples from both NL and FR named graphs are returned
+**And** query completes in < 500ms (NFR1)
+
+---
+
+### Story 4.3: [must-ship] Nicolas — Onboarding Proof
+
+**Prerequisite:** Story 4.0 complete (Discord bindings + seed-on-boot).
+
+As **Nicolas** (project lead, first real user),
+I want to onboard as a new user — provisioning my own pod and pairing my own agent-assistant — and execute the full consent lifecycle via Discord,
+So that I can demonstrate "you could do this too" to funders, and prove the onboarding flow works for a real person beyond the 6 seeded personas.
+
+**Acceptance Criteria:**
+
+**Given** a new pod slug (`nicolas`) provisioned in CSS
+**When** the provisioning runs
+**Then** Nicolas's pod is accessible at the expected CSS URL
+**And** an agent-assistant (`nicolas-assistant`) is seeded in OpenClaw with a workspace and Discord channel binding
+
+**Given** Nicolas's pod and agent are live
+**When** Nicolas sends a message to his agent via Discord DM
+**Then** the agent responds in character — knows who Nicolas is (from IDENTITY.md / USER.md) and can answer questions about his pod
+
+**Given** Nicolas wants to grant a researcher access to his pod
+**When** Nicolas instructs his agent via Discord ("grant read access to isabelle")
+**Then** the `acl-manage` skill executes the grant
+**And** the ACL dashboard shows Nicolas's pod with Isabelle's WebID listed as a reader
+**And** a consent event is emitted to `data/consent-events.jsonl`
+
+**Given** Nicolas wants to revoke that access
+**When** Nicolas instructs his agent via Discord ("revoke isabelle's access")
+**Then** the `acl-manage` skill executes the revocation
+**And** the ACL dashboard updates within 2 seconds
+**And** Isabelle's subsequent query attempt returns HTTP 403
+
+**Funder narrative:** Nicolas walks a funder through this flow live on Discord. The funder sees: pod creation → agent pairing → grant → watch dashboard → revoke → watch dashboard. "This is what you'd do for your own institution's data."
+
+---
+
+### Story 4.4: [must-ship] Troll — Heartbeat Security Monitor on Discord
+
+**Prerequisite:** Story 4.0 complete (HEARTBEAT.md seeded, #security_logs channel bound).
+
+As a **funder** (demo audience),
+I want the troll agent to run periodic security probes automatically and post readable reports to #security_logs,
+So that I can see the boundary being actively tested at all times — not just during a scripted demo moment.
+
+**Acceptance Criteria:**
+
+**Given** the troll's HEARTBEAT.md defines a probe schedule
+**When** the heartbeat fires
+**Then** the troll runs at least 3 attack categories (ACL enforcement, SPARQL injection, cross-inference sample)
+**And** posts a short structured report to #security_logs within 60 seconds of the heartbeat firing
+
+**Given** a heartbeat report is posted to #security_logs
+**When** a funder reads it
+**Then** each category shows: status (✅ holding / ⚠️ partial / ❌ breach), count (X/Y tests passed), and one-line finding
+**And** the report is readable by a non-technical person (FR34)
+
+**Given** a funder wants to ask the troll about a finding
+**When** the funder sends a Discord DM to the troll agent
+**Then** the troll responds with context — what the test does, what "partial" means for that category, what risk it represents
+
+**Given** a new run completes with a different result than the previous run
+**When** the troll posts the next heartbeat report
+**Then** the change is flagged ("⬆️ ACL: was 22/23, now 23/23 — SPARQL injection fix applied")
+
+**Implementation note:** HEARTBEAT.md defines: interval (e.g., every 30 min), which attack modules to run, output format for #security_logs. The troll does NOT run the full suite on every heartbeat — a representative subset (fast, reproducible categories only; cross-inference excluded from heartbeat due to non-determinism).
+
+---
+
+### Story 4.5: [must-ship] Consent Revocation Scenario — Ayoub Revokes, Isabelle Reacts
+
+**Prerequisite:** Stories 4.1 (Marc transfer complete), 4.3 (Nicolas onboarded), 4.4 (troll heartbeat live).
+
+As **Ayoub** (data sovereign, Brussels),
+I want to revoke Isabelle's regional-access consent via a Discord DM to my agent-assistant,
+So that my withdrawal of consent is immediately reflected in the aggregate data Isabelle sees — proving that my sovereignty decision has real, instant consequences.
+
+**Acceptance Criteria:**
+
+**Given** Isabelle has active `regional-access` consent on Ayoub's pod
+**When** Ayoub sends his agent a Discord DM: "revoke Isabelle's access to my data"
+**Then** the `acl-manage` skill removes the regional-access grant from Ayoub's pod
+**And** a `consent.revoke` event is emitted to `data/consent-events.jsonl`
+**And** the ACL dashboard shows Ayoub's pod with Isabelle's access removed within 2 seconds
+
+**Given** Ayoub's consent has been revoked
+**When** Isabelle's agent queries the school aggregate (total consented students)
+**Then** the aggregate count drops by 1 (Ayoub excluded from aggregate)
+**And** the SPARQL filter excludes Ayoub automatically — no admin action required
+
+**Given** the aggregate drops
+**When** Isabelle's HEARTBEAT fires (or Isabelle is interacted with via Discord)
+**Then** Isabelle's agent posts to #general: "I noticed the consented student count dropped — is everything OK at the school? Should I be aware of anything?"
+**And** the message is in character — institutional concern, not a technical error
+
+**Given** the full scenario has run
+**When** a funder observes the #general channel and ACL dashboard together
+**Then** they see: one student's DM → real-time dashboard change → Isabelle's institutional response
+**And** this is "The Inversion" made visible: a 16-year-old's data sovereignty decision causes an institutional reaction
+
+**Demo script companion:** This story ships with `_bmad-output/implementation-artifacts/demo-script-epic4.md` — the narrative checklist for open-door Discord demos. The demo script covers: setup, all 6 agents introduction, Marc transfer walkthrough, Ayoub revocation scenario, troll heartbeat reading, funder free interaction.
 
 ## Epic 5: Data Sovereignty Lifecycle
 

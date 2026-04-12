@@ -1,7 +1,7 @@
 ---
 project_name: pocpod0
 sprint_generated: 2026-03-18
-last_updated: 2026-04-04  # Story 6.3 code review: approved, 8 patches applied (switchTab fix, transitioning state, Launch label, actor names, hover border, logging, truncate-on-category-run, poll timeout)
+last_updated: 2026-04-12  # Story 4.0 created: Discord+seed-on-boot infra. Epic 4 in-progress.
 tracking_system: file-system
 project_key: NOKEY
 communication_language: English
@@ -70,271 +70,38 @@ development_status:
   # NOTE (2026-03-30): Story 6.0 completed — pipeline provision as Stage 0.
   # NOTE (2026-03-31): Pipeline completed successfully! Total: 3320.6s
 
-  epic-6: in-progress
+  epic-6: done
   story-6-0-pipeline-provision-stage-zero: done
   story-6-1-troll-comprehensive-run-and-report: done
   story-6-2-mission-control-dashboard-implementation: superseded  # TUI approach abandoned — see 6-2-acl-dashboard.md
   story-6-2-acl-dashboard: done  # PIVOT 2026-04-01: FastAPI + HTML, queries CSS ACLs directly. Code review 2026-04-02: approved with 4 minor test fixes applied.
   story-6-3-funder-intervention-points: done  # Code review 2026-04-04: approved, 8 patches applied
-  epic-6-retrospective: optional
+  epic-6-retrospective: done  # 2026-04-12: Retro completed. Decisions: Discord over Telegram, seed-on-boot for agent workspaces, troll on Discord (#security_logs), ACL dashboard keeper. Five carried items must land as Story 4.1 prerequisites.
 
-  # Implementation Gaps to Address in 6.3 review
-
-  # 1. Category-specific troll runs not implemented
-  #   - AC2 specifies POST /api/troll/run/{category} for per-category launches
-  #   - Current implementation only has POST /api/troll/run (full suite)
-  #   - HTML buttons exist but don't call any endpoint (TODO in JS)
-  #   - Action: Either implement the category endpoints or update AC2 to match reality
-  # 2. Missing environment variables for troll subprocess
-  #   - POST /api/troll/run doesn't set OXIGRAPH_URL, QDRANT_URL, OPENCLAW_BASE_URL
-  #   - These are required by run_comprehensive.py but will only work if already in current environment
-  #   - Subprocess will fail silently if they're not set
-  #   - Action: Add env var setup in POST /api/troll/run handler, or verify they're always available in demo environment
-  # 3. CSS_CONNECT_URL vs CSS_BASE_URL subtle distinction
-  #   - acl-manage handler uses CSS_CONNECT_URL for direct pod access
-  #   - PodProvisioner uses CSS_BASE_URL for WebID construction
-  #   - Both default to :3000, so it works, but could cause issues if they ever differ
-  #   - Action: Document this clearly in dashboard_api.py comments for future maintainers
+  # Implementation Gaps (documented in epic-6-retro-2026-04-12.md, section "Technical Debt Register")
+  # AC2-GAP: Troll category launch env vars not validated (low — troll migrating to Discord)
+  # IG-1: CSS 404 semantics undocumented (low — attach to Story 4.1 prereq)
+  # CSS_CONNECT_URL vs CSS_BASE_URL: both default :3000, document if they diverge
 
   # Epic 4: Student Transfer & Data Portability (RESEQUENCED: was next, now CAPSTONE)
   # NOTE (2026-03-25): Marc's transfer becomes the integration test for the full stack.
   # Built WITH dashboard running — first epic where project lead watches live.
   # Consent mechanics (Epic 5) + dashboard (Epic 6) both available.
-  epic-4: backlog
-  story-4-1-marc-seamless-student-transfer: backlog
+  # NOTE (2026-04-12): Epic 6 retro decisions shape Epic 4 infrastructure:
+  #   - Discord as interaction layer (all agents bound to channels)
+  #   - Seed-on-boot agent workspaces (evolvable, factory-resettable)
+  #   - Troll on Discord (#security_logs heartbeat)
+  #   - ACL dashboard keeper (runs alongside)
+  #   - Nicolas as new user (own pod + agent proves onboarding)
+  #   - Five carried items (NFR-LAG, IG-1, ACL-DRIFT, consent catalog, invalidated assumptions) must land as Story 4.1 prerequisites
+  epic-4: in-progress
+  story-4-0-discord-seed-on-boot-infrastructure: ready-for-dev  # prerequisite sprint — Dockerfile, Discord bindings, HEARTBEAT.md, named volumes, 5 carried items
+  story-4-1-marc-school-transfer-via-discord: backlog     # was: story-4-1-marc-seamless-student-transfer
   story-4-2-cross-community-data-handling: backlog
+  story-4-3-nicolas-onboarding-proof: backlog
+  story-4-4-troll-heartbeat-security-monitor: backlog
+  story-4-5-ayoub-revokes-isabelle-reacts: backlog
   epic-4-retrospective: optional
-
-# Priority & Phasing
-priority_matrix:
-  must-ship:
-    - epic-1: "Pod Sovereignty & Access Control"
-    - epic-4: "Student Transfer (Marc journey)"
-    - epic-5: "Data Sovereignty Lifecycle (Ayoub journey)"
-    - story-3-4-claire-cross-context-insight-discovery: "Claire journey (must-ship from Epic 3)"
-  target:
-    - epic-3: "Cross-Context Learning Insights (with fallback: Claire only, Fatima and Isabelle deferred)"
-    - story-3-5-fatima-unified-parental-view: "Fatima journey (target if resources allow)"
-    - story-3-6-isabelle-evidence-based-policy: "Isabelle journey (target if resources allow)"
-  vision:
-    - epic-6: "Adversarial Trust Report (deferred if timeline tight)"
-
-# Epics by Phase (from PRD)
-phases:
-  phase-1-infrastructure:
-    label: "Infrastructure & Pod Setup"
-    epics: [epic-1]
-    duration_estimate: "1-2 weeks"
-    critical_path: story-1-2-nginx-content-negotiation-spike
-    critical_path_note: "3-day timebox; if it fails, fallback to direct CSS access"
-    risk_level: high
-
-  phase-2-data-intelligence:
-    label: "Semantic Data Intelligence"
-    epics: [epic-2]
-    duration_estimate: "2-3 weeks"
-    critical_path: story-2-2-xapi-oslo-rdf-ingestion-pipeline
-    critical_path_note: "OSLO vocabulary schema contract is the Phase 2→3 bridge"
-    risk_level: medium
-
-  phase-3-agents-scenarios:
-    label: "Cross-Context Agents & Scenarios"
-    epics: [epic-3]
-    status: done
-    note: "Epic 3 completed 2026-03-25. All 8 stories + 3.7.1 side-quest done. Claire, Fatima, Isabelle all shipped."
-
-  # Resequenced at Epic 3 retro (2026-03-25): 5→6→4
-  phase-4-sovereignty-and-dashboard:
-    label: "Consent Machinery + Dashboard"
-    epics: [epic-5, epic-6]
-    must_ship: [epic-5, "story-6-1", "story-6-2"]
-    target: ["story-6-3"]
-    note: "Epic 5 builds consent-as-architecture (Anagnorisis). Epic 6 gives project lead eyes (TUI dashboard)."
-    risk_level: medium
-
-  phase-5-capstone:
-    label: "Capstone Integration (Marc Transfer)"
-    epics: [epic-4]
-    must_ship: [epic-4]
-    note: "Marc's transfer WITH dashboard running. First epic where project lead watches live. Integration test for full stack."
-    risk_level: low
-
-# Sprint Backlog Ordering (Sequence by Critical Path)
-sprint_backlog_order:
-  1:
-    story: story-1-1-project-scaffold-service-orchestration
-    epic: epic-1
-    priority: must-ship
-    rationale: "Foundation: without this, no environment to work in"
-
-  2:
-    story: story-1-2-nginx-content-negotiation-spike
-    epic: epic-1
-    priority: must-ship
-    rationale: "Critical dependency with 3-day timebox; must resolve early"
-    fallback: "If spike fails by day 3, proceed with direct CSS access (FR7 deferred)"
-
-  3:
-    story: story-1-3-pod-provisioning-acl-configuration
-    epic: epic-1
-    priority: must-ship
-    rationale: "Core capability: pods must exist before any data work"
-
-  4:
-    story: story-1-4-acl-grant-revocation-audit
-    epic: epic-1
-    priority: must-ship
-    rationale: "Enables dynamic access control for transfer and role-based scenarios"
-
-  5:
-    story: story-2-1-oslo-vocabulary-schema-contract
-    epic: epic-2
-    priority: must-ship
-    rationale: "Phase 2→3 bridge: must be resolved before data pipeline can be tested"
-
-  6:
-    story: story-2-2-xapi-oslo-rdf-ingestion-pipeline
-    epic: epic-2
-    priority: must-ship
-    rationale: "Core data pipeline: enables testing of three-layer architecture"
-
-  7:
-    story: story-2-3-oxigraph-setup-rdf-storage-with-provenance
-    epic: epic-2
-    priority: must-ship
-    rationale: "Data layer 1: stores RDF triples with provenance"
-
-  8:
-    story: story-2-5-qdrant-setup-vector-embeddings
-    epic: epic-2
-    priority: must-ship
-    rationale: "Data layer 3: enables semantic search and hybrid queries"
-
-  # Epic 3 sequence reordered at Epic 2 retro (2026-03-21): de-risk OpenClaw first
-  9:
-    story: story-3-3-openClaw-agent-infrastructure
-    epic: epic-3
-    priority: must-ship
-    rationale: "De-risk biggest unknown first: new technology not yet coded against (Epic 2 retro decision)"
-
-  10:
-    story: story-3-1-shared-sparql-skill-foundation
-    epic: epic-3
-    priority: must-ship
-    rationale: "SPARQL skill built knowing agent runtime shape; reuses parameterize.py from Story 2.7"
-
-  11:
-    story: story-3-2-shared-qdrant-skill-foundation
-    epic: epic-3
-    priority: must-ship
-    rationale: "Qdrant skill reuses traceability.py from Story 2.6; built after agent runtime known"
-
-  12:
-    story: story-3-4-claire-cross-context-insight-discovery
-    epic: epic-3
-    priority: must-ship
-    rationale: "Must-ship journey: emotional core and hybrid query demo"
-
-  13:
-    story: story-3-7-graph-only-vs-hybrid-comparison
-    epic: epic-3
-    priority: must-ship
-    rationale: "Scientific comparison right after Claire when real cross-context data exists"
-
-  14:
-    story: story-3-5-fatima-unified-parental-view
-    epic: epic-3
-    priority: target
-    rationale: "Target journey: add if Phase 3 has capacity"
-
-  15:
-    story: story-3-6-isabelle-evidence-based-policy
-    epic: epic-3
-    priority: target
-    rationale: "Target journey: policy-level demo; add if resources permit"
-
-  16:
-    story: story-3-8-troll-cross-inference-validation
-    epic: epic-3
-    priority: must-ship
-    rationale: "Troll capstone last, same pattern as Epic 2; includes PRIV-1 probes"
-
-  # Epic 5 FIRST (resequenced at Epic 3 retro 2026-03-25): consent machinery before scenarios
-  17:
-    story: story-5-1-ayoub-governance-transition
-    epic: epic-5
-    priority: must-ship
-    rationale: "Must-ship journey: consent-as-architecture (Anagnorisis), acl-manage skill, governance transition"
-
-  18:
-    story: story-5-2-deletion-cascade-propagation
-    epic: epic-5
-    priority: must-ship
-    rationale: "Data lifecycle: right-to-erasure across all 3 layers + PRIV-1 opaque UUID fix"
-
-  19:
-    story: story-5-3-troll-deletion-timing-validation
-    epic: epic-5
-    priority: must-ship
-    rationale: "Adversarial validation of deletion cascade timing"
-
-  # Epic 5 Anagnorisis backlog stories (consent-as-architecture; implement if PoC capacity allows)
-  19b:
-    story: story-5-4-access-receipt-written-to-pod
-    epic: epic-5
-    priority: target
-    rationale: "Implements BP-1 (bidirectional accountability) — every institutional query produces a receipt in Ayoub's pod"
-
-  19c:
-    story: story-5-5-consent-grant-as-rdf-resource
-    epic: epic-5
-    priority: target
-    rationale: "Implements BP-3 (consent as 4-question RDF contract) — boolean flag evolves to dereferenceable URI"
-
-  19d:
-    story: story-5-6-ephemeral-time-scoped-consent
-    epic: epic-5
-    priority: target
-    rationale: "Implements BP-5 (double-aveugle Anagnorisis pattern) — ephemeral token, opaque identity, auto-revocation"
-
-  # Epic 6 SECOND (resequenced): dashboard before capstone demo
-  # Story 6.0 added at Epic 5 retro (2026-03-30): provision as Stage 0 + community pod seed
-  19e:
-    story: story-6-0-pipeline-provision-stage-zero
-    epic: epic-6
-    priority: must-ship
-    rationale: "Add Stage 0 to run_pipeline.py: provision_pods.py + camp-dietary-aggregate.ttl seed + JSONL events. Enables single-command full reset for demo (compose down -v → up -d → run_pipeline.py)."
-
-  20:
-    story: story-6-1-troll-comprehensive-run-and-report
-    epic: epic-6
-    priority: must-ship
-    rationale: "Comprehensive adversarial testing aggregating all attack categories"
-
-  21:
-    story: story-6-2-mission-control-dashboard-implementation
-    epic: epic-6
-    priority: must-ship
-    rationale: "TUI dashboard (Rich + JSONL, seeded by Story 3.7.1) — project lead gets eyes before capstone"
-
-  22:
-    story: story-6-3-funder-intervention-points
-    epic: epic-6
-    priority: target
-    rationale: "Enables funder interaction with live demo"
-
-  # Epic 4 LAST (resequenced): capstone integration test WITH dashboard
-  23:
-    story: story-4-1-marc-seamless-student-transfer
-    epic: epic-4
-    priority: must-ship
-    rationale: "Capstone: Marc's transfer exercises full stack (consent + ACL + dashboard) — first epic run with live visibility"
-
-  24:
-    story: story-4-2-cross-community-data-handling
-    epic: epic-4
-    priority: must-ship
-    rationale: "Cross-community data handling validates NL→FR transfer with all machinery in place"
 
 # Sprint Metadata
 notes:

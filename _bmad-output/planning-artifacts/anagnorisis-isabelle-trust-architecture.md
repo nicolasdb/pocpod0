@@ -6,6 +6,29 @@
 
 ---
 
+> **IMPLEMENTATION STATUS — 2026-04-12**
+>
+> | Section | Status |
+> |---------|--------|
+> | §3 Bidirectional accountability (access receipts) | ✅ Implemented — Story 5.4 (`receipt.py`, BP-1) |
+> | §4 Trust circle boundary / consent-as-RDF | ✅ Implemented — Story 5.1 (`acl-manage` skill, JSONL consent events) |
+> | §4 Ephemeral double-aveugle tokens | ✅ Implemented — Story 5.6 (`generate_token`, Oxigraph token index, BP-5) |
+> | §5 Tombstone revocation (temporal signal) | ✅ Implemented — Story 5.2 (deletion cascade, PRIV-1 fix) |
+> | §7 Data audit findings (Story 3.6) | ✅ Resolved — Story 3.6 done, vocabulary mismatch fixed |
+> | §8 Open decisions (data path A/B/C) | ✅ Resolved — Story 3.6 implementation chose path C (hybrid) |
+> | §9 New stories → "Access Receipt Written to Pod" | ✅ Implemented — Story 5.4 |
+> | §9 New stories → "Consent Grant as RDF Resource" | ✅ Implemented — Story 5.1 |
+> | §9 Post-PoC: Immutable Aggregate via IPFS+IPLD | 📋 In post-poc-backlog.md |
+> | §1 Isabelle's institutional reality | 🟢 Still live — demo narrative |
+> | §2 EU pull / regulatory alignment | 🟢 Still live — funding pitch |
+> | §6 5-star Linked Data evolution path | 🟢 Still live — pilot roadmap |
+> | §10 Funding strategy + consortium | 🟢 Still live — see project_funding_strategy.md |
+> | §11 The Inversion (demo pitch core) | 🟢 Still live — core funder narrative |
+
+---
+
+---
+
 ## 1. Isabelle's Institutional Reality (Validated)
 
 ### Who she is
