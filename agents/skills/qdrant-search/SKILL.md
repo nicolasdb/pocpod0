@@ -27,4 +27,14 @@ Returns results with:
 
 ## Implementation
 
+Use your `exec` tool to run the handler as a subprocess:
+
+```bash
+python3 {baseDir}/handler.py \
+  --query "your semantic search query" \
+  --collection pocpod0_embeddings \
+  --limit 10 \
+  --score-threshold 0.7
+```
+
 Handler: `{baseDir}/handler.py`

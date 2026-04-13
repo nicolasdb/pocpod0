@@ -1,7 +1,7 @@
 ---
 project_name: pocpod0
 sprint_generated: 2026-03-18
-last_updated: 2026-04-12  # Story 4.0 created: Discord+seed-on-boot infra. Epic 4 in-progress.
+last_updated: 2026-04-13  # Story 4.0 review: all tasks complete, SKILL.md paths fixed, requireMention loop fixed
 tracking_system: file-system
 project_key: NOKEY
 communication_language: English
@@ -95,7 +95,7 @@ development_status:
   #   - Nicolas as new user (own pod + agent proves onboarding)
   #   - Five carried items (NFR-LAG, IG-1, ACL-DRIFT, consent catalog, invalidated assumptions) must land as Story 4.1 prerequisites
   epic-4: in-progress
-  story-4-0-discord-seed-on-boot-infrastructure: ready-for-dev  # prerequisite sprint — Dockerfile, Discord bindings, HEARTBEAT.md, named volumes, 5 carried items
+  story-4-0-discord-seed-on-boot-infrastructure: review
   story-4-1-marc-school-transfer-via-discord: backlog     # was: story-4-1-marc-seamless-student-transfer
   story-4-2-cross-community-data-handling: backlog
   story-4-3-nicolas-onboarding-proof: backlog

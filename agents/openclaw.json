@@ -12,6 +12,16 @@
       }
     }
   },
+  // Discord channel bindings: route each agent to its dedicated channel
+  // Channel IDs hardcoded (non-secret snowflakes). See .env for reference.
+  "bindings": [
+    { "agentId": "claire-teacher", "match": { "channel": "discord", "peer": { "kind": "channel", "id": "1493148520490991726" } } },
+    { "agentId": "marc-admin", "match": { "channel": "discord", "peer": { "kind": "channel", "id": "1493148571975942175" } } },
+    { "agentId": "isabelle-policy", "match": { "channel": "discord", "peer": { "kind": "channel", "id": "1493148616636760134" } } },
+    { "agentId": "fatima-parent", "match": { "channel": "discord", "peer": { "kind": "channel", "id": "1493148923823390720" } } },
+    { "agentId": "ayoub-student", "match": { "channel": "discord", "peer": { "kind": "channel", "id": "1493148967033241660" } } },
+    { "agentId": "troll-adversary", "match": { "channel": "discord", "peer": { "kind": "channel", "id": "1493149022708564050" } } }
+  ],
   "env": {
     "OPENROUTER_API_KEY": "${OPENROUTER_API_KEY}"
   },
@@ -34,15 +44,15 @@
         "openrouter/qwen/qwen3-235b-a22b": { "alias": "Qwen3 235B" },
         "openrouter/mistral/mistral-large": { "alias": "Mistral Large" }
       },
-      "skipBootstrap": true
+      // skipBootstrap removed (Story 4.0): workspaces are now writable (named volume + seed-on-boot)
     },
     "list": [
       {
         "id": "claire-teacher",
         "default": true,
         "name": "Claire",
-        "workspace": "/app/agents/claire-teacher",
-        "agentDir": "/home/node/.openclaw/agents/claire-teacher/state",
+        // seed-on-boot: workspace is writable named volume path (Story 4.0)
+        "workspace": "/home/node/.openclaw/workspaces/claire-teacher",
         "identity": {
           "name": "Claire",
           "emoji": "👩‍🏫"
@@ -51,13 +61,14 @@
         "model": {
           "primary": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
           "fallbacks": ["openrouter/meta-llama/llama-4-maverick"]
-        }
+        },
+        // Heartbeat: Claire sends student check-ins to her channel every hour
+        "heartbeat": { "every": "60m", "target": "discord", "to": "1493148520490991726", "lightContext": true, "directPolicy": "allow" }
       },
       {
         "id": "marc-admin",
         "name": "Marc",
-        "workspace": "/app/agents/marc-admin",
-        "agentDir": "/home/node/.openclaw/agents/marc-admin/state",
+        "workspace": "/home/node/.openclaw/workspaces/marc-admin",
         "identity": {
           "name": "Marc",
           "emoji": "🏫"
@@ -66,18 +77,18 @@
       {
         "id": "isabelle-policy",
         "name": "Isabelle",
-        "workspace": "/app/agents/isabelle-policy",
-        "agentDir": "/home/node/.openclaw/agents/isabelle-policy/state",
+        "workspace": "/home/node/.openclaw/workspaces/isabelle-policy",
         "identity": {
           "name": "Isabelle",
           "emoji": "📊"
-        }
+        },
+        // Heartbeat: Isabelle posts aggregate consent state check to #general every hour
+        "heartbeat": { "every": "60m", "target": "discord", "to": "1493139143046463563", "lightContext": true, "directPolicy": "allow" }
       },
       {
         "id": "fatima-parent",
         "name": "Fatima",
-        "workspace": "/app/agents/fatima-parent",
-        "agentDir": "/home/node/.openclaw/agents/fatima-parent/state",
+        "workspace": "/home/node/.openclaw/workspaces/fatima-parent",
         "identity": {
           "name": "Fatima",
           "emoji": "👩‍👧‍👦"
@@ -86,8 +97,7 @@
       {
         "id": "ayoub-student",
         "name": "Ayoub",
-        "workspace": "/app/agents/ayoub-student",
-        "agentDir": "/home/node/.openclaw/agents/ayoub-student/state",
+        "workspace": "/home/node/.openclaw/workspaces/ayoub-student",
         "identity": {
           "name": "Ayoub",
           "emoji": "🎓"
@@ -96,8 +106,7 @@
       {
         "id": "troll-adversary",
         "name": "Troll",
-        "workspace": "/app/agents/troll-adversary",
-        "agentDir": "/home/node/.openclaw/agents/troll-adversary/state",
+        "workspace": "/home/node/.openclaw/workspaces/troll-adversary",
         "identity": {
           "name": "Troll",
           "emoji": "🧌"
@@ -106,18 +115,52 @@
         "model": {
           "primary": "openrouter/meta-llama/llama-4-scout",
           "fallbacks": ["openrouter/minimax/minimax-m2.5"]
-        }
+        },
+        // Heartbeat: Troll runs security probe every 30 min, posts to #security_logs
+        "heartbeat": { "every": "30m", "target": "discord", "to": "1493149078207594507", "lightContext": true, "directPolicy": "allow" }
       }
     ]
   },
   "skills": {
     "load": {
-      "extraDirs": ["/app/agents/skills"]
+      // seed-on-boot: skills are at writable workspace path (Story 4.0)
+      "extraDirs": ["/home/node/.openclaw/workspaces/skills"]
     },
     "entries": {
       "sparql-query": { "enabled": true },
       "qdrant-search": { "enabled": true },
       "acl-manage": { "enabled": true }
+    }
+  },
+  // Discord channel configuration (Story 4.0) — MUST be top-level, not under gateway
+  // Prerequisites: DISCORD_BOT_TOKEN, DISCORD_GUILD_ID and channel IDs must be set in .env
+  // See Discord Setup Checklist in 4-0-discord-seed-on-boot-infrastructure.md
+  "channels": {
+    "discord": {
+      "enabled": true,
+      "token": "${DISCORD_BOT_TOKEN}",
+      "dmPolicy": "allowlist",
+      "allowFrom": ["${DISCORD_ALLOW_FROM}"],
+      "groupPolicy": "allowlist",
+      // Guild and channel IDs are numeric snowflakes — hardcoded here (NOT env vars).
+      // REASON: OpenClaw env var interpolation ${VAR} works for JSON VALUES only, not JSON KEYS.
+      // Guild/channel IDs appear as object keys → must be literal strings.
+      // NEW SERVER SETUP: update guild key + all 8 channel keys below, plus bindings[] peer.id,
+      // plus heartbeat.to for claire/isabelle/troll. Cross-reference .env for the ID values.
+      "guilds": {
+        "1493139142152949820": {
+          "channels": {
+            "1493148520490991726": { "allow": true, "requireMention": true },    // #claire-teacher
+            "1493148571975942175": { "allow": true, "requireMention": true },    // #marc-admin
+            "1493148616636760134": { "allow": true, "requireMention": true },    // #isabelle-policy
+            "1493148923823390720": { "allow": true, "requireMention": true },    // #fatima-parent
+            "1493148967033241660": { "allow": true, "requireMention": true },    // #ayoub-student
+            "1493149022708564050": { "allow": true, "requireMention": true },    // #troll-adversary
+            "1493139143046463563": { "allow": true, "requireMention": true },    // #general
+            "1493149078207594507": { "allow": true, "requireMention": true }     // #security-logs
+          }
+        }
+      }
     }
   }
 }

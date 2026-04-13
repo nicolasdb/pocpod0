@@ -38,7 +38,7 @@ _This document captures all architectural decisions for the pocpod0 PoC — a de
 | Infrastructure & Operations | FR40 | docker-compose health-check orchestration |
 
 **Non-Functional Requirements:**
-- Performance: SPARQL < 500ms, hybrid < 2s, startup < 60s, cascade in single routine _(PRD spec; actual observed: SPARQL ~2s, hybrid ~10s/student in containerized Oxigraph + OpenRouter embedding. NFR to be renegotiated in Epic 5/6 based on evidence — see Epic 3 retro.)_
+- Performance: SPARQL < 500ms, hybrid < 2s, startup < 60s, cascade in single routine _(PRD spec; actual observed: SPARQL ~2s, hybrid ~10s/student in containerized Oxigraph + OpenRouter embedding. **Renegotiated and accepted for PoC (Story 4.0, Task 0.1):** NFR1 <500ms SPARQL → observed ~2s; NFR2 <2s hybrid → observed ~10s/student. These are containerized latencies with external LLM calls via OpenRouter; not representative of a production deployment. Accepted as known gap for PoC — no further optimization planned.)_
 - Security: ACL pass required, SPARQL injection pass required, probabilistic surfaces assessed honestly
 - Observability: query logging, troll activity logging, deletion cascade status
 - Reproducibility: deterministic infra tests, NL cross-inference flagged as non-deterministic
@@ -223,6 +223,8 @@ mkdir -p pocpod0/{infra,pipeline,agents,dashboard,scripts,data/{synthetic,schema
 - **Health endpoints (validated):** Oxigraph health is `GET /` (root, returns 200) — `/health` returns 404. CSS uses TCP connect check.
 - **CSS `--baseUrl` required (Story 3.3):** CSS must start with `--baseUrl http://community-solid-server:3000/`. Without it, requests from other containers arrive with `Host: community-solid-server` and CSS rejects them with HTTP 500 ("identifier outside configured identifier space"). All agent skill handlers calling CSS must use `http://community-solid-server:3000/` — never `localhost:3000`.
 - **CSS ACL state drift (Story 1.5/2.4):** CSS ACL state lives in the Docker volume, not static files. If CSS container is recreated, ACLs revert. Re-run `provision_pods.py` after any CSS restart before running ACL-sensitive tests.
+- **CSS ACL-DRIFT on restart (Story 4.0, Task 0.3 — IG-2):** After `docker-compose restart` (without `-v`), the CSS volume persists but ACL state may be stale if the provisioner was not re-run. The ACL dashboard may show incorrect state. Mitigation: re-run `provision_pods.py` (pipeline provision stage) after any restart, or use `docker-compose down -v && docker-compose up` for a clean factory reset. ACL drift is an expected PoC operational constraint.
+- **CSS 404 semantics (Story 4.0, Task 0.2 — IG-1):** CSS returns HTTP 404 for two distinct situations: (1) the resource does not exist, and (2) the request is unauthorized and no matching ACL rule exists for the identity. These are indistinguishable from the client's perspective. **Decision: Option A — accept ambiguity.** Callers must not rely on 404 meaning "not found" exclusively. Document this in agent skill error handling: treat 404 as "resource unavailable" (may be auth, may be absent).
 - **CSS HTTP status codes:** ACL PUT returns 205 (Reset Content) on success — accept `[200, 201, 205]`. Oxigraph store returns 201 (new graph) or 204 (update) — accept `[200, 201, 204]`.
 - **Rationale:** PRD FR40 and NFRs require reproducible startup with dependency ordering.
 

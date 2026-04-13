@@ -13,7 +13,7 @@ This skill executes parameterized SPARQL queries against the Oxigraph triple sto
 Use your `exec` tool to run the handler as a subprocess:
 
 ```bash
-python /app/agents/skills/sparql-query/handler.py \
+python3 /home/node/.openclaw/workspaces/skills/sparql-query/handler.py \
   --query-type TEMPLATE_NAME \
   --webid YOUR_WEBID \
   --role YOUR_ROLE \

@@ -20,7 +20,7 @@ It wraps the ACL primitives from `provision_pods.py` and enforces ownership scop
 Use your `exec` tool to run the handler as a subprocess:
 
 ```bash
-python /app/agents/skills/acl-manage/handler.py \
+python3 /home/node/.openclaw/workspaces/skills/acl-manage/handler.py \
   --action ACTION \
   --pod-name POD_NAME \
   [--identity WEBID] \
@@ -43,7 +43,7 @@ python /app/agents/skills/acl-manage/handler.py \
 Grants a WebID access to the pod at the specified access level.
 
 ```bash
-python /app/agents/skills/acl-manage/handler.py \
+python3 /home/node/.openclaw/workspaces/skills/acl-manage/handler.py \
   --action grant \
   --pod-name ayoub \
   --identity http://localhost:3000/guardian/profile/card#me \
@@ -57,7 +57,7 @@ Emits event: `acl.grant`
 Revokes a WebID's access from the pod.
 
 ```bash
-python /app/agents/skills/acl-manage/handler.py \
+python3 /home/node/.openclaw/workspaces/skills/acl-manage/handler.py \
   --action revoke \
   --pod-name ayoub \
   --identity http://localhost:3000/guardian/profile/card#me
@@ -69,7 +69,7 @@ Emits event: `acl.revoke`
 Views the current ACL state for the pod (read-only, no mutation).
 
 ```bash
-python /app/agents/skills/acl-manage/handler.py \
+python3 /home/node/.openclaw/workspaces/skills/acl-manage/handler.py \
   --action view \
   --pod-name ayoub
 ```
@@ -80,7 +80,7 @@ Emits event: `acl.view`
 Age-based sovereignty transition — revokes all non-owner WebIDs, making the pod owner sole governor.
 
 ```bash
-python /app/agents/skills/acl-manage/handler.py \
+python3 /home/node/.openclaw/workspaces/skills/acl-manage/handler.py \
   --action transition \
   --pod-name ayoub
 ```
