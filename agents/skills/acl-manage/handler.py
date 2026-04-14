@@ -35,9 +35,13 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-# Compute project root: handler.py is at {root}/agents/skills/acl-manage/handler.py
+# Compute project root.
+# In container: handler.py lives at /home/node/.openclaw/workspaces/skills/acl-manage/handler.py
+# (seeded from the image), so the 4-level parent would be /home/node — wrong.
+# Set POCPOD0_ROOT=/app in docker-compose to override (pipeline/src and infra/ are at /app/).
+# Outside container: handler.py is at {root}/agents/skills/acl-manage/handler.py — 4 levels up is correct.
 _HERE = Path(__file__).resolve()
-_PROJECT_ROOT = _HERE.parent.parent.parent.parent  # agents/skills/acl-manage -> root
+_PROJECT_ROOT = Path(os.environ["POCPOD0_ROOT"]) if "POCPOD0_ROOT" in os.environ else _HERE.parent.parent.parent.parent
 
 # Add pipeline src to path so we can import provision_pods
 _PIPELINE_SRC = _PROJECT_ROOT / "pipeline" / "src"

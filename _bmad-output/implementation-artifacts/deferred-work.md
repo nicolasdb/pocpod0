@@ -21,3 +21,22 @@
 - **D3: Troll events display ([ATTACKS] tab)** — `troll_events` polled and stored but not rendered. Deferred to Story 6.3 (Funder Intervention Points) where troll summary is contextually relevant to funder audience.
 - `DEFAULT_POD_URI` and `DEFAULT_RESOURCE_URI` hardcoded to `http://localhost:3000/ayoub/` regardless of `CSS_BASE_URL` env var. Acceptable for PoC; fix before pilot.
 - `blocking_pass` logic ignores `partial` results in blocking categories (ACL, SPARQL). A category with 100% partial results returns `blocking_pass=True`. Intentional per spec ("fails"); revisit if partial = inconclusive is a concern for pilot.
+
+## Deferred from: code review of 4-0-discord-seed-on-boot-infrastructure (2026-04-13)
+
+- **D1: `DISCORD_ALLOW_FROM` unset → literal string in DM allowlist** — `"allowFrom": ["${DISCORD_ALLOW_FROM}"]` with unset var silently rejects all DMs. OpenClaw framework limitation; no startup validation hook. Acceptable for PoC (single user, variable is documented in .env.example).
+- **D2: Volume rename openclaw-data → openclaw-data-default breaks existing deployments** — existing volumes silently lost on `docker-compose up`. PoC only; no production deployments. Document before any multi-operator setup.
+- **D3: Skill files not updated between factory resets** — `if [ ! -d "${SKILLS_TARGET}" ]` guard means skill bug fixes don't apply until `down -v`. By-design PoC tradeoff; factory reset is documented mechanism. Add checksum-based sync before pilot.
+- **D4: Troll heartbeat config-validated only, not runtime-observed** — 30m interval not witnessed firing. Config structure identical to Claire's working heartbeat. Accept for PoC; validate by observation before pilot demo.
+
+## Side Quest: OpenClaw gateway bind / WebUI + CLI pairing (2026-04-14)
+
+- **Issue:** With `OPENCLAW_GATEWAY_BIND=lan` (OpenClaw-recommended Docker value), the browser WebUI at `http://localhost:18789` reaches the gateway but shows "disconnected — pairing required"; the CLI inside the container cannot connect via `ws://127.0.0.1:18789` (loopback not bound), so `openclaw devices approve` has no working path to clear the pairing. Exec approvals from Discord also depend on the WebUI/TUI approval loop in the absence of a confirmed native Discord execApprovals registration.
+- **Regression vs. Epic 3:** Stories 3.3–3.8 did not hit this. The Story 4.0 seed-on-boot refactor changed the entrypoint and bind semantics; something in that transition invalidated the previously working state. Diff Story 3.3 compose/entrypoint against current to isolate the delta.
+- **Tried (all dead-ends):** `bind=all` (invalid value, crash-loop), `bind=auto` (loopback-only, host port unreachable), `bind=lan` (current — WebUI reachable but CLI pairing stuck). Current state is equivalent to Story 4.0 RI-2.
+- **Next steps for the side quest:**
+  1. Diff Story 3.3 openclaw config/compose vs. current to find the behavior delta.
+  2. Investigate `bind=custom` with an explicit listen address covering both loopback and eth0 (per OpenClaw gateway config reference).
+  3. Alternative: have `openclaw-cli` connect via the container's eth0 interface instead of `127.0.0.1` so CLI works under `bind=lan`.
+  4. Validate whether `channels.discord.execApprovals` actually registers a native approvals client once pairing is unblocked.
+- **Workaround for now:** Accept as carried RI-2. Discord chat + agent heartbeats work; WebUI control and CLI pairing remain broken. Observe via `podman logs openclaw-gateway`.

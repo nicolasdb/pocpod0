@@ -1,6 +1,6 @@
 # Story 4.0: Discord & Seed-on-Boot Infrastructure
 
-Status: review
+Status: done
 
 ## Story
 
@@ -410,6 +410,16 @@ The 30-minute troll heartbeat was never witnessed firing in this session. Config
 - `agents/marc-admin/HEARTBEAT.md` — placeholder (no periodic behavior)
 - `agents/fatima-parent/HEARTBEAT.md` — placeholder (no periodic behavior)
 - `agents/ayoub-student/HEARTBEAT.md` — placeholder (no periodic behavior)
+
+### Review Findings
+
+- [x] [Review][Patch] Missing skills seed existence guard [infra/openclaw/entrypoint.sh:~37] — fixed, guard added
+- [x] [Review][Patch] No pre-flight check for `/tmp/openclaw.json` [infra/openclaw/entrypoint.sh:~48] — fixed, guard with diagnostic added
+- [x] [Review][Patch] `DISCORD_ALLOW_FROM` hardcoded (was env var, could be literal string if unset) [agents/openclaw.json:143] — fixed, hardcoded user ID discord:790865906036244500 like channel IDs
+- [x] [Review][Patch] `acl-manage` handler fails in container: missing `pocpod0_pipeline` module + `python3-yaml` + wrong project root — fixed: POCPOD0_ROOT env var in docker-compose, pipeline/src + infra/css/pods COPY in Dockerfile, python3-yaml added to apt-get, handler.py updated to use POCPOD0_ROOT
+- [x] [Review][Defer] Volume rename openclaw-data → openclaw-data-default, silent data loss on upgrade [docker-compose.yml] — dismissed, no existing volume (podman compose, PoC only)
+- [x] [Review][Defer] Skill files not updated between factory resets (seeded once, never re-synced) — dismissed, by-design: repo is source of truth, factory reset is propagation mechanism
+- [x] [Review][Defer] RI-1: troll heartbeat runtime-validated — heartbeat fired (screenshot confirmed), ACL failure root-caused and patched
 
 **Post-session fixes (2026-04-13):**
 

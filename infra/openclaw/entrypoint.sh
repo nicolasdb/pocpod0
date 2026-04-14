@@ -36,6 +36,10 @@ done
 
 # Seed skills directory
 if [ ! -d "${SKILLS_TARGET}" ]; then
+    if [ ! -d "${SEED_DIR}/skills" ]; then
+        echo "[entrypoint] ERROR: skills seed directory missing at ${SEED_DIR}/skills"
+        exit 1
+    fi
     echo "[entrypoint] Seeding skills workspace"
     mkdir -p "${SKILLS_TARGET}"
     cp -r "${SEED_DIR}/skills/." "${SKILLS_TARGET}/"
@@ -45,13 +49,21 @@ fi
 
 # Always deploy fresh openclaw.json from the bind-mounted /tmp/openclaw.json.
 # Config is not evolvable — always comes from the repo image at startup.
+if [ ! -f /tmp/openclaw.json ]; then
+    echo "[entrypoint] ERROR: /tmp/openclaw.json not found — is the bind-mount configured?"
+    echo "[entrypoint] Expected: ./agents/openclaw.json:/tmp/openclaw.json:ro in docker-compose.yml"
+    exit 1
+fi
 echo "[entrypoint] Deploying openclaw.json"
 mkdir -p /home/node/.openclaw
 cp /tmp/openclaw.json /home/node/.openclaw/openclaw.json
 
 # Launch the gateway
+# --bind auto: listen on loopback + lan (valid values: loopback|lan|tailnet|auto|custom).
+#   - loopback: required for openclaw-cli (network_mode:service) to connect via ws://127.0.0.1
+#   - lan: required for Docker port mapping (host:18789 → container:18789) to reach the gateway
 echo "[entrypoint] Starting OpenClaw gateway"
 exec node dist/index.js gateway \
-    --bind "${OPENCLAW_GATEWAY_BIND:-lan}" \
+    --bind "${OPENCLAW_GATEWAY_BIND:-auto}" \
     --port "${OPENCLAW_GATEWAY_PORT:-18789}" \
     --allow-unconfigured

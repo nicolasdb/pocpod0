@@ -89,12 +89,15 @@ services:
       - HOME=/home/node
       - NODE_ENV=production
       - TERM=xterm-256color
-      - OPENCLAW_GATEWAY_BIND=${OPENCLAW_GATEWAY_BIND:-lan}
+      - OPENCLAW_GATEWAY_BIND=${OPENCLAW_GATEWAY_BIND:-all}
       - OPENCLAW_GATEWAY_PORT=${OPENCLAW_GATEWAY_PORT:-18789}
       - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN}
       - GOG_KEYRING_PASSWORD=${GOG_KEYRING_PASSWORD}
       - XDG_CONFIG_HOME=/home/node/.openclaw
       - PATH=/home/linuxbrew/.linuxbrew/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      # POCPOD0_ROOT: tells acl-manage/handler.py where pipeline/src and infra/ live in the container.
+      # handler.py falls back to 4-level parent of __file__ (correct for dev, wrong inside container).
+      - POCPOD0_ROOT=/app
     volumes:
       # openclaw.json bind-mount: config is always deployed fresh from repo (not evolvable)
       - ./agents/openclaw.json:/tmp/openclaw.json:ro${VOLUME_FLAGS:-}
@@ -111,6 +114,38 @@ services:
       timeout: 5s
       retries: 6
       start_period: 15s
+
+  # One-shot CLI service for gateway management (device pairing, dashboard URLs).
+  # Requires image rebuild: distrobox-host-exec podman compose build openclaw-gateway
+  #
+  # Usage (from distrobox):
+  #   distrobox-host-exec podman compose --profile cli run --rm openclaw-cli devices list
+  #   distrobox-host-exec podman compose --profile cli run --rm openclaw-cli devices approve <requestId>
+  #   distrobox-host-exec podman compose --profile cli run --rm openclaw-cli dashboard --no-open
+  #
+  # cli.sh auto-injects --url ws://127.0.0.1:18789 --token $OPENCLAW_GATEWAY_TOKEN.
+  # Uses network_mode:service:openclaw-gateway (shared network namespace) so loopback resolves
+  # to the gateway — no break-glass OPENCLAW_ALLOW_INSECURE_PRIVATE_WS needed.
+  openclaw-cli:
+    image: pocpod0-openclaw:latest
+    profiles: [cli]
+    env_file:
+      - .env
+    environment:
+      - HOME=/home/node
+      - XDG_CONFIG_HOME=/home/node/.openclaw
+      - PATH=/home/linuxbrew/.linuxbrew/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    volumes:
+      - openclaw-data-default:/home/node/.openclaw
+    # Share gateway network namespace: CLI connects via ws://127.0.0.1 (loopback) instead of
+    # ws://openclaw-gateway (non-loopback, would require OPENCLAW_ALLOW_INSECURE_PRIVATE_WS break-glass).
+    # Requires gateway --bind all so it listens on loopback in addition to eth0.
+    network_mode: "service:openclaw-gateway"
+    depends_on:
+      openclaw-gateway:
+        condition: service_healthy
+    entrypoint: ["/app/cli.sh"]
+    user: node
 
 volumes:
   css-data:

@@ -1,7 +1,9 @@
 {
   "gateway": {
     "controlUi": {
-      "dangerouslyAllowHostHeaderOriginFallback": true
+      "dangerouslyAllowHostHeaderOriginFallback": true,
+      // Allow browser connections from host-mapped port (http://localhost:18789 or http://127.0.0.1:18789)
+      "allowedOrigins": ["http://localhost:18789", "http://127.0.0.1:18789"]
     },
     // Enable OpenAI-compatible HTTP API for programmatic agent interaction
     // Used by: troll cross-inference probes (Story 3.8), agent scripting (Epic 5/6)
@@ -140,8 +142,18 @@
       "enabled": true,
       "token": "${DISCORD_BOT_TOKEN}",
       "dmPolicy": "allowlist",
-      "allowFrom": ["${DISCORD_ALLOW_FROM}"],
+      // User ID hardcoded (non-secret snowflake). See .env DISCORD_ALLOW_FROM for reference.
+      // Hardcoded like channel IDs: env var interpolation works for values but unset var = literal string.
+      "allowFrom": ["discord:790865906036244500"],
       "groupPolicy": "allowlist",
+      // Enable in-Discord button approvals for exec tool calls (Story 4.0 follow-up).
+      // Without this, agents hit "chat exec approvals are not enabled on Discord".
+      "execApprovals": {
+        "enabled": true,
+        "approvers": ["790865906036244500"],
+        "target": "both",
+        "cleanupAfterResolve": false
+      },
       // Guild and channel IDs are numeric snowflakes — hardcoded here (NOT env vars).
       // REASON: OpenClaw env var interpolation ${VAR} works for JSON VALUES only, not JSON KEYS.
       // Guild/channel IDs appear as object keys → must be literal strings.
