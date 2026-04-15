@@ -1,3 +1,6 @@
+# Always pull before rebuild to get the latest OpenClaw version:
+#   distrobox-host-exec podman pull ghcr.io/openclaw/openclaw:latest
+#   distrobox-host-exec podman compose build openclaw-gateway
 ARG OPENCLAW_IMAGE=ghcr.io/openclaw/openclaw:latest
 FROM ${OPENCLAW_IMAGE}
 

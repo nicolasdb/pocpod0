@@ -29,14 +29,13 @@
 - **D3: Skill files not updated between factory resets** — `if [ ! -d "${SKILLS_TARGET}" ]` guard means skill bug fixes don't apply until `down -v`. By-design PoC tradeoff; factory reset is documented mechanism. Add checksum-based sync before pilot.
 - **D4: Troll heartbeat config-validated only, not runtime-observed** — 30m interval not witnessed firing. Config structure identical to Claire's working heartbeat. Accept for PoC; validate by observation before pilot demo.
 
-## Side Quest: OpenClaw gateway bind / WebUI + CLI pairing (2026-04-14)
+## Side Quest: OpenClaw gateway bind / WebUI + CLI pairing — RESOLVED (2026-04-15)
 
-- **Issue:** With `OPENCLAW_GATEWAY_BIND=lan` (OpenClaw-recommended Docker value), the browser WebUI at `http://localhost:18789` reaches the gateway but shows "disconnected — pairing required"; the CLI inside the container cannot connect via `ws://127.0.0.1:18789` (loopback not bound), so `openclaw devices approve` has no working path to clear the pairing. Exec approvals from Discord also depend on the WebUI/TUI approval loop in the absence of a confirmed native Discord execApprovals registration.
-- **Regression vs. Epic 3:** Stories 3.3–3.8 did not hit this. The Story 4.0 seed-on-boot refactor changed the entrypoint and bind semantics; something in that transition invalidated the previously working state. Diff Story 3.3 compose/entrypoint against current to isolate the delta.
-- **Tried (all dead-ends):** `bind=all` (invalid value, crash-loop), `bind=auto` (loopback-only, host port unreachable), `bind=lan` (current — WebUI reachable but CLI pairing stuck). Current state is equivalent to Story 4.0 RI-2.
-- **Next steps for the side quest:**
-  1. Diff Story 3.3 openclaw config/compose vs. current to find the behavior delta.
-  2. Investigate `bind=custom` with an explicit listen address covering both loopback and eth0 (per OpenClaw gateway config reference).
-  3. Alternative: have `openclaw-cli` connect via the container's eth0 interface instead of `127.0.0.1` so CLI works under `bind=lan`.
-  4. Validate whether `channels.discord.execApprovals` actually registers a native approvals client once pairing is unblocked.
-- **Workaround for now:** Accept as carried RI-2. Discord chat + agent heartbeats work; WebUI control and CLI pairing remain broken. Observe via `podman logs openclaw-gateway`.
+- **Original issue (2026-04-14):** WebUI unreachable under `podman compose up`. Root cause hypothesized as podman-compose#967 (bridge instead of pasta, iptables failure in rootless podman).
+- **Resolution (Story 4.0.1, 2026-04-15):** Investigation found the premise was wrong:
+  1. System uses **Docker Compose v2.39.4** (not podman-compose) — podman-compose#967 doesn't apply.
+  2. Podman auto-rebased to **v5.8.1** via Kinoite rebase — rootless bridge port forwarding works correctly.
+  3. Earlier "connection reset" was a timing issue (curl fired before gateway's ~40s Node.js startup completed).
+  4. WebUI is now accessible at `http://localhost:18789` (HTTP 200). No code changes required.
+- **Remaining known issue (RI-2 from Story 4.0):** CLI pairing (`openclaw devices list/approve`) still fails with WebSocket handshake timeout. Pre-existing; not caused by network mode. Workaround: use Discord for agent interaction; observe via `podman logs openclaw-gateway`.
+- **Story 4.0.2 (VPS deploy):** Still valid as a strategic goal (pilot-bridge path) but is no longer needed as an emergency unblock for local Epic 4 development.
