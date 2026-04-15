@@ -29,4 +29,9 @@ COPY infra/openclaw/entrypoint.sh /app/entrypoint.sh
 COPY infra/openclaw/cli.sh /app/cli.sh
 RUN chmod +x /app/entrypoint.sh /app/cli.sh
 
+# Pre-create the volume mount point with correct ownership.
+# rootless podman handles this via user namespace mapping; rootful Docker does not —
+# named volumes are created as root:root, causing Permission denied in the entrypoint.
+RUN mkdir -p /home/node/.openclaw && chown -R node:node /home/node/.openclaw
+
 USER node

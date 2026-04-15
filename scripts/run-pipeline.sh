@@ -21,12 +21,15 @@ export CSS_BASE_URL="${CSS_BASE_URL:-http://localhost:3000}"
 DRY_RUN=""
 TROLL_COUNT=5000
 INPUT_DIR="${INPUT_DIR:-$REPO_ROOT/data/synthetic}"
+WITH_DASHBOARD=1
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --dry-run) DRY_RUN="--dry-run"; shift ;;
-    --count)   TROLL_COUNT="$2"; shift 2 ;;
-    --input-dir) INPUT_DIR="$2"; shift 2 ;;
+    --dry-run)        DRY_RUN="--dry-run"; shift ;;
+    --count)          TROLL_COUNT="$2"; shift 2 ;;
+    --input-dir)      INPUT_DIR="$2"; shift 2 ;;
+    --with-dashboard) WITH_DASHBOARD=1; shift ;;
+    --no-dashboard)   WITH_DASHBOARD=0; shift ;;
     *) echo "Unknown argument: $1" >&2; exit 1 ;;
   esac
 done
@@ -38,6 +41,20 @@ fi
 
 # shellcheck source=/dev/null
 source "$VENV/bin/activate"
+
+mkdir -p "$REPO_ROOT/data"
+
+# Launch dashboard in background (auto-exits when pipeline.done is detected)
+DASHBOARD_PID=""
+if [[ "$WITH_DASHBOARD" == "1" ]]; then
+  pocpod0-dashboard &
+  DASHBOARD_PID=$!
+fi
+
+cleanup() {
+  [[ -n "$DASHBOARD_PID" ]] && kill "$DASHBOARD_PID" 2>/dev/null || true
+}
+trap cleanup EXIT
 
 echo "=== Step 1: Generate scenario dataset ==="
 python -m pocpod0_pipeline.generate_scenarios
@@ -59,3 +76,6 @@ python -m pocpod0_pipeline.load_graph \
   --load-schema
 
 echo "=== Pipeline complete ==="
+
+# Wait for dashboard to render final summary before exiting
+[[ -n "$DASHBOARD_PID" ]] && wait "$DASHBOARD_PID" 2>/dev/null || true

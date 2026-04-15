@@ -52,6 +52,9 @@ help:
 	@echo "  vps-logs      Follow VPS stack logs"
 	@echo "  vps-ps        Show VPS container status"
 	@echo "  vps-ssh       Open SSH session to VPS"
+	@echo "  vps-pipeline        Run pipeline on VPS (no TUI)"
+	@echo "  vps-pipeline-watch  Watch pipeline TUI in second terminal"
+	@echo "  vps-setup           One-time: create pipeline venv + install deps on VPS"
 
 # ── Infrastructure ────────────────────────────────────────────────────────────
 
@@ -130,10 +133,10 @@ rebuild: pull build
 # ── Pipeline & tools ──────────────────────────────────────────────────────────
 
 pipeline:
-	@bash scripts/run-pipeline.sh --with-dashboard
+	@. $(PIPELINE_VENV) && python pipeline/run_pipeline.py --with-dashboard
 
 pipeline-dry:
-	@bash scripts/run-pipeline.sh --dry-run
+	@. $(PIPELINE_VENV) && python pipeline/run_pipeline.py --dry-run --with-dashboard
 
 # Start the FastAPI ACL dashboard; relies on pipeline venv.
 dashboard:
@@ -160,14 +163,25 @@ VPS_PATH   := /home/nicolas/pocpod0
 
 .PHONY: vps-push vps-build vps-deploy vps-up vps-down vps-logs vps-ps vps-ssh
 
-## Sync local repo + .env to VPS (excludes .git, __pycache__, .pyc, backups)
+## Sync local repo + .env to VPS (mirrors .gitignore exclusions + dev artifacts)
 vps-push:
 	rsync -avz --delete-after \
 		--exclude=".git" \
-		--exclude="*__pycache__*" \
-		--exclude="*.pyc" \
-		--exclude="backups/" \
+		--exclude=".claude/" \
+		--exclude=".gemini/" \
+		--exclude="_bmad/" \
+		--exclude="_bmad-output/" \
+		--exclude="__pycache__/" \
+		--exclude="*.py[cod]" \
+		--exclude=".venv/" \
+		--exclude="venv/" \
 		--exclude="pipeline/.venv/" \
+		--exclude="pipeline/venv/" \
+		--exclude="design-artifacts/" \
+		--exclude=".pytest_cache/" \
+		--exclude=".coverage" \
+		--exclude="*.tmp" \
+		--exclude="*.bak" \
 		./ $(VPS_REMOTE):$(VPS_PATH)/
 	@echo "Sync complete."
 
@@ -198,3 +212,15 @@ vps-ps:
 ## Open SSH session to VPS
 vps-ssh:
 	ssh $(VPS_REMOTE)
+
+## Run pipeline on VPS with TUI dashboard (single terminal)
+vps-pipeline:
+	ssh $(VPS_REMOTE) "cd $(VPS_PATH) && . pipeline/.venv/bin/activate && python pipeline/run_pipeline.py --with-dashboard"
+
+## Watch pipeline TUI dashboard on VPS (open in second terminal before running vps-pipeline)
+vps-pipeline-watch:
+	ssh $(VPS_REMOTE) "cd $(VPS_PATH) && . pipeline/.venv/bin/activate && pocpod0-dashboard"
+
+## One-time: create pipeline venv + install deps on VPS (run after first vps-push)
+vps-setup:
+	ssh $(VPS_REMOTE) "cd $(VPS_PATH)/pipeline && python3 -m venv .venv && .venv/bin/pip install -e '.[dev]' --quiet && echo 'venv ready'"

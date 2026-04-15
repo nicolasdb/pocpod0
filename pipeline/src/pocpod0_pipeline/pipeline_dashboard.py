@@ -231,9 +231,10 @@ def main() -> None:
     if not log_path.parent.exists():
         log_path = _PIPELINE_LOG
 
-    with Live(console=console, refresh_per_second=4, screen=True) as live:
+    with Live(console=console, refresh_per_second=4, screen=False) as live:
         log_path.touch()  # create if not yet present
         with open(jsonl_path) as f, open(log_path, "a+") as lf:
+            f.seek(0, 2)   # start at end — only watch new events, not previous runs
             lf.seek(0, 2)  # start at end — only tail new lines
             while True:
                 # Read progress events from pipeline.log

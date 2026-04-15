@@ -90,7 +90,8 @@ services:
       - NODE_ENV=production
       - TERM=xterm-256color
       - OPENCLAW_GATEWAY_BIND=${OPENCLAW_GATEWAY_BIND:-all}
-      - OPENCLAW_GATEWAY_PORT=${OPENCLAW_GATEWAY_PORT:-18789}
+      # Container always listens on 18789 internally; OPENCLAW_GATEWAY_PORT is host-port only (see ports: mapping below).
+      - OPENCLAW_GATEWAY_PORT=18789
       - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN}
       - GOG_KEYRING_PASSWORD=${GOG_KEYRING_PASSWORD}
       - XDG_CONFIG_HOME=/home/node/.openclaw
@@ -107,6 +108,9 @@ services:
       - openclaw-data-default:/home/node/.openclaw
     ports:
       - "${OPENCLAW_GATEWAY_HOST:-127.0.0.1}:${OPENCLAW_GATEWAY_PORT:-18789}:18789"
+    networks:
+      - default
+      - gateway
     entrypoint: ["/app/entrypoint.sh"]
     healthcheck:
       test: ["CMD-SHELL", "node -e \"const n=require('net');const c=n.createConnection(18789,'localhost');c.on('connect',()=>{c.end();process.exit(0)});c.on('error',()=>process.exit(1))\""]
@@ -146,6 +150,11 @@ services:
         condition: service_healthy
     entrypoint: ["/app/cli.sh"]
     user: node
+
+networks:
+  default: {}
+  gateway:
+    external: true  # shared with nginx-gateway (hetzner-gateway repo)
 
 volumes:
   css-data:
