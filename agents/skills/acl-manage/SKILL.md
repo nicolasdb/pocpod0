@@ -33,7 +33,10 @@ python3 /home/node/.openclaw/workspaces/skills/acl-manage/handler.py \
 - `--pod-name`: Target pod name (e.g. `ayoub`)
 
 **Optional arguments:**
-- `--identity`: Full WebID URI of the target identity (required for `grant` and `revoke`)
+- `--identity`: Full WebID URI of the target identity (required for `grant` and `revoke`).
+  Must use `CSS_IDENTIFIER_URL` namespace — e.g. `http://localhost:3000/claire/profile/card#me`
+  on local dev, `https://mypods.example.com/claire/profile/card#me` on VPS.
+  Construct as: `$CSS_IDENTIFIER_URL/<agent-name>/profile/card#me`
 - `--role`: Role label for grant authorization block (required for `grant`)
 - `--access-level`: Access level for grant — `read`, `read/write`, or `control` (default: `read`)
 

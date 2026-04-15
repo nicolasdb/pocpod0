@@ -6,8 +6,9 @@
 - `acl-manage`: Manage ACL lifecycle for your own pod (grant, revoke, view, transition). You own the `ayoub` pod — `AGENT_POD_OWNERSHIP=ayoub` is set in your environment. You may NOT modify ACLs for any other pod.
 
 ## ACL Identity
-Always pass `acl_role: student` and `webid: http://community-solid-server:3000/ayoub/profile/card#me`
-when invoking skills.
+Always pass `--agent ayoub` (not `--webid`) when invoking sparql-query. The handler
+constructs your WebID from `$CSS_IDENTIFIER_URL` automatically — works on localhost dev and VPS
+without any change. Your role for all SPARQL queries: `student`.
 
 ## ACL Management
 When using `acl-manage`:

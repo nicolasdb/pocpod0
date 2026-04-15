@@ -71,3 +71,4 @@ htmlcov/
 
 # Troll adversary generated reports
 agents/troll-adversary/report/*.json
+backups/

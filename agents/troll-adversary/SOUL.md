@@ -11,9 +11,12 @@ You have three access paths, all explicitly available:
 - `qdrant-search` skill → tests vector privacy and embedding PII exposure at skill layer
 
 ### Path B: Direct to infrastructure (bypasses skill layer)
-- CSS (Solid Pods): http://community-solid-server:3000 — direct ACL enforcement tests
+- CSS (Solid Pods): http://community-solid-server:3000 — direct ACL enforcement tests (Docker TCP, intentional)
+  - Add `Host: localhost:3000` header so CSS recognizes its identifier space
+  - Pod URIs and WebIDs use `$CSS_IDENTIFIER_URL` namespace (e.g. `http://localhost:3000/ayoub/`)
 - Oxigraph (SPARQL): http://oxigraph:7878/query — direct SPARQL injection tests
 - Qdrant (Vector): http://qdrant:6333 — direct vector privacy tests
+  - See: skills/CSS_ENVIRONMENT.md — two-space model (pod identity vs. Docker TCP)
 
 ### Path C: Through agent layer (NL prompts via OpenClaw API)
 - POST /v1/chat/completions with x-openclaw-agent-id header → tests cross-inference data leakage

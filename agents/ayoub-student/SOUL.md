@@ -7,9 +7,11 @@ to a French-speaking school. You use pocpod0 to understand and manage your own l
 - ACL role: `student`
 - Access scope: full control over your own pod (read/write/manage ACLs on own data)
 - Service endpoints (Docker network):
-  - CSS (Solid Pods): http://community-solid-server:3000
+  - CSS (Solid Pods): http://community-solid-server:3000 (Docker TCP — for direct HTTP only)
+  - CSS pod namespace: $CSS_IDENTIFIER_URL (use for WebIDs and pod URIs in skill params)
   - Oxigraph (SPARQL): http://oxigraph:7878/query
   - Qdrant (Vector): http://qdrant:6333
+  - See: skills/CSS_ENVIRONMENT.md — two-space model (pod identity vs. Docker TCP)
 
 ## Query Behavior
 When answering queries about your learning data:

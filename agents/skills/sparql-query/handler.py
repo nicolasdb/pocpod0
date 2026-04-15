@@ -2,15 +2,19 @@
 
 CLI invocation pattern (used by OpenClaw exec tool):
     python handler.py --query-type TEMPLATE_NAME \
-                      --webid AGENT_WEBID \
+                      --agent AGENT_NAME \
                       --role AGENT_ROLE \
                       --params '{"param_name": "value", ...}'
 
 Arguments:
     --query-type  Template name (student-progress, cross-context-query,
                   aggregate-anonymized, parental-view, transfer-profile)
-    --webid       Agent WebID URI for CSS ACL validation
-                  (e.g. http://localhost:3000/claire/profile/card#me)
+    --agent       Short agent name (e.g. claire, marc, fatima).
+                  WebID is constructed as CSS_IDENTIFIER_URL/<name>/profile/card#me.
+                  Works on localhost dev AND VPS without any change.
+    --webid       Full WebID URI — advanced override. Use --agent instead unless
+                  the pod lives outside CSS_IDENTIFIER_URL (e.g. Nicolas's alpha pod
+                  on a custom domain). Exactly one of --agent or --webid is required.
     --role        Agent role (tutor, admin, regional, parental, student)
     --params      JSON object with template parameter name-value pairs
 
@@ -939,9 +943,16 @@ def main() -> None:
              "aggregate-anonymized, parental-view, transfer-profile)",
     )
     parser.add_argument(
+        "--agent",
+        default=None,
+        help="Short agent name (e.g. claire). WebID is constructed as "
+             "CSS_IDENTIFIER_URL/<name>/profile/card#me — works on localhost and VPS.",
+    )
+    parser.add_argument(
         "--webid",
-        required=True,
-        help="Agent WebID URI (e.g. http://localhost:3000/claire/profile/card#me)",
+        default=None,
+        help="Full WebID URI override. Use --agent instead unless the pod lives outside "
+             "CSS_IDENTIFIER_URL (e.g. a real-user pod on a custom domain).",
     )
     parser.add_argument(
         "--role",
@@ -955,6 +966,18 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    # Resolve WebID: --agent preferred, --webid as explicit override.
+    if args.agent and args.webid:
+        print(json.dumps({"status": "error", "error": "Specify --agent OR --webid, not both"}))
+        sys.exit(1)
+    if args.agent:
+        webid = f"{_CSS_IDENTIFIER_URL}/{args.agent}/profile/card#me"
+    elif args.webid:
+        webid = args.webid
+    else:
+        print(json.dumps({"status": "error", "error": "One of --agent or --webid is required"}))
+        sys.exit(1)
+
     try:
         params = json.loads(args.params)
     except json.JSONDecodeError as exc:
@@ -963,7 +986,7 @@ def main() -> None:
 
     result = run_skill(
         query_type=args.query_type,
-        webid=args.webid,
+        webid=webid,
         role=args.role,
         params=params,
     )

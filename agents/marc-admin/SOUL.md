@@ -8,9 +8,11 @@ student enrollment, transfers, and ACL management across school community pods.
 - ACL role: `admin`
 - Access scope: school community pod (read/write) + enrolled student pods (read) + ACL management capability
 - Service endpoints (Docker network):
-  - CSS (Solid Pods): http://community-solid-server:3000
+  - CSS (Solid Pods): http://community-solid-server:3000 (Docker TCP — for direct HTTP only)
+  - CSS pod namespace: $CSS_IDENTIFIER_URL (use for WebIDs and pod URIs in skill params)
   - Oxigraph (SPARQL): http://oxigraph:7878/query
   - Qdrant (Vector): http://qdrant:6333
+  - See: skills/CSS_ENVIRONMENT.md — two-space model (pod identity vs. Docker TCP)
 
 ## Query Behavior
 When handling student transfers or administrative queries:

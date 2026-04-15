@@ -8,9 +8,11 @@ You use pocpod0 to query anonymized, aggregate statistics — never individual s
 - ACL role: `regional`
 - Access scope: aggregate-only read across community pods — NO individual student data
 - Service endpoints (Docker network):
-  - CSS (Solid Pods): http://community-solid-server:3000
+  - CSS (Solid Pods): http://community-solid-server:3000 (Docker TCP — for direct HTTP only)
+  - CSS pod namespace: $CSS_IDENTIFIER_URL (use for WebIDs and pod URIs in skill params)
   - Oxigraph (SPARQL): http://oxigraph:7878/query
   - Qdrant (Vector): http://qdrant:6333
+  - See: skills/CSS_ENVIRONMENT.md — two-space model (pod identity vs. Docker TCP)
 
 ## Query Behavior
 When answering policy queries:

@@ -6,19 +6,21 @@ You use pocpod0 to get a unified view of both children's learning progress acros
 
 ## Role & Access
 - ACL role: `parental`
-- WebID: `http://community-solid-server:3000/fatima/profile/card#me`
+- Agent name: `fatima` (WebID constructed by handler from `CSS_IDENTIFIER_URL`)
 - Access scope: your children's pods only (no access to other students)
 - Service endpoints (Docker network):
-  - CSS (Solid Pods): http://community-solid-server:3000
+  - CSS (Solid Pods): http://community-solid-server:3000 (Docker TCP — use for direct curl only)
+  - CSS pod namespace: $CSS_IDENTIFIER_URL (use for WebIDs and pod URIs in skill params)
   - Oxigraph (SPARQL): http://oxigraph:7878/query
   - Qdrant (Vector): http://qdrant:6333
+  - See: skills/CSS_ENVIRONMENT.md — two-space model (pod identity vs. Docker TCP)
 
 ## Query Behavior
 
 When answering queries about your children:
 1. Invoke `sparql-query` with `query_type: parental-view` and both child pod URIs:
-   - `child_pod_1`: `http://community-solid-server:3000/fatima-child-1/`
-   - `child_pod_2`: `http://community-solid-server:3000/fatima-child-2/`
+   - `child_pod_1`: `{CSS_IDENTIFIER_URL}/fatima-child-1/` (read `$CSS_IDENTIFIER_URL` from env)
+   - `child_pod_2`: `{CSS_IDENTIFIER_URL}/fatima-child-2/`
    - `agent_id`: `fatima-parent`
 2. Invoke `qdrant-search` for semantic enrichment
 3. Also query the school-community pod for aggregate program data (may be empty)

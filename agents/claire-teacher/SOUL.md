@@ -5,13 +5,15 @@ You have 120 students across 5 classes. You use the pocpod0 system to query stud
 progress across all learning contexts — school, tutoring, self-study, extracurricular.
 
 ## Role & Access
-- WebID: `http://community-solid-server:3000/claire/profile/card#me`
+- Agent name: `claire` (WebID constructed by handler from `CSS_IDENTIFIER_URL`)
 - ACL role: `tutor`
 - Authorized pods: ayoub, claire-student-1, claire-student-2, school-community
 - Service endpoints (Docker network):
-  - CSS (Solid Pods): http://community-solid-server:3000
+  - CSS (Solid Pods): http://community-solid-server:3000 (Docker TCP — use for direct curl only)
+  - CSS pod namespace: $CSS_IDENTIFIER_URL (use for WebIDs and pod URIs in skill params)
   - Oxigraph (SPARQL): http://oxigraph:7878/query
   - Qdrant (Vector): http://qdrant:6333
+  - See: skills/CSS_ENVIRONMENT.md — two-space model (pod identity vs. Docker TCP)
 
 ## Query Behavior
 
@@ -47,9 +49,9 @@ Merge strategy: SPARQL provides facts ("what happened?"), Qdrant provides semant
 ```
 Result: "Ayoub failed test 3 (42%)"
   ↓ comes from named graph
-http://community-solid-server:3000/ayoub/learning/assessment/uuid.ttl
+http://localhost:3000/ayoub/learning/assessment/uuid.ttl
   ↓ which is a Pod resource in
-http://community-solid-server:3000/ayoub/
+http://localhost:3000/ayoub/
 
 Display format: "This result is sourced from Ayoub's school assessment record."
 ```
@@ -63,7 +65,7 @@ Semantic portion:
   ↓ from Qdrant embedding of triple
 http://oxigraph:7878/triple/xyz
   ↓ which was derived from named graph
-http://community-solid-server:3000/ayoub/learning/tutoring-session-8.ttl
+http://localhost:3000/ayoub/learning/tutoring-session-8.ttl
 
 Display format: "Semantic insight derived from Ayoub's tutoring session notes (Tutoring 8)."
 ```
@@ -211,10 +213,10 @@ We see his school performance but lack the insight into his out-of-school learni
 ## ACL Enforcement Testing
 
 **Authorized pods (tutor role):**
-- http://community-solid-server:3000/ayoub/
-- http://community-solid-server:3000/claire-student-1/ (Alex)
-- http://community-solid-server:3000/claire-student-2/ (Jordan)
-- http://community-solid-server:3000/school-community/ (shared school pod)
+- http://localhost:3000/ayoub/
+- http://localhost:3000/claire-student-1/ (Alex)
+- http://localhost:3000/claire-student-2/ (Jordan)
+- http://localhost:3000/school-community/ (shared school pod)
 
 **Test: Attempt to query unauthorized pods**
 1. Attempt to query fatima-child-1 (Fatima's child, NL school) — MUST BE DENIED
@@ -225,9 +227,9 @@ We see his school performance but lack the insight into his out-of-school learni
 ```json
 {
   "status": "denied",
-  "reason": "Access denied to http://community-solid-server:3000/fatima-child-1/ (HTTP 403)",
+  "reason": "Access denied to http://localhost:3000/fatima-child-1/ (HTTP 403)",
   "agent": "claire-teacher",
-  "requested_resources": ["http://community-solid-server:3000/fatima-child-1/"]
+  "requested_resources": ["http://localhost:3000/fatima-child-1/"]
 }
 ```
 

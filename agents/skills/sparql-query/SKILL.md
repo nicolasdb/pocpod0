@@ -15,7 +15,7 @@ Use your `exec` tool to run the handler as a subprocess:
 ```bash
 python3 /home/node/.openclaw/workspaces/skills/sparql-query/handler.py \
   --query-type TEMPLATE_NAME \
-  --webid YOUR_WEBID \
+  --agent YOUR_AGENT_NAME \
   --role YOUR_ROLE \
   --params '{"param_name": "value"}'
 ```
@@ -23,9 +23,18 @@ python3 /home/node/.openclaw/workspaces/skills/sparql-query/handler.py \
 **Required arguments:**
 - `--query-type`: Template name — one of `student-progress`, `cross-context-query`,
   `aggregate-anonymized`, `parental-view`, `transfer-profile`
-- `--webid`: Your WebID URI, e.g. `http://localhost:3000/claire/profile/card#me`
+- `--agent`: Your short agent name, e.g. `claire`, `marc`, `fatima`, `nicolas`.
+  The handler constructs your WebID as `$CSS_IDENTIFIER_URL/<name>/profile/card#me` —
+  works on localhost dev and VPS without any change.
+- `--webid`: Full WebID URI — advanced override only. Use `--agent` instead unless
+  your pod lives outside `CSS_IDENTIFIER_URL` (e.g. a real-user pod on a custom domain).
+  Exactly one of `--agent` or `--webid` is required.
 - `--role`: Your role — one of `tutor`, `admin`, `regional`, `parental`, `student`
 - `--params`: JSON object with template parameters (see Templates section below)
+
+**Pod URIs in `--params` must use `CSS_IDENTIFIER_URL` namespace** (e.g. `http://localhost:3000/…`
+on local dev, `https://mypods.example.com/…` on VPS). Never use the Docker-internal hostname
+(`community-solid-server:3000`) — that is for TCP routing only, not pod identity.
 
 **Environment variables (set automatically in Docker):**
 - `CSS_IDENTIFIER_URL=http://localhost:3000` — must match CSS `--baseUrl`; change to VPS domain on deployment
@@ -70,10 +79,12 @@ Query learning activities for two children, returning a unified parental view wi
 
 ```json
 {
-  "child_pod_1": "http://community-solid-server:3000/fatima-child-1/",
-  "child_pod_2": "http://community-solid-server:3000/fatima-child-2/"
+  "child_pod_1": "http://localhost:3000/fatima-child-1/",
+  "child_pod_2": "http://localhost:3000/fatima-child-2/"
 }
 ```
+
+On VPS replace `http://localhost:3000` with the public CSS domain (`CSS_IDENTIFIER_URL`).
 
 Both pod URIs must end with `/` (trailing slash enforced by handler). The query scopes to both pod namespaces using `FILTER(strstarts(str(?g), str(?childPod)))`.
 
@@ -113,8 +124,8 @@ The handler emits structured JSON log lines first, then a final result JSON:
   "status": "success",
   "summary": {
     "children": [
-      {"pod_uri": "http://community-solid-server:3000/fatima-child-1/", "total_activities": 24, "...": "..."},
-      {"pod_uri": "http://community-solid-server:3000/fatima-child-2/", "total_activities": 18, "...": "..."}
+      {"pod_uri": "http://localhost:3000/fatima-child-1/", "total_activities": 24, "...": "..."},
+      {"pod_uri": "http://localhost:3000/fatima-child-2/", "total_activities": 18, "...": "..."}
     ],
     "gaps": [
       {"type": "attendance_discrepancy", "activity": "robotics-workshop", "counts_by_child": {"fatima-child-1": 18, "fatima-child-2": 15}},
@@ -122,7 +133,7 @@ The handler emits structured JSON log lines first, then a final result JSON:
       {"type": "below_60_marked_success", "object": "math-assessment-fractions", "score": 0.55}
     ]
   },
-  "provenance": ["http://community-solid-server:3000/fatima-child-1/", "http://community-solid-server:3000/fatima-child-2/"],
+  "provenance": ["http://localhost:3000/fatima-child-1/", "http://localhost:3000/fatima-child-2/"],
   "result_count": 42
 }
 ```

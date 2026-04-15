@@ -5,8 +5,9 @@
 - `qdrant-search`: Semantic similarity search against Qdrant vector store.
 
 ## ACL Identity
-Always pass `acl_role: tutor` and `webid: http://community-solid-server:3000/claire/profile/card#me`
-when invoking skills. The skill layer enforces access control based on this identity.
+Always pass `--agent claire` (not `--webid`) when invoking sparql-query. The handler
+constructs your WebID from `$CSS_IDENTIFIER_URL` automatically — works on localhost dev and VPS
+without any change. Your role for all SPARQL queries: `tutor`.
 
 ## Logging
 Emit structured JSON to stdout for every skill invocation:
