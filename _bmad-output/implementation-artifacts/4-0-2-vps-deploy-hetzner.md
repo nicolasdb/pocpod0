@@ -67,16 +67,16 @@ Access: `ssh hetzner` (alias already configured). Target path: `/home/nicolas/po
   - [x] 1.4: UFW enabled: allow 22/tcp, 80/tcp, 443/tcp, 9443/tcp. DEFAULT_FORWARD_POLICY=ACCEPT (required for Docker routing). 18789/18790 not open externally.
   - [x] 1.5: SSH key-only confirmed (key auth in use for `ssh hetzner` alias).
 
-- [ ] **Task 2: Repo deployment via rsync** (AC2)
+- [x] **Task 2: Repo deployment via rsync** (AC2)
   - [x] 2.1: ❌ INVALIDATED: git clone approach dropped. Deploy from local via rsync (same pattern as hetzner-gateway Makefile). `.env` with secrets included in rsync, never committed to git.
   - [x] 2.2: Added `vps-push`, `vps-build`, `vps-deploy`, `vps-up/down/logs/ps/ssh` targets to pocpod0 Makefile.
-  - [ ] 2.3: Verify local `.env` has VPS-specific values: `OPENCLAW_GATEWAY_HOST=0.0.0.0`, `OPENCLAW_GATEWAY_PORT=18790`, Discord token, CSS, Qdrant creds.
-  - [ ] 2.4: Run `make vps-push` from local. Verify `/home/nicolas/pocpod0/` on VPS has `.env` present (mode 600).
+  - [x] 2.3: Verify local `.env` has VPS-specific values: `OPENCLAW_GATEWAY_HOST=0.0.0.0`, `OPENCLAW_GATEWAY_PORT=18790`, Discord token, CSS, Qdrant creds.
+  - [x] 2.4: Run `make vps-push` from local. Verify `/home/nicolas/pocpod0/` on VPS has `.env` present (mode 600).
 
-- [ ] **Task 3: First stack boot** (AC3)
-  - [ ] 3.0: Disk reclaim — `docker system prune -f` on VPS (12GB reclaimable). VPS at 84%.
-  - [ ] 3.1: `docker compose build` (builds the custom openclaw image).
-  - [ ] 3.2: `docker compose up -d`. Watch `docker compose logs -f` for healthcheck failures.
+- [x] **Task 3: First stack boot** (partial — 3.3 provision pending) (AC3)
+  - [x] 3.0: Disk reclaim — `docker system prune -f` on VPS (12GB reclaimable). VPS at 84%.
+  - [x] 3.1: `docker compose build` (builds the custom openclaw image).
+  - [x] 3.2: `docker compose up -d`. Watch `docker compose logs -f` for healthcheck failures.
   - [ ] 3.3: Run Stage 0 provision: `venv + python -m pocpod0_pipeline.run_pipeline --stage provision` (confirms CSS pods + Oxigraph seed).
   - [ ] 3.4: Verify each service: `curl http://localhost:3000/` (CSS), `curl http://localhost:6333/healthz` (Qdrant), `curl http://localhost:7878/` (Oxigraph), `curl http://localhost:18790/` (OpenClaw). Then `curl https://pod.nicolasdb.eu/` — expect 200 (resolves 504).
 
@@ -115,6 +115,11 @@ Access: `ssh hetzner` (alias already configured). Target path: `/home/nicolas/po
 - **UFW + Docker conflict (2026-04-15):** Enabling UFW with default `DEFAULT_FORWARD_POLICY=DROP` broke Docker container routing — including the Cloudflare tunnel reaching Portainer at `128.140.72.105:9443`. Fix: set `DEFAULT_FORWARD_POLICY=ACCEPT` in `/etc/default/ufw` + `ufw reload`. Also required allowing port 9443 explicitly since the tunnel config uses the public IP (not container name) to reach Portainer. Long-term fix: update Cloudflare tunnel config to use `https://portainer:9443` (internal container name) to avoid the firewall dependency.
 - **nginx upstream resolution (2026-04-15):** `host.docker.internal` via `extra_hosts: host-gateway` works in `/etc/hosts` but nginx resolves upstreams via DNS (127.0.0.11), not hosts file. Nginx crashed at startup with "host not found in upstream". Fix: hardcode `172.23.0.1` (host IP on the `gateway` Docker network) directly in `proxy_pass`. No DNS resolution needed for a literal IP.
 - **Two OpenClaw instances (2026-04-15):** VPS already has `openclaw-infra` (lab/debug) at port 18789. pocpod0 uses port 18790 via `OPENCLAW_GATEWAY_HOST=0.0.0.0` + `OPENCLAW_GATEWAY_PORT=18790` in VPS `.env`. Routed via `claw.nicolasdb.eu` and `pod.nicolasdb.eu` respectively.
+- **Volume permission (2026-04-15):** Named Docker volume created as root:root; node user couldn't mkdir. Fix: `docker run --rm -v pocpod0_openclaw-data-default:/data alpine chown -R 1000:1000 /data` + Dockerfile pre-creates `/home/node/.openclaw` with chown.
+- **nginx → openclaw routing (2026-04-15):** `172.23.0.1` host-bridge IP not reachable from gateway network containers (iptables INPUT chain). Fix: join openclaw-gateway to the `gateway` Docker network; proxy by container name `openclaw-gateway:18789`.
+- **OPENCLAW_GATEWAY_PORT dual-use (2026-04-15):** Port var controlled both host mapping and container-internal port. Setting it to 18790 broke internal healthcheck (pings 18789). Fix: hardcode container port 18789 in docker-compose environment; keep var for host port mapping only.
+- **rsync overwrites VPS .env (2026-04-15):** Each vps-push resets OPENCLAW_GATEWAY_HOST to local value. VPS needs 0.0.0.0; must re-apply after every push manually.
+- **Dashboard TUI (2026-04-15):** Works with --with-dashboard flag on run_pipeline.py. Intermittent in practice — deferred.
 - **Port binding:** pocpod0 `docker-compose.yml` now supports `OPENCLAW_GATEWAY_HOST` env var (defaults to `127.0.0.1` locally, set to `0.0.0.0` on VPS so nginx container can reach it via bridge IP).
 
 ### Invalidated Story Assumptions
