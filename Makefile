@@ -42,6 +42,16 @@ help:
 	@echo ""
 	@echo "Setup:"
 	@echo "  setup         One-time: create venv + install pipeline deps"
+	@echo ""
+	@echo "VPS deploy (run from local):"
+	@echo "  vps-push      rsync local repo + .env to hetzner:/home/nicolas/pocpod0"
+	@echo "  vps-build     docker compose build on VPS"
+	@echo "  vps-deploy    push + build + up (full deploy)"
+	@echo "  vps-up        docker compose up -d on VPS"
+	@echo "  vps-down      docker compose down on VPS"
+	@echo "  vps-logs      Follow VPS stack logs"
+	@echo "  vps-ps        Show VPS container status"
+	@echo "  vps-ssh       Open SSH session to VPS"
 
 # ── Infrastructure ────────────────────────────────────────────────────────────
 
@@ -140,3 +150,51 @@ cli-devices:
 
 cli-dashboard:
 	$(COMPOSE) --profile cli run --rm openclaw-cli dashboard --no-open
+
+# ── VPS deploy (run from local, deploys to Hetzner) ──────────────────────────
+# VPS path: /home/nicolas/pocpod0  SSH alias: hetzner
+# .env is included in rsync (contains secrets — never committed to git)
+
+VPS_REMOTE := hetzner
+VPS_PATH   := /home/nicolas/pocpod0
+
+.PHONY: vps-push vps-build vps-deploy vps-up vps-down vps-logs vps-ps vps-ssh
+
+## Sync local repo + .env to VPS (excludes .git, __pycache__, .pyc, backups)
+vps-push:
+	rsync -avz --delete-after \
+		--exclude=".git" \
+		--exclude="*__pycache__*" \
+		--exclude="*.pyc" \
+		--exclude="backups/" \
+		--exclude="pipeline/.venv/" \
+		./ $(VPS_REMOTE):$(VPS_PATH)/
+	@echo "Sync complete."
+
+## Build openclaw image on VPS (run after first vps-push or after Dockerfile changes)
+vps-build:
+	ssh $(VPS_REMOTE) "cd $(VPS_PATH) && docker compose build"
+
+## Full deploy: push + build + restart stack
+vps-deploy: vps-push vps-build
+	ssh $(VPS_REMOTE) "cd $(VPS_PATH) && docker compose up -d"
+
+## Start stack on VPS (no rebuild)
+vps-up:
+	ssh $(VPS_REMOTE) "cd $(VPS_PATH) && docker compose up -d"
+
+## Stop stack on VPS
+vps-down:
+	ssh $(VPS_REMOTE) "cd $(VPS_PATH) && docker compose down"
+
+## Follow logs on VPS
+vps-logs:
+	ssh $(VPS_REMOTE) "cd $(VPS_PATH) && docker compose logs -f"
+
+## Show container status on VPS
+vps-ps:
+	ssh $(VPS_REMOTE) "cd $(VPS_PATH) && docker compose ps"
+
+## Open SSH session to VPS
+vps-ssh:
+	ssh $(VPS_REMOTE)

@@ -100,7 +100,7 @@ development_status:
   # as podman-compose silently using bridge instead of pasta (podman-compose#967, podman#24285).
   # 4-0-1 is timeboxed local fix attempt; 4-0-2 is VPS deploy (strategic fallback, also unblocks pilot-bridge).
   story-4-0-1-force-pasta-local-fix: done  # 2026-04-15: WebUI+pairing fixed; podman 5.8.1 + openclaw v2026.4.14
-  story-4-0-2-vps-deploy-hetzner: ready-for-dev
+  story-4-0-2-vps-deploy-hetzner: in-progress
   story-4-1-marc-school-transfer-via-discord: backlog     # was: story-4-1-marc-seamless-student-transfer
   story-4-2-cross-community-data-handling: backlog
   story-4-3-nicolas-onboarding-proof: backlog

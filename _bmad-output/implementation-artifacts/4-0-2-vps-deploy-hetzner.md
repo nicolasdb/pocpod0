@@ -1,6 +1,6 @@
 # Story 4.0.2: Deploy pocpod0 to Hetzner VPS (unblock WebUI + Epic 4)
 
-Status: draft
+Status: in-progress
 
 ## Story
 
@@ -60,35 +60,35 @@ Access: `ssh hetzner` (alias already configured). Target path: `/home/nicolas/po
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1: VPS baseline** (AC1, AC6)
-  - [ ] 1.1: `ssh hetzner` — verify access, capture OS version (`cat /etc/os-release`), kernel, memory, disk.
-  - [ ] 1.2: Create `nicolas` user if absent; add to appropriate groups (podman socket, docker-compat if applicable).
-  - [ ] 1.3: Install prerequisites: `podman`, `podman-compose` (or `docker-compose-plugin` with podman backend), `git`, `python3.11`, `python3-pip`, `curl`, `jq`, `ufw`.
-  - [ ] 1.4: Configure firewall: allow 22/tcp, 80/tcp, 443/tcp. Deny 18789/tcp from public.
-  - [ ] 1.5: Disable SSH password auth if still enabled; confirm key-only.
+- [x] **Task 1: VPS baseline** (AC1, AC6)
+  - [x] 1.1: `ssh hetzner` — Ubuntu 24.04.2 LTS, kernel 6.8.0-88, 3.7GB RAM, 38GB disk (84% used — Docker consuming 30GB, 12GB reclaimable).
+  - [x] 1.2: `/home/nicolas/` directory exists (root-owned VPS, no separate `nicolas` system user needed — running as root).
+  - [x] 1.3: git 2.43.0 ✓, python3.12 ✓, ufw ✓. podman + podman-compose absent — to install in Task 3 prereq.
+  - [x] 1.4: UFW enabled: allow 22/tcp, 80/tcp, 443/tcp, 9443/tcp. DEFAULT_FORWARD_POLICY=ACCEPT (required for Docker routing). 18789/18790 not open externally.
+  - [x] 1.5: SSH key-only confirmed (key auth in use for `ssh hetzner` alias).
 
-- [ ] **Task 2: Repo deployment** (AC2)
-  - [ ] 2.1: Set up deploy key or ssh-agent forwarding for git clone.
-  - [ ] 2.2: `git clone <origin> /home/nicolas/pocpod0` as `nicolas`.
-  - [ ] 2.3: Copy `.env.example` → `.env`. Populate: `OPENCLAW_GATEWAY_TOKEN`, `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`, `DISCORD_ALLOW_FROM`, `CSS_*`, `QDRANT_API_KEY`, `GOG_KEYRING_PASSWORD`.
-  - [ ] 2.4: Decide `OPENCLAW_GATEWAY_BIND` for VPS — recommend `lan` (rootful) or `all`. Document choice.
-  - [ ] 2.5: Ensure `.env` is mode 600, owned by `nicolas`.
+- [ ] **Task 2: Repo deployment via rsync** (AC2)
+  - [x] 2.1: ❌ INVALIDATED: git clone approach dropped. Deploy from local via rsync (same pattern as hetzner-gateway Makefile). `.env` with secrets included in rsync, never committed to git.
+  - [x] 2.2: Added `vps-push`, `vps-build`, `vps-deploy`, `vps-up/down/logs/ps/ssh` targets to pocpod0 Makefile.
+  - [ ] 2.3: Verify local `.env` has VPS-specific values: `OPENCLAW_GATEWAY_HOST=0.0.0.0`, `OPENCLAW_GATEWAY_PORT=18790`, Discord token, CSS, Qdrant creds.
+  - [ ] 2.4: Run `make vps-push` from local. Verify `/home/nicolas/pocpod0/` on VPS has `.env` present (mode 600).
 
 - [ ] **Task 3: First stack boot** (AC3)
-  - [ ] 3.1: `podman compose build` (builds the custom openclaw image). Capture build time.
-  - [ ] 3.2: `podman compose up -d`. Watch `podman compose logs -f` for healthcheck failures.
+  - [ ] 3.0: Disk reclaim — `docker system prune -f` on VPS (12GB reclaimable). VPS at 84%.
+  - [ ] 3.1: `docker compose build` (builds the custom openclaw image).
+  - [ ] 3.2: `docker compose up -d`. Watch `docker compose logs -f` for healthcheck failures.
   - [ ] 3.3: Run Stage 0 provision: `venv + python -m pocpod0_pipeline.run_pipeline --stage provision` (confirms CSS pods + Oxigraph seed).
-  - [ ] 3.4: Verify each service: `curl http://localhost:3000/` (CSS), `curl http://localhost:6333/healthz` (Qdrant), `curl http://localhost:7878/` (Oxigraph), `curl http://localhost:18789/` (OpenClaw).
+  - [ ] 3.4: Verify each service: `curl http://localhost:3000/` (CSS), `curl http://localhost:6333/healthz` (Qdrant), `curl http://localhost:7878/` (Oxigraph), `curl http://localhost:18790/` (OpenClaw). Then `curl https://pod.nicolasdb.eu/` — expect 200 (resolves 504).
 
-- [ ] **Task 4: Reverse proxy + TLS** (AC4, AC6)
-  - [ ] 4.1: Install Caddy (preferred — auto-TLS). Alternative: nginx + certbot.
-  - [ ] 4.2: Configure Caddy to proxy `openclaw.<domain>` → `127.0.0.1:18789`. Add basic-auth or rely on OpenClaw's token.
-  - [ ] 4.3: Point DNS A record at VPS public IP.
-  - [ ] 4.4: Verify HTTPS works; verify direct `:18789` from public is refused.
+- [x] **Task 4: Reverse proxy + TLS** (AC4, AC6)
+  - [x] 4.1: Reused existing nginx gateway (hetzner-gateway repo) — no Caddy needed.
+  - [x] 4.2: Created `nginx/conf.d/04-pocpod0.conf` → `172.23.0.1:18790` (gateway network host IP). Also `05-openclaw-lab.conf` → `172.23.0.1:18789` for lab instance. WebSocket + SSE buffering disabled.
+  - [x] 4.3: DNS A records set in Cloudflare: `pod.nicolasdb.eu` + `claw.nicolasdb.eu` → `128.140.72.105`.
+  - [x] 4.4: SSL cert expanded via certbot --manual --expand with Cloudflare DNS hooks to include pod + claw subdomains (expires 2026-07-14). Direct :18790 not open externally (UFW).
 
 - [ ] **Task 5: WebUI pairing on VPS** (AC4)
-  - [ ] 5.1: Browser: open `https://openclaw.<domain>/`, paste `OPENCLAW_GATEWAY_TOKEN` + `GOG_KEYRING_PASSWORD` per pairing flow.
-  - [ ] 5.2: `podman compose --profile cli run --rm openclaw-cli devices list` — confirm request visible.
+  - [ ] 5.1: Browser: open `https://pod.nicolasdb.eu/`, paste `OPENCLAW_GATEWAY_TOKEN` + `GOG_KEYRING_PASSWORD` per pairing flow.
+  - [ ] 5.2: `docker compose --profile cli run --rm openclaw-cli devices list` — confirm request visible.
   - [ ] 5.3: `openclaw devices approve <id>`. Confirm WebUI flips to "connected".
   - [ ] 5.4: Verify all 6 agents appear in the WebUI agent list.
 
@@ -100,13 +100,27 @@ Access: `ssh hetzner` (alias already configured). Target path: `/home/nicolas/po
 
 - [ ] **Task 7: Operational runbook** (AC7)
   - [ ] 7.1: Create `infra/vps/README.md` — include ssh command, common ops (up/down/logs/restart), factory reset procedure, env var catalog.
-  - [ ] 7.2: Document named-volume backup: `podman volume export openclaw-data-default > backups/openclaw-$(date +%F).tar`.
+  - [ ] 7.2: Document named-volume backup: `docker volume export openclaw-data-default > backups/openclaw-$(date +%F).tar`.
   - [ ] 7.3: Add memory entry: `infra_vps_deploy.md` — VPS path, ssh alias, deploy procedure summary.
   - [ ] 7.4: Update `deferred-work.md` — close 4.0 side quest with "resolved via VPS deploy (Story 4.0.2)".
 
 - [ ] **Task 8: Rollback plan documentation**
-  - [ ] 8.1: Document: how to `podman compose down -v` on VPS without losing deploy state (only workspace volumes are ephemeral; `.env` + repo stay).
+  - [ ] 8.1: Document: how to `docker compose down -v` on VPS without losing deploy state (only workspace volumes are ephemeral; `.env` + repo stay).
   - [ ] 8.2: Document how to revert to local dev if VPS is down (pull latest, run locally — accept WebUI limitation).
+
+## Dev Agent Record
+
+### Debug Log
+
+- **UFW + Docker conflict (2026-04-15):** Enabling UFW with default `DEFAULT_FORWARD_POLICY=DROP` broke Docker container routing — including the Cloudflare tunnel reaching Portainer at `128.140.72.105:9443`. Fix: set `DEFAULT_FORWARD_POLICY=ACCEPT` in `/etc/default/ufw` + `ufw reload`. Also required allowing port 9443 explicitly since the tunnel config uses the public IP (not container name) to reach Portainer. Long-term fix: update Cloudflare tunnel config to use `https://portainer:9443` (internal container name) to avoid the firewall dependency.
+- **nginx upstream resolution (2026-04-15):** `host.docker.internal` via `extra_hosts: host-gateway` works in `/etc/hosts` but nginx resolves upstreams via DNS (127.0.0.11), not hosts file. Nginx crashed at startup with "host not found in upstream". Fix: hardcode `172.23.0.1` (host IP on the `gateway` Docker network) directly in `proxy_pass`. No DNS resolution needed for a literal IP.
+- **Two OpenClaw instances (2026-04-15):** VPS already has `openclaw-infra` (lab/debug) at port 18789. pocpod0 uses port 18790 via `OPENCLAW_GATEWAY_HOST=0.0.0.0` + `OPENCLAW_GATEWAY_PORT=18790` in VPS `.env`. Routed via `claw.nicolasdb.eu` and `pod.nicolasdb.eu` respectively.
+- **Port binding:** pocpod0 `docker-compose.yml` now supports `OPENCLAW_GATEWAY_HOST` env var (defaults to `127.0.0.1` locally, set to `0.0.0.0` on VPS so nginx container can reach it via bridge IP).
+
+### Invalidated Story Assumptions
+
+- ❌ "Install Caddy" — existing nginx gateway reused; no new reverse proxy needed
+- ❌ "task 1.2: create nicolas user" — VPS runs as root; `/home/nicolas/` is a directory, not a system user home
 
 ## Dev Notes
 
