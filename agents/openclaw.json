@@ -44,8 +44,12 @@
         "openrouter/google/gemini-2.0-flash-001": { "alias": "Gemini 2.0 Flash" },
         "openrouter/deepseek/deepseek-r1": { "alias": "DeepSeek R1" },
         "openrouter/qwen/qwen3-235b-a22b": { "alias": "Qwen3 235B" },
-        "openrouter/mistral/mistral-large": { "alias": "Mistral Large" }
+        "openrouter/mistral/mistral-large": { "alias": "Mistral Large" },
+        "openrouter/openai/gpt-5.4-nano": { "alias": "GPT-5.4 Nano" }
       },
+      // Disable reasoning/thinking by default — avoids reasoning bleed in responses.
+      // Troll overrides this with its model choice (gpt-5.4-nano supports reasoning).
+      "thinkingDefault": "off",
       // skipBootstrap removed (Story 4.0): workspaces are now writable (named volume + seed-on-boot)
     },
     "list": [
@@ -113,10 +117,10 @@
           "name": "Troll",
           "emoji": "🧌"
         },
-        // Troll uses a fast model — speed matters more than depth for adversarial probing
+        // Troll uses gpt-5.4-nano: cheap, reasoning-capable, good for adversarial probing
         "model": {
-          "primary": "openrouter/meta-llama/llama-4-scout",
-          "fallbacks": ["openrouter/minimax/minimax-m2.5"]
+          "primary": "openrouter/openai/gpt-5.4-nano",
+          "fallbacks": ["openrouter/meta-llama/llama-4-scout"]
         },
         // Heartbeat: Troll runs security probe every 30 min, posts to #security_logs
         "heartbeat": { "every": "30m", "target": "discord", "to": "1493149078207594507", "lightContext": true, "directPolicy": "allow" }
@@ -172,6 +176,30 @@
             "1493149078207594507": { "allow": true, "requireMention": true }     // #security-logs
           }
         }
+      }
+    }
+  },
+  // Model capability registry — declarative equivalent of what openclaw onboard writes to models.json.
+  // Required for reasoning models: without reasoning:true, OpenClaw can't route through the
+  // openrouter-thinking stream family → stopReason=stop payloads=0 on every turn.
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "openrouter": {
+        "baseUrl": "https://openrouter.ai/api/v1",
+        "apiKey": "OPENROUTER_API_KEY",
+        "api": "openai-completions",
+        "models": [
+          { "id": "nvidia/nemotron-3-super-120b-a12b:free", "name": "Nemotron-3 (free)", "reasoning": true,  "input": ["text"],          "contextWindow": 128000, "maxTokens": 4096  },
+          { "id": "minimax/minimax-m2.5",                   "name": "MiniMax M2.5",       "reasoning": false, "input": ["text"],          "contextWindow": 1000000,"maxTokens": 8192  },
+          { "id": "meta-llama/llama-4-maverick",            "name": "Llama 4 Maverick",   "reasoning": false, "input": ["text","image"],  "contextWindow": 1000000,"maxTokens": 16384 },
+          { "id": "meta-llama/llama-4-scout",               "name": "Llama 4 Scout",      "reasoning": false, "input": ["text","image"],  "contextWindow": 512000, "maxTokens": 16384 },
+          { "id": "google/gemini-2.0-flash-001",            "name": "Gemini 2.0 Flash",   "reasoning": false, "input": ["text","image"],  "contextWindow": 1000000,"maxTokens": 8192  },
+          { "id": "deepseek/deepseek-r1",                   "name": "DeepSeek R1",        "reasoning": true,  "input": ["text"],          "contextWindow": 128000, "maxTokens": 8192  },
+          { "id": "qwen/qwen3-235b-a22b",                   "name": "Qwen3 235B",         "reasoning": true,  "input": ["text"],          "contextWindow": 40960,  "maxTokens": 8192  },
+          { "id": "mistral/mistral-large",                  "name": "Mistral Large",      "reasoning": false, "input": ["text"],          "contextWindow": 128000, "maxTokens": 8192  },
+          { "id": "openai/gpt-5.4-nano",                    "name": "GPT-5.4 Nano",       "reasoning": true,  "input": ["text","image"],  "contextWindow": 128000, "maxTokens": 32768 }
+        ]
       }
     }
   }

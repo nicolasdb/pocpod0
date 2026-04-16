@@ -47,16 +47,22 @@ else
     echo "[entrypoint] Skills workspace exists, skipping"
 fi
 
-# Always deploy fresh openclaw.json from the bind-mounted /tmp/openclaw.json.
-# Config is not evolvable — always comes from the repo image at startup.
+# Seed openclaw.json on first boot only — same pattern as agent workspaces.
+# This allows OpenClaw to write back config changes (model selection, finetuning)
+# that persist across restarts. When satisfied, backup from VPS and commit to repo.
+# Factory reset: docker-compose down -v && docker-compose up (wipes volume).
 if [ ! -f /tmp/openclaw.json ]; then
     echo "[entrypoint] ERROR: /tmp/openclaw.json not found — is the bind-mount configured?"
-    echo "[entrypoint] Expected: ./agents/openclaw.json:/tmp/openclaw.json:ro in docker-compose.yml"
+    echo "[entrypoint] Expected: ./agents/openclaw.json:/tmp/openclaw.json in docker-compose.yml"
     exit 1
 fi
-echo "[entrypoint] Deploying openclaw.json"
 mkdir -p /home/node/.openclaw
-cp /tmp/openclaw.json /home/node/.openclaw/openclaw.json
+if [ ! -f /home/node/.openclaw/openclaw.json ]; then
+    echo "[entrypoint] Seeding openclaw.json (first boot)"
+    cp /tmp/openclaw.json /home/node/.openclaw/openclaw.json
+else
+    echo "[entrypoint] openclaw.json exists, skipping (volume state preserved)"
+fi
 
 # Launch the gateway
 # --bind auto: listen on loopback + lan (valid values: loopback|lan|tailnet|auto|custom).

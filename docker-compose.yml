@@ -101,7 +101,7 @@ services:
       - POCPOD0_ROOT=/app
     volumes:
       # openclaw.json bind-mount: config is always deployed fresh from repo (not evolvable)
-      - ./agents/openclaw.json:/tmp/openclaw.json:ro${VOLUME_FLAGS:-}
+      - ./agents/openclaw.json:/tmp/openclaw.json:rw${VOLUME_FLAGS:-}
       # Named volume: holds seeded and evolved agent workspaces.
       # Factory reset: docker-compose down -v && docker-compose up
       # Scenario isolation: duplicate this service block with a different volume name.
