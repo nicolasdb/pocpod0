@@ -77,8 +77,8 @@ Access: `ssh hetzner` (alias already configured). Target path: `/home/nicolas/po
   - [x] 3.0: Disk reclaim — `docker system prune -f` on VPS (12GB reclaimable). VPS at 84%.
   - [x] 3.1: `docker compose build` (builds the custom openclaw image).
   - [x] 3.2: `docker compose up -d`. Watch `docker compose logs -f` for healthcheck failures.
-  - [ ] 3.3: Run Stage 0 provision: `venv + python -m pocpod0_pipeline.run_pipeline --stage provision` (confirms CSS pods + Oxigraph seed).
-  - [ ] 3.4: Verify each service: `curl http://localhost:3000/` (CSS), `curl http://localhost:6333/healthz` (Qdrant), `curl http://localhost:7878/` (Oxigraph), `curl http://localhost:18790/` (OpenClaw). Then `curl https://pod.nicolasdb.eu/` — expect 200 (resolves 504).
+  - [x] 3.3: Run Stage 0 provision: pipeline ran overnight 2026-04-15, CSS pod activity confirmed in logs.
+  - [x] 3.4: All services healthy: CSS=200, Qdrant=healthz passed, Oxigraph=200, OpenClaw=200, https://pod.nicolasdb.eu/=200.
 
 - [x] **Task 4: Reverse proxy + TLS** (AC4, AC6)
   - [x] 4.1: Reused existing nginx gateway (hetzner-gateway repo) — no Caddy needed.
@@ -86,14 +86,14 @@ Access: `ssh hetzner` (alias already configured). Target path: `/home/nicolas/po
   - [x] 4.3: DNS A records set in Cloudflare: `pod.nicolasdb.eu` + `claw.nicolasdb.eu` → `128.140.72.105`.
   - [x] 4.4: SSL cert expanded via certbot --manual --expand with Cloudflare DNS hooks to include pod + claw subdomains (expires 2026-07-14). Direct :18790 not open externally (UFW).
 
-- [ ] **Task 5: WebUI pairing on VPS** (AC4)
-  - [ ] 5.1: Browser: open `https://pod.nicolasdb.eu/`, paste `OPENCLAW_GATEWAY_TOKEN` + `GOG_KEYRING_PASSWORD` per pairing flow.
-  - [ ] 5.2: `docker compose --profile cli run --rm openclaw-cli devices list` — confirm request visible.
-  - [ ] 5.3: `openclaw devices approve <id>`. Confirm WebUI flips to "connected".
-  - [ ] 5.4: Verify all 6 agents appear in the WebUI agent list.
+- [x] **Task 5: WebUI pairing on VPS** (AC4)
+  - [x] 5.1: Browser: open `https://pod.nicolasdb.eu/`, token from VPS .env.
+  - [x] 5.2: `docker exec openclaw-gateway openclaw devices list` — pending request visible.
+  - [x] 5.3: `make vps-devices-approve ID=<id>` — WebUI connected.
+  - [x] 5.4: All 6 agents appear in WebUI: claire, marc, isabelle, fatima, ayoub, troll.
 
 - [ ] **Task 6: Discord integration validation** (AC5)
-  - [ ] 6.1: From Nicolas's Discord, DM claire-teacher — expect reply.
+  - [ ] 6.1: From Nicolas's Discord, DM claire-teacher — ⚠️ FAILING: "Agent couldn't generate a response". `incomplete turn detected: stopReason=stop payloads=0`. Gateway WebSocket connects fine; agent turn completes with 0 payloads (no LLM output). Likely: missing API key or model config on VPS. To investigate next session.
   - [ ] 6.2: Post in #general — expect isabelle aggregate heartbeat within 30m.
   - [ ] 6.3: Post in #security_logs — expect troll probe report within 30m.
   - [ ] 6.4: Capture message IDs / timestamps into `_bmad-output/implementation-artifacts/vps-smoke-test.md`.
@@ -119,7 +119,12 @@ Access: `ssh hetzner` (alias already configured). Target path: `/home/nicolas/po
 - **nginx → openclaw routing (2026-04-15):** `172.23.0.1` host-bridge IP not reachable from gateway network containers (iptables INPUT chain). Fix: join openclaw-gateway to the `gateway` Docker network; proxy by container name `openclaw-gateway:18789`.
 - **OPENCLAW_GATEWAY_PORT dual-use (2026-04-15):** Port var controlled both host mapping and container-internal port. Setting it to 18790 broke internal healthcheck (pings 18789). Fix: hardcode container port 18789 in docker-compose environment; keep var for host port mapping only.
 - **rsync overwrites VPS .env (2026-04-15):** Each vps-push resets OPENCLAW_GATEWAY_HOST to local value. VPS needs 0.0.0.0; must re-apply after every push manually.
-- **Dashboard TUI (2026-04-15):** Works with --with-dashboard flag on run_pipeline.py. Intermittent in practice — deferred.
+- **Dashboard TUI (2026-04-15):** Works with --with-dashboard flag on run_pipeline.py. Intermittent in practice — deferred. TUI dropped; pipeline tab planned for FastAPI dashboard (see deferred-work.md).
+- **openclaw-cli profile removed (2026-04-16):** CLI profile service was a roundabout way to run `openclaw` commands — the binary is already in the gateway image. Replaced with `docker exec openclaw-gateway openclaw devices <cmd>`. Removed: openclaw-cli service from docker-compose.yml, cli.sh from Dockerfile and infra/openclaw/.
+- **OPENCLAW_GATEWAY_BIND=all invalid (2026-04-16):** Valid values are loopback/lan/tailnet/auto/custom. VPS uses `lan`. Fixed in infra/vps/.env.vps.
+- **CLI port leak (2026-04-16):** openclaw-cli container inherited OPENCLAW_GATEWAY_PORT=18790 from .env, causing CLI to connect to wrong port. Fixed by removing the service entirely.
+- **allowedOrigins missing pod.nicolasdb.eu (2026-04-16):** Added https://pod.nicolasdb.eu to gateway controlUi.allowedOrigins in openclaw.json volume. Patched via python3 directly on the volume path.
+- **Agent turns returning 0 payloads (2026-04-16):** Discord DM to claire-teacher triggers agent turn but produces no output (stopReason=stop, payloads=0). Probable cause: LLM API key not set or wrong model name in VPS .env. To investigate.
 - **Port binding:** pocpod0 `docker-compose.yml` now supports `OPENCLAW_GATEWAY_HOST` env var (defaults to `127.0.0.1` locally, set to `0.0.0.0` on VPS so nginx container can reach it via bridge IP).
 
 ### Invalidated Story Assumptions

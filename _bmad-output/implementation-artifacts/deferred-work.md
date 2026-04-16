@@ -39,3 +39,7 @@
   4. WebUI is now accessible at `http://localhost:18789` (HTTP 200). No code changes required.
 - **Remaining known issue (RI-2 from Story 4.0):** CLI pairing (`openclaw devices list/approve`) still fails with WebSocket handshake timeout. Pre-existing; not caused by network mode. Workaround: use Discord for agent interaction; observe via `podman logs openclaw-gateway`.
 - **Story 4.0.2 (VPS deploy):** Still valid as a strategic goal (pilot-bridge path) but is no longer needed as an emergency unblock for local Epic 4 development.
+
+## Post-Story 4.0.2 deferred items (2026-04-16)
+
+- **Pipeline progress tab in FastAPI ACL dashboard:** Drop the Textual TUI (`--with-dashboard` flag). Add a `/pipeline` tab to the existing FastAPI dashboard (`pocpod0-acl-dashboard`) with live log streaming via SSE from `pipeline-run.jsonl`. Gives real-time ingestion progress without a second terminal or TUI dependency. Candidate for a story in the Epic 4 / post-PoC backlog.

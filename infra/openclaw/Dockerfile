@@ -24,10 +24,8 @@ COPY pipeline/src/ /app/pipeline/src/
 # pod-config.yaml is needed by PodProvisioner constructor.
 COPY infra/css/pods/ /app/infra/css/pods/
 
-# Install and wire entrypoint + CLI wrapper
 COPY infra/openclaw/entrypoint.sh /app/entrypoint.sh
-COPY infra/openclaw/cli.sh /app/cli.sh
-RUN chmod +x /app/entrypoint.sh /app/cli.sh
+RUN chmod +x /app/entrypoint.sh
 
 # Pre-create the volume mount point with correct ownership.
 # rootless podman handles this via user namespace mapping; rootful Docker does not —

@@ -1,111 +1,62 @@
 # pocpod0 — project convenience targets
-# All podman compose commands assume running inside distrobox.
-# Use: distrobox-host-exec podman compose ... for host-level compose calls.
+# Only commands that are long, multi-step, or easy to forget belong here.
+# Simple one-liners (compose up/down/logs, ssh) run directly.
+#
+# Local stack uses distrobox-host-exec podman compose.
+# VPS targets run from local via SSH — no make needed on the VPS.
 
-COMPOSE = distrobox-host-exec podman compose
-PIPELINE_VENV = pipeline/.venv/bin/activate
+COMPOSE        = distrobox-host-exec podman compose
+PIPELINE_VENV  = pipeline/.venv/bin/activate
+VPS_REMOTE     = hetzner
+VPS_PATH       = /home/nicolas/pocpod0
 
-.PHONY: help up down reset logs ps \
-        pull build rebuild sync-workspaces backup \
-        pipeline pipeline-dry dashboard troll \
-        cli-devices cli-dashboard \
-        setup
+.PHONY: help \
+        pull rebuild sync-workspaces backup \
+        pipeline pipeline-dry dashboard troll setup \
+        cli-devices \
+        vps-push vps-build vps-deploy vps-setup vps-pipeline \
+        vps-devices-list vps-devices-approve vps-backup
 
-# ── Default ──────────────────────────────────────────────────────────────────
+# ── Help ─────────────────────────────────────────────────────────────────────
 
 help:
-	@echo "Usage: make <target>"
-	@echo ""
-	@echo "Infrastructure:"
-	@echo "  up            Start all services (detached)"
-	@echo "  down          Stop all services"
-	@echo "  reset         Full wipe (volumes + restart)"
-	@echo "  logs          Follow logs for all services"
-	@echo "  ps            Show running containers"
-	@echo ""
-	@echo "Image management:"
+	@echo "Local:"
 	@echo "  pull              Pull latest upstream images (CSS, Oxigraph, Qdrant, Nginx)"
-	@echo "  build             Build local openclaw image"
 	@echo "  rebuild           Pull upstream + rebuild openclaw image"
-	@echo "  sync-workspaces   Rebuild + hot-patch agent files (no volume wipe, pod data safe)"
-	@echo "  backup            Extract workspaces + config from container → backups/openclaw-<timestamp>/"
+	@echo "  sync-workspaces   Hot-patch agent files (no volume wipe, ~30s)"
+	@echo "  backup            Extract workspaces + config → backups/openclaw-<ts>/"
+	@echo "  pipeline          Run full xAPI-OSLO ingestion pipeline"
+	@echo "  pipeline-dry      Dry-run pipeline (no writes)"
+	@echo "  dashboard         Start FastAPI ACL dashboard (http://localhost:8080)"
+	@echo "  troll             Run troll adversary test suite"
+	@echo "  setup             One-time: create pipeline venv + install deps"
+	@echo "  cli-devices       List/approve local OpenClaw gateway devices"
+	@echo "                    Pass ARGS='approve <id>' to approve"
 	@echo ""
-	@echo "Pipeline & tools:"
-	@echo "  pipeline      Run full xAPI-OSLO ingestion pipeline, dashboard included"
-	@echo "  pipeline-dry  Dry-run pipeline (no writes)"
-	@echo "  dashboard     Start ACL enforcement dashboard (http://localhost:8080)"
-	@echo "  troll         Run comprehensive troll adversary test suite"
-	@echo ""
-	@echo "OpenClaw CLI:"
-	@echo "  cli-devices   List/approve gateway devices"
-	@echo "  cli-dashboard Show OpenClaw dashboard URL"
-	@echo ""
-	@echo "Setup:"
-	@echo "  setup         One-time: create venv + install pipeline deps"
-	@echo ""
-	@echo "VPS deploy (run from local):"
-	@echo "  vps-push      rsync local repo + .env to hetzner:/home/nicolas/pocpod0"
-	@echo "  vps-build     docker compose build on VPS"
-	@echo "  vps-deploy    push + build + up (full deploy)"
-	@echo "  vps-up        docker compose up -d on VPS"
-	@echo "  vps-down      docker compose down on VPS"
-	@echo "  vps-logs      Follow VPS stack logs"
-	@echo "  vps-ps        Show VPS container status"
-	@echo "  vps-ssh       Open SSH session to VPS"
-	@echo "  vps-pipeline        Run pipeline on VPS (no TUI)"
-	@echo "  vps-pipeline-watch  Watch pipeline TUI in second terminal"
-	@echo "  vps-setup           One-time: create pipeline venv + install deps on VPS"
+	@echo "VPS (run from local):"
+	@echo "  vps-push          rsync repo + .env → VPS, apply VPS .env overrides"
+	@echo "  vps-build         docker compose build on VPS"
+	@echo "  vps-deploy        push + build + up (full deploy)"
+	@echo "  vps-setup         One-time: create pipeline venv on VPS"
+	@echo "  vps-pipeline      Run ingestion pipeline on VPS (in tmux session)"
+	@echo "  vps-devices-list  List pending/paired WebUI devices on VPS"
+	@echo "  vps-devices-approve ID=<requestId>  Approve WebUI pairing on VPS"
+	@echo "  vps-backup        Backup named volumes → VPS backups/ directory"
 
-# ── Infrastructure ────────────────────────────────────────────────────────────
+# ── Local: image management ───────────────────────────────────────────────────
 
-up:
-	$(COMPOSE) up -d
+pull:
+	$(COMPOSE) pull community-solid-server oxigraph qdrant nginx
 
-down:
-	$(COMPOSE) down
+rebuild: pull
+	$(COMPOSE) build openclaw-gateway
 
-reset:
-	$(COMPOSE) down -v
-	$(COMPOSE) up -d
-
-logs:
-	$(COMPOSE) logs -f
-
-ps:
-	$(COMPOSE) ps
-
-# ── Image management ──────────────────────────────────────────────────────────
-
-# Hot-patch agent workspaces + skills in the running container.
-# Rebuilds the image (so /app/agents-seed/ is current), recreates the container
-# (volumes intact — pod data, Oxigraph, Qdrant are NOT touched), then copies
-# seed files over the live workspaces while preserving evolved runtime state
-# (MEMORY.md, HEARTBEAT.md and the memory/ + state/ dirs).
-#
-# Use this instead of `reset` whenever you only changed agents/ files.
-# reset = full wipe (1h pipeline re-run). sync-workspaces = ~30s, no data loss.
-# Extract agent workspaces + openclaw config from the running container for review/backup.
-# Output: backups/openclaw-YYYY-MM-DDTHH-MM/
-#   workspaces/   — full agent workspaces (MEMORY.md, HEARTBEAT.md, memory/, state/, …)
-#   openclaw.json — live gateway config (may differ from repo if gateway evolved it)
-#   exec-approvals.json — approved tool executions
-#   devices/      — paired device records
-#
-# Safe to run at any time — read-only, no container state modified.
-backup:
-	$(eval BACKUP_DIR := backups/openclaw-$(shell date +%Y-%m-%dT%H-%M))
-	@mkdir -p $(BACKUP_DIR)
-	@echo "Backing up to $(BACKUP_DIR)/ ..."
-	@distrobox-host-exec podman cp openclaw-gateway:/home/node/.openclaw/workspaces $(BACKUP_DIR)/workspaces
-	@distrobox-host-exec podman cp openclaw-gateway:/home/node/.openclaw/openclaw.json $(BACKUP_DIR)/openclaw.json
-	@distrobox-host-exec podman cp openclaw-gateway:/home/node/.openclaw/exec-approvals.json $(BACKUP_DIR)/exec-approvals.json 2>/dev/null || true
-	@distrobox-host-exec podman cp openclaw-gateway:/home/node/.openclaw/devices $(BACKUP_DIR)/devices 2>/dev/null || true
-	@echo "Done. Contents:"
-	@find $(BACKUP_DIR) -type f | sort | sed 's|^|  |'
-
-sync-workspaces: build
+# Rebuild image + hot-patch agent files in running container.
+# Preserves MEMORY.md, HEARTBEAT.md, memory/ and state/ dirs.
+# Use instead of full reset when only agents/ files changed (~30s vs 1h pipeline).
+sync-workspaces: rebuild
 	$(COMPOSE) up -d --force-recreate openclaw-gateway
-	@echo "Waiting for openclaw-gateway to be healthy..."
+	@echo "Waiting for openclaw-gateway..."
 	@until distrobox-host-exec podman exec openclaw-gateway true 2>/dev/null; do sleep 1; done
 	@distrobox-host-exec podman exec openclaw-gateway sh -c '\
 		for src in $$(find /app/agents-seed -type f); do \
@@ -118,52 +69,47 @@ sync-workspaces: build
 				   echo "  synced:    $$rel" ;; \
 			esac; \
 		done'
-	@echo "Workspace sync complete. memory/ and state/ dirs untouched."
+	@echo "Workspace sync complete."
 
-# Pull only the external (non-built) images.
-pull:
-	$(COMPOSE) pull community-solid-server oxigraph qdrant nginx
+# Extract agent workspaces + config from running container.
+# Output: backups/openclaw-YYYY-MM-DDTHH-MM/
+backup:
+	$(eval BACKUP_DIR := backups/openclaw-$(shell date +%Y-%m-%dT%H-%M))
+	@mkdir -p $(BACKUP_DIR)
+	@echo "Backing up to $(BACKUP_DIR)/ ..."
+	@distrobox-host-exec podman cp openclaw-gateway:/home/node/.openclaw/workspaces $(BACKUP_DIR)/workspaces
+	@distrobox-host-exec podman cp openclaw-gateway:/home/node/.openclaw/openclaw.json $(BACKUP_DIR)/openclaw.json
+	@distrobox-host-exec podman cp openclaw-gateway:/home/node/.openclaw/exec-approvals.json $(BACKUP_DIR)/exec-approvals.json 2>/dev/null || true
+	@distrobox-host-exec podman cp openclaw-gateway:/home/node/.openclaw/devices $(BACKUP_DIR)/devices 2>/dev/null || true
+	@echo "Done:"; find $(BACKUP_DIR) -type f | sort | sed 's|^|  |'
 
-build:
-	$(COMPOSE) build openclaw-gateway
-
-# Pull external images first, then rebuild openclaw on top.
-rebuild: pull build
-
-# ── Pipeline & tools ──────────────────────────────────────────────────────────
+# ── Local: pipeline & tools ───────────────────────────────────────────────────
 
 pipeline:
-	@. $(PIPELINE_VENV) && python pipeline/run_pipeline.py --with-dashboard
+	@. $(PIPELINE_VENV) && python pipeline/run_pipeline.py
 
 pipeline-dry:
-	@. $(PIPELINE_VENV) && python pipeline/run_pipeline.py --dry-run --with-dashboard
+	@. $(PIPELINE_VENV) && python pipeline/run_pipeline.py --dry-run
 
-# Start the FastAPI ACL dashboard; relies on pipeline venv.
 dashboard:
 	@. $(PIPELINE_VENV) && pocpod0-acl-dashboard
 
 troll:
 	@bash scripts/run-troll.sh
 
-# ── OpenClaw CLI ──────────────────────────────────────────────────────────────
+setup:
+	python3 -m venv pipeline/.venv
+	pipeline/.venv/bin/pip install -e 'pipeline/[dev]' --quiet
+	@echo "Venv ready: pipeline/.venv"
 
-# Pass extra args with: make cli-devices ARGS="approve <requestId>"
+# Pass ARGS="approve <requestId>" to approve a device
 cli-devices:
-	$(COMPOSE) --profile cli run --rm openclaw-cli devices $(ARGS)
+	distrobox-host-exec podman exec openclaw-gateway openclaw devices $(ARGS)
 
-cli-dashboard:
-	$(COMPOSE) --profile cli run --rm openclaw-cli dashboard --no-open
+# ── VPS deploy (run from local) ───────────────────────────────────────────────
+# SSH alias: hetzner  |  Path: /home/nicolas/pocpod0
+# .env synced from local; VPS overrides auto-applied from infra/vps/.env.vps
 
-# ── VPS deploy (run from local, deploys to Hetzner) ──────────────────────────
-# VPS path: /home/nicolas/pocpod0  SSH alias: hetzner
-# .env is included in rsync (contains secrets — never committed to git)
-
-VPS_REMOTE := hetzner
-VPS_PATH   := /home/nicolas/pocpod0
-
-.PHONY: vps-push vps-build vps-deploy vps-up vps-down vps-logs vps-ps vps-ssh
-
-## Sync local repo + .env to VPS (mirrors .gitignore exclusions + dev artifacts)
 vps-push:
 	rsync -avz --delete-after \
 		--exclude=".git" \
@@ -183,44 +129,38 @@ vps-push:
 		--exclude="*.tmp" \
 		--exclude="*.bak" \
 		./ $(VPS_REMOTE):$(VPS_PATH)/
+	@echo "Applying VPS .env overrides..."
+	@ssh $(VPS_REMOTE) 'cd $(VPS_PATH) && \
+		grep -v "^#" infra/vps/.env.vps | grep "=" | while IFS="=" read -r key value; do \
+			sed -i "s|^$$key=.*|$$key=$$value|" .env; \
+		done'
 	@echo "Sync complete."
 
-## Build openclaw image on VPS (run after first vps-push or after Dockerfile changes)
 vps-build:
 	ssh $(VPS_REMOTE) "cd $(VPS_PATH) && docker compose build"
 
-## Full deploy: push + build + restart stack
 vps-deploy: vps-push vps-build
 	ssh $(VPS_REMOTE) "cd $(VPS_PATH) && docker compose up -d"
 
-## Start stack on VPS (no rebuild)
-vps-up:
-	ssh $(VPS_REMOTE) "cd $(VPS_PATH) && docker compose up -d"
-
-## Stop stack on VPS
-vps-down:
-	ssh $(VPS_REMOTE) "cd $(VPS_PATH) && docker compose down"
-
-## Follow logs on VPS
-vps-logs:
-	ssh $(VPS_REMOTE) "cd $(VPS_PATH) && docker compose logs -f"
-
-## Show container status on VPS
-vps-ps:
-	ssh $(VPS_REMOTE) "cd $(VPS_PATH) && docker compose ps"
-
-## Open SSH session to VPS
-vps-ssh:
-	ssh $(VPS_REMOTE)
-
-## Run pipeline on VPS with TUI dashboard (single terminal)
-vps-pipeline:
-	ssh $(VPS_REMOTE) "cd $(VPS_PATH) && . pipeline/.venv/bin/activate && python pipeline/run_pipeline.py --with-dashboard"
-
-## Watch pipeline TUI dashboard on VPS (open in second terminal before running vps-pipeline)
-vps-pipeline-watch:
-	ssh $(VPS_REMOTE) "cd $(VPS_PATH) && . pipeline/.venv/bin/activate && pocpod0-dashboard"
-
-## One-time: create pipeline venv + install deps on VPS (run after first vps-push)
+# One-time: bootstrap pipeline venv on VPS after first vps-push
 vps-setup:
 	ssh $(VPS_REMOTE) "cd $(VPS_PATH)/pipeline && python3 -m venv .venv && .venv/bin/pip install -e '.[dev]' --quiet && echo 'venv ready'"
+
+# Run pipeline on VPS inside a tmux session (detaches; check progress via vps logs)
+vps-pipeline:
+	ssh $(VPS_REMOTE) "cd $(VPS_PATH) && tmux new-session -d -s pipeline '. pipeline/.venv/bin/activate && python pipeline/run_pipeline.py' && echo 'Pipeline running in tmux session: pipeline' && echo 'Check: ssh hetzner tmux attach -t pipeline'"
+
+vps-devices-list:
+	ssh $(VPS_REMOTE) "docker exec openclaw-gateway openclaw devices list"
+
+# Usage: make vps-devices-approve ID=<requestId>
+vps-devices-approve:
+	ssh $(VPS_REMOTE) "docker exec openclaw-gateway openclaw devices approve $(ID)"
+
+# Backup all named volumes to VPS backups/ directory
+vps-backup:
+	ssh $(VPS_REMOTE) "mkdir -p $(VPS_PATH)/backups"
+	ssh $(VPS_REMOTE) "docker run --rm -v pocpod0_css-data:/data alpine tar czf - /data > $(VPS_PATH)/backups/css-data-$$(date +%F).tar.gz && echo 'css-data backed up'"
+	ssh $(VPS_REMOTE) "docker run --rm -v pocpod0_openclaw-data-default:/data alpine tar czf - /data > $(VPS_PATH)/backups/openclaw-data-$$(date +%F).tar.gz && echo 'openclaw-data backed up'"
+	ssh $(VPS_REMOTE) "docker run --rm -v pocpod0_oxigraph-data:/data alpine tar czf - /data > $(VPS_PATH)/backups/oxigraph-data-$$(date +%F).tar.gz && echo 'oxigraph-data backed up'"
+	ssh $(VPS_REMOTE) "docker run --rm -v pocpod0_qdrant-data:/data alpine tar czf - /data > $(VPS_PATH)/backups/qdrant-data-$$(date +%F).tar.gz && echo 'qdrant-data backed up'"
