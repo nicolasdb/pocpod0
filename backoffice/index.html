@@ -1,0 +1,1118 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  body{margin:0}
+  *{scrollbar-width:thin}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes pop{0%{transform:scale(.9);opacity:0}60%{transform:scale(1.03)}100%{transform:scale(1);opacity:1}}
+  @keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</helmet>
+<div style="min-height:100vh;background:var(--bg,#f6f4ef);color:var(--tx,#26241f);font-family:var(--font,'Lexend'),sans-serif;font-size:var(--fs,15px);line-height:1.6;letter-spacing:var(--ls,0)" data-screen-label="Pod Backoffice — SOLID">
+
+<!-- ══════════════════ BOOT ══════════════════ -->
+<sc-if value="{{ isBoot }}" hint-placeholder-val="{{ true }}">
+  <div style="min-height:100vh;display:grid;place-items:center">
+    <div style="text-align:center">
+      <div style="width:30px;height:30px;border-radius:50%;border:3px solid var(--line,#e7e2d6);border-top-color:var(--acc,#3d6b52);margin:0 auto 16px;animation:spin .8s linear infinite"></div>
+      <div style="font-size:13.5px;color:var(--tx2,#8a8474)">Looking for your pod…</div>
+    </div>
+  </div>
+</sc-if>
+
+<!-- ══════════════════ GATE ══════════════════ -->
+<sc-if value="{{ isGate }}" hint-placeholder-val="{{ false }}">
+  <div style="min-height:100vh;display:flex;flex-direction:column" data-screen-label="Connect">
+    <div style="flex:1;display:grid;place-items:center;padding:40px 24px">
+      <div style="max-width:520px;width:100%;animation:fadeUp .4s ease both">
+        <div style="display:flex;align-items:center;gap:11px;margin-bottom:30px">
+          <div style="width:38px;height:38px;border-radius:11px;background:var(--acc,#3d6b52);display:grid;place-items:center;color:#fff;font-weight:700;font-size:18px">◈</div>
+          <div style="font-weight:600;font-size:15px">Pod Backoffice</div>
+          <div style="flex:1"></div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--tx3,#b3ac9a)">pod.nicolasdb.eu</div>
+        </div>
+        <h1 style="font-size:30px;font-weight:600;letter-spacing:-.4px;margin:0 0 14px;line-height:1.2">A place on the web that is only yours.</h1>
+        <p style="font-size:16px;color:var(--tx2,#8a8474);margin:0 0 30px;text-wrap:pretty">No plan, no ads, no company reading over your shoulder. Just your own space — and simple choices about who else gets to see any of it.</p>
+
+        <button onClick="{{ startOnboarding }}" style="display:flex;align-items:center;gap:16px;width:100%;text-align:left;padding:20px 22px;border-radius:16px;border:1.5px solid var(--acc,#3d6b52);background:var(--accSoft,#eef3ef);cursor:pointer;font-family:inherit;margin-bottom:12px" style-hover="filter:brightness(.99);box-shadow:0 6px 20px rgba(0,0,0,.06)">
+          <span style="font-size:26px">🌱</span>
+          <span style="flex:1">
+            <span style="display:block;font-weight:600;font-size:16px;color:var(--tx,#26241f)">I'm new to this</span>
+            <span style="display:block;font-size:13.5px;color:var(--tx2,#8a8474)">A calm, no-jargon walkthrough. We'll set up your space together, one small step at a time.</span>
+          </span>
+          <span style="color:var(--acc,#3d6b52);font-size:20px">→</span>
+        </button>
+
+        <button onClick="{{ connectLive }}" style="display:flex;align-items:center;gap:16px;width:100%;text-align:left;padding:18px 22px;border-radius:16px;border:1px solid var(--line,#e7e2d6);background:var(--panel,#fbfaf7);cursor:pointer;font-family:inherit" style-hover="border-color:var(--acc,#3d6b52)">
+          <span style="font-size:22px">🔑</span>
+          <span style="flex:1">
+            <span style="display:block;font-weight:600;font-size:15px;color:var(--tx,#26241f)">I already have a pod</span>
+            <span style="display:block;font-size:13px;color:var(--tx2,#8a8474)">Sign in at pod.nicolasdb.eu and open my things.</span>
+          </span>
+          <span style="color:var(--tx3,#b3ac9a);font-size:18px">›</span>
+        </button>
+
+        <sc-if value="{{ offlineNote }}" hint-placeholder-val="{{ false }}">
+          <p style="font-size:12px;color:var(--tx3,#b3ac9a);margin:18px 2px 0;line-height:1.5">ℹ︎ Live sign-in opens a redirect to the provider — it needs this app served at a real URL. In this preview the walkthrough runs on a faithful in-memory pod so you can explore every step.</p>
+        </sc-if>
+      </div>
+    </div>
+  </div>
+</sc-if>
+
+<!-- ══════════════════ ONBOARDING ══════════════════ -->
+<sc-if value="{{ isOnboarding }}" hint-placeholder-val="{{ false }}">
+  <div style="min-height:100vh;display:flex;flex-direction:column" data-screen-label="Onboarding">
+    <!-- top rail: three phases (working-memory-friendly) -->
+    <header style="border-bottom:1px solid var(--line,#e7e2d6);background:var(--panel,#fbfaf7);padding:16px 24px;position:sticky;top:0;z-index:5">
+      <div style="max-width:640px;margin:0 auto;display:flex;align-items:center;gap:14px">
+        <div style="width:30px;height:30px;border-radius:9px;background:var(--acc,#3d6b52);display:grid;place-items:center;color:#fff;font-weight:700;font-size:15px">◈</div>
+        <div style="flex:1;display:flex;gap:8px">
+          <sc-for list="{{ phases }}" as="ph" hint-placeholder-count="3">
+            <div style="flex:1">
+              <div style="{{ ph.barStyle }}"></div>
+              <div style="{{ ph.labelStyle }}">{{ ph.label }}</div>
+            </div>
+          </sc-for>
+        </div>
+        <button onClick="{{ quitOnboarding }}" style="border:none;background:none;font-family:inherit;font-size:12.5px;color:var(--tx3,#b3ac9a);cursor:pointer;padding:4px 6px" style-hover="color:var(--tx2,#8a8474)">Skip</button>
+      </div>
+    </header>
+
+    <div style="flex:1;display:grid;place-items:center;padding:36px 24px 60px">
+      <div style="max-width:620px;width:100%">
+
+        <!-- CONCEPT chapters (data-driven card) -->
+        <sc-if value="{{ isConcept }}" hint-placeholder-val="{{ true }}">
+          <div style="animation:fadeUp .35s ease both">
+            <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.09em;color:var(--acc,#3d6b52);margin-bottom:14px">{{ conceptKicker }}</div>
+            <div style="font-size:46px;margin-bottom:18px">{{ conceptIcon }}</div>
+            <h1 style="font-size:27px;font-weight:600;letter-spacing:-.3px;margin:0 0 14px;line-height:1.25;text-wrap:pretty">{{ conceptTitle }}</h1>
+            <p style="font-size:16.5px;color:var(--tx2,#8a8474);margin:0 0 24px;line-height:1.6;text-wrap:pretty">{{ conceptLead }}</p>
+            <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:14px">
+              <sc-for list="{{ conceptChunks }}" as="ck" hint-placeholder-count="3">
+                <div style="display:flex;gap:14px;align-items:flex-start;padding:16px 18px;border-radius:13px;border:1px solid var(--line,#e7e2d6);background:var(--panel,#fbfaf7)">
+                  <span style="font-size:20px;flex-shrink:0">{{ ck.icon }}</span>
+                  <span style="flex:1">
+                    <span style="display:block;font-weight:600;font-size:14.5px;color:var(--tx,#26241f);margin-bottom:2px">{{ ck.title }}</span>
+                    <span style="display:block;font-size:13.5px;color:var(--tx2,#8a8474);line-height:1.55">{{ ck.body }}</span>
+                  </span>
+                </div>
+              </sc-for>
+            </div>
+            <sc-if value="{{ conceptAside }}" hint-placeholder-val="{{ false }}">
+              <div style="{{ conceptAsideStyle }}">{{ conceptAside }}</div>
+            </sc-if>
+          </div>
+        </sc-if>
+
+        <!-- CHECKPOINT: light reflection, not a test -->
+        <sc-if value="{{ isCheckpoint }}" hint-placeholder-val="{{ false }}">
+          <div style="animation:fadeUp .35s ease both">
+            <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.09em;color:var(--acc,#3d6b52);margin-bottom:14px">A quick gut-check</div>
+            <h1 style="font-size:25px;font-weight:600;margin:0 0 8px;line-height:1.3">If a friend asked, which is closest to the truth?</h1>
+            <p style="font-size:15px;color:var(--tx2,#8a8474);margin:0 0 22px">No wrong answers — this is just to see how it's landing.</p>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <sc-for list="{{ checkOptions }}" as="co" hint-placeholder-count="3">
+                <button onClick="{{ co.pick }}" style="{{ co.style }}" style-hover="border-color:var(--acc,#3d6b52)">
+                  <span style="flex:1;text-align:left;font-size:14.5px">{{ co.label }}</span>
+                  <span style="font-size:16px">{{ co.mark }}</span>
+                </button>
+              </sc-for>
+            </div>
+            <sc-if value="{{ checkFeedback }}" hint-placeholder-val="{{ false }}">
+              <div style="margin-top:16px;padding:15px 17px;border-radius:12px;background:var(--accSoft,#eef3ef);font-size:14px;color:var(--tx,#26241f);line-height:1.55;animation:fadeUp .3s ease both">{{ checkFeedback }}</div>
+            </sc-if>
+          </div>
+        </sc-if>
+
+        <!-- ACTION: create pod -->
+        <sc-if value="{{ isActCreate }}" hint-placeholder-val="{{ false }}">
+          <div style="animation:fadeUp .35s ease both">
+            <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.09em;color:var(--warn,#b5722a);margin-bottom:14px">Now let's do it · 1 of 4</div>
+            <div style="font-size:44px;margin-bottom:16px">📦</div>
+            <h1 style="font-size:26px;font-weight:600;margin:0 0 12px;line-height:1.25">Let's make your box.</h1>
+            <p style="font-size:16px;color:var(--tx2,#8a8474);margin:0 0 22px;line-height:1.6;text-wrap:pretty">This creates your pod on <strong style="color:var(--tx,#26241f)">pod.nicolasdb.eu</strong> and gives you a WebID — your address on the web. Nothing is public. It's an empty room waiting for you.</p>
+            <div style="display:flex;flex-direction:column;gap:16px;margin-bottom:20px">
+              <label style="display:block">
+                <span style="display:block;font-size:12.5px;font-weight:600;color:var(--tx,#26241f);margin-bottom:6px">Choose a name for your space</span>
+                <input value="{{ acctName }}" onChange="{{ onAcctName }}" placeholder="e.g. ayoub, sam-b, la-famille" style="width:100%;box-sizing:border-box;font-family:'JetBrains Mono',monospace;font-size:14px;padding:12px 14px;border-radius:11px;border:1.5px solid var(--line,#e7e2d6);background:var(--panel,#fbfaf7);color:var(--tx,#26241f);outline:none" style-focus="border-color:var(--acc,#3d6b52)">
+              </label>
+              <label style="display:block">
+                <span style="display:block;font-size:12.5px;font-weight:600;color:var(--tx,#26241f);margin-bottom:6px">A passphrase to lock it <span style="font-weight:400;color:var(--tx3,#b3ac9a)">— optional, but a good idea</span></span>
+                <input value="{{ passphrase }}" onChange="{{ onPassphrase }}" type="text" placeholder="four random words you'll remember" style="width:100%;box-sizing:border-box;font-family:'JetBrains Mono',monospace;font-size:14px;padding:12px 14px;border-radius:11px;border:1.5px solid var(--line,#e7e2d6);background:var(--panel,#fbfaf7);color:var(--tx,#26241f);outline:none" style-focus="border-color:var(--acc,#3d6b52)">
+                <span style="display:block;font-size:12px;color:var(--tx2,#8a8474);margin-top:7px;line-height:1.5">💡 A <strong>passphrase</strong> — like <span style="font-family:'JetBrains Mono',monospace;color:var(--acc,#3d6b52)">copper-otter-lantern-drift</span> — is easier to remember and far harder to guess than a short password. Length beats symbols. {{ passStrength }}</span>
+              </label>
+            </div>
+            <div style="border:1px solid var(--line,#e7e2d6);border-radius:14px;background:var(--panel,#fbfaf7);padding:18px 20px;margin-bottom:22px">
+              <div style="font-size:12px;color:var(--tx3,#b3ac9a);margin-bottom:6px">Your WebID will be</div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--acc,#3d6b52);word-break:break-all">{{ newWebId }}</div>
+            </div>
+            <sc-if value="{{ podCreated }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;align-items:center;gap:12px;padding:16px 18px;border-radius:13px;background:var(--accSoft,#eef3ef);border:1px solid var(--accSoftLine,#b8ccbf);animation:pop .4s ease both">
+                <span style="font-size:22px">✅</span>
+                <span style="font-size:14.5px;font-weight:600">Done. The room is yours.</span>
+              </div>
+            </sc-if>
+          </div>
+        </sc-if>
+
+        <!-- ACTION: folders -->
+        <sc-if value="{{ isActFolders }}" hint-placeholder-val="{{ false }}">
+          <div style="animation:fadeUp .35s ease both">
+            <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.09em;color:var(--warn,#b5722a);margin-bottom:14px">Now let's do it · 2 of 4</div>
+            <h1 style="font-size:26px;font-weight:600;margin:0 0 10px;line-height:1.25">A few shelves to start.</h1>
+            <p style="font-size:15.5px;color:var(--tx2,#8a8474);margin:0 0 22px;line-height:1.6;text-wrap:pretty">Pick the ones that feel useful — tap to add or remove. You can rename or add more anytime. Keep it to a handful for now.</p>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+              <sc-for list="{{ folderChoices }}" as="fc" hint-placeholder-count="4">
+                <button onClick="{{ fc.toggle }}" style="{{ fc.style }}" style-hover="border-color:var(--acc,#3d6b52)">
+                  <span style="font-size:22px">{{ fc.icon }}</span>
+                  <span style="flex:1;text-align:left;font-weight:600;font-size:14.5px">{{ fc.name }}</span>
+                  <span style="{{ fc.checkStyle }}">{{ fc.check }}</span>
+                </button>
+              </sc-for>
+            </div>
+            <p style="font-size:12.5px;color:var(--tx3,#b3ac9a);margin:18px 0 0">{{ folderCountLine }}</p>
+          </div>
+        </sc-if>
+
+        <!-- ACTION: first file -->
+        <sc-if value="{{ isActFile }}" hint-placeholder-val="{{ false }}">
+          <div style="animation:fadeUp .35s ease both">
+            <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.09em;color:var(--warn,#b5722a);margin-bottom:14px">Now let's do it · 3 of 4</div>
+            <h1 style="font-size:26px;font-weight:600;margin:0 0 10px;line-height:1.25">Write the first thing.</h1>
+            <p style="font-size:15.5px;color:var(--tx2,#8a8474);margin:0 0 20px;line-height:1.6">Anything at all. A note to yourself. This becomes a real file in your pod.</p>
+            <div style="border:1px solid var(--line,#e7e2d6);border-radius:14px;overflow:hidden;background:var(--panel,#fbfaf7)">
+              <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line,#e7e2d6);background:var(--bg,#f6f4ef)">
+                <span style="font-size:15px">📄</span>
+                <input value="{{ firstFileName }}" onChange="{{ onFirstName }}" style="flex:1;font-family:'JetBrains Mono',monospace;font-size:13px;border:none;background:none;outline:none;color:var(--tx,#26241f)">
+              </div>
+              <textarea value="{{ firstFileBody }}" onChange="{{ onFirstBody }}" placeholder="# Hello&#10;&#10;Today I made a space that's mine…" style="width:100%;box-sizing:border-box;min-height:180px;resize:vertical;border:none;background:none;outline:none;padding:16px 18px;font-family:inherit;font-size:15px;line-height:1.7;color:var(--tx,#26241f)"></textarea>
+            </div>
+            <sc-if value="{{ fileSaved }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;align-items:center;gap:10px;margin-top:14px;font-size:14px;color:var(--acc,#3d6b52);font-weight:600;animation:pop .4s ease both"><span style="font-size:18px">✅</span> Saved to your pod.</div>
+            </sc-if>
+          </div>
+        </sc-if>
+
+        <!-- ACTION: first share -->
+        <sc-if value="{{ isActShare }}" hint-placeholder-val="{{ false }}">
+          <div style="animation:fadeUp .35s ease both">
+            <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.09em;color:var(--warn,#b5722a);margin-bottom:14px">Now let's do it · 4 of 4</div>
+            <h1 style="font-size:26px;font-weight:600;margin:0 0 10px;line-height:1.25">Your first sharing decision.</h1>
+            <p style="font-size:15.5px;color:var(--tx2,#8a8474);margin:0 0 22px;line-height:1.6;text-wrap:pretty">Right now <strong style="color:var(--tx,#26241f)">{{ shareFileName }}</strong> is private — only you. Sharing is always a choice you make on purpose. Try one:</p>
+            <div style="display:flex;flex-direction:column;gap:11px">
+              <sc-for list="{{ shareOptionsOb }}" as="so" hint-placeholder-count="3">
+                <button onClick="{{ so.pick }}" style="{{ so.style }}" style-hover="border-color:var(--acc,#3d6b52)">
+                  <span style="font-size:20px">{{ so.icon }}</span>
+                  <span style="flex:1;text-align:left">
+                    <span style="display:block;font-weight:600;font-size:14.5px;color:var(--tx,#26241f)">{{ so.title }}</span>
+                    <span style="display:block;font-size:13px;color:var(--tx2,#8a8474)">{{ so.desc }}</span>
+                  </span>
+                  <span style="{{ so.dotStyle }}"></span>
+                </button>
+              </sc-for>
+            </div>
+            <sc-if value="{{ obWacOpen }}" hint-placeholder-val="{{ false }}">
+              <div style="margin-top:18px;animation:fadeUp .3s ease both">
+                <div style="font-size:12px;color:var(--tx2,#8a8474);margin-bottom:8px">👁 Behind the scenes, that just wrote this rule — the same language every SOLID pod speaks:</div>
+                <pre style="margin:0;font-family:'JetBrains Mono',monospace;font-size:11.5px;line-height:1.5;color:var(--tx,#26241f);background:var(--codebg,#f0ede4);border:1px solid var(--line,#e7e2d6);border-radius:11px;padding:14px 16px;overflow-x:auto;white-space:pre-wrap">{{ obWacText }}</pre>
+              </div>
+            </sc-if>
+          </div>
+        </sc-if>
+
+        <!-- RECAP -->
+        <sc-if value="{{ isRecap }}" hint-placeholder-val="{{ false }}">
+          <div style="text-align:center;animation:fadeUp .4s ease both">
+            <div style="font-size:52px;margin-bottom:14px;animation:pop .5s ease both">🎉</div>
+            <h1 style="font-size:28px;font-weight:600;margin:0 0 10px;line-height:1.25">You built the whole picture.</h1>
+            <p style="font-size:16px;color:var(--tx2,#8a8474);margin:0 0 26px;text-wrap:pretty">Not memorised — understood. Here's the map you now carry:</p>
+            <div style="display:flex;flex-direction:column;gap:10px;text-align:left;margin-bottom:30px">
+              <sc-for list="{{ recapItems }}" as="ri" hint-placeholder-count="4">
+                <div style="display:flex;gap:14px;align-items:center;padding:15px 18px;border-radius:13px;border:1px solid var(--line,#e7e2d6);background:var(--panel,#fbfaf7)">
+                  <span style="font-size:22px">{{ ri.icon }}</span>
+                  <span style="flex:1"><strong style="font-size:14.5px">{{ ri.title }}</strong> <span style="color:var(--tx2,#8a8474);font-size:13.5px">— {{ ri.body }}</span></span>
+                  <span style="color:var(--acc,#3d6b52);font-size:18px">✓</span>
+                </div>
+              </sc-for>
+            </div>
+            <button onClick="{{ enterApp }}" style="font-family:inherit;font-size:15.5px;font-weight:600;padding:15px 34px;border-radius:99px;border:none;background:var(--acc,#3d6b52);color:#fff;cursor:pointer" style-hover="filter:brightness(1.08)">Open my space →</button>
+          </div>
+        </sc-if>
+
+        <!-- nav footer -->
+        <sc-if value="{{ showObNav }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;align-items:center;gap:12px;margin-top:34px">
+            <sc-if value="{{ canBack }}" hint-placeholder-val="{{ false }}">
+              <button onClick="{{ obBack }}" style="font-family:inherit;font-size:14px;padding:12px 20px;border-radius:99px;border:1px solid var(--line,#e7e2d6);background:var(--panel,#fbfaf7);color:var(--tx2,#8a8474);cursor:pointer" style-hover="border-color:var(--acc,#3d6b52)">← Back</button>
+            </sc-if>
+            <div style="flex:1"></div>
+            <button onClick="{{ obNext }}" disabled="{{ nextDisabled }}" style="{{ nextStyle }}" style-hover="filter:brightness(1.08)">{{ nextLabel }}</button>
+          </div>
+        </sc-if>
+
+      </div>
+    </div>
+  </div>
+</sc-if>
+
+<!-- ══════════════════ APP ══════════════════ -->
+<sc-if value="{{ isApp }}" hint-placeholder-val="{{ false }}">
+  <div style="min-height:100vh;display:flex">
+    <!-- sidebar -->
+    <sc-if value="{{ showSidebar }}" hint-placeholder-val="{{ true }}">
+    <nav style="width:236px;flex-shrink:0;border-right:1px solid var(--line,#e7e2d6);background:var(--panel,#fbfaf7);display:flex;flex-direction:column;padding:20px 14px;gap:4px;position:sticky;top:0;height:100vh;box-sizing:border-box">
+      <div style="display:flex;align-items:center;gap:10px;padding:6px 10px 18px">
+        <div style="width:34px;height:34px;border-radius:10px;background:var(--acc,#3d6b52);display:grid;place-items:center;color:#fff;font-weight:700;font-size:16px">◈</div>
+        <div style="min-width:0">
+          <div style="font-weight:600;font-size:14px;line-height:1.2">My Space</div>
+          <div style="font-size:11px;color:var(--tx2,#8a8474);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ podHost }}</div>
+        </div>
+      </div>
+      <sc-for list="{{ navItems }}" as="nv" hint-placeholder-count="4">
+        <button onClick="{{ nv.go }}" style="{{ nv.style }}" style-hover="background:var(--hov,#efece3)">
+          <span style="width:20px;text-align:center;font-size:15px">{{ nv.icon }}</span>
+          <span style="flex:1;text-align:left">{{ nv.label }}</span>
+          <sc-if value="{{ nv.badge }}" hint-placeholder-val="{{ false }}"><span style="min-width:20px;height:20px;border-radius:10px;background:var(--warn,#b5722a);color:#fff;font-size:11px;font-weight:600;display:grid;place-items:center;padding:0 6px">{{ nv.badge }}</span></sc-if>
+        </button>
+      </sc-for>
+      <div style="flex:1"></div>
+      <div style="padding:12px 10px;border-top:1px solid var(--line,#e7e2d6);margin-top:8px">
+        <div style="font-size:11px;color:var(--tx3,#b3ac9a);margin-bottom:3px">Signed in as</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--tx2,#8a8474);word-break:break-all;line-height:1.4">{{ shortWebId }}</div>
+        <button onClick="{{ signOut }}" style="margin-top:8px;font-family:inherit;font-size:12.5px;color:var(--tx2,#8a8474);border:none;background:none;cursor:pointer;padding:0" style-hover="color:var(--warn,#b5722a)">Sign out</button>
+      </div>
+    </nav>
+    </sc-if>
+
+    <main style="flex:1;min-width:0;display:flex;flex-direction:column">
+      <header style="display:flex;align-items:center;gap:8px;padding:14px 28px;border-bottom:1px solid var(--line,#e7e2d6);background:var(--panel,#fbfaf7);position:sticky;top:0;z-index:5;min-height:34px">
+        <sc-for list="{{ crumbs }}" as="c" hint-placeholder-count="2">
+          <button onClick="{{ c.go }}" style="{{ c.style }}" style-hover="color:var(--acc,#3d6b52)">{{ c.label }}</button>
+          <sc-if value="{{ c.sep }}" hint-placeholder-val="{{ true }}"><span style="color:var(--tx3,#b3ac9a);font-size:12px">›</span></sc-if>
+        </sc-for>
+        <div style="flex:1"></div>
+        <sc-if value="{{ demoBadge }}" hint-placeholder-val="{{ false }}"><span style="font-size:11px;font-weight:600;padding:5px 11px;border-radius:99px;background:var(--warnBg,#faf3e6);color:var(--warn,#b5722a);border:1px solid var(--warnLine,#e3c9a3)">Demo pod</span></sc-if>
+      </header>
+
+      <!-- HOME -->
+      <sc-if value="{{ isHome }}" hint-placeholder-val="{{ true }}">
+      <div style="padding:36px 40px;max-width:880px">
+        <h1 style="font-size:26px;font-weight:600;margin:0 0 6px;letter-spacing:-.3px">Welcome to your space.</h1>
+        <p style="margin:0 0 26px;color:var(--tx2,#8a8474);font-size:15px">Everything here is <strong style="color:var(--acc,#3d6b52)">private</strong> until you decide otherwise.</p>
+        <sc-if value="{{ hasRequests }}" hint-placeholder-val="{{ false }}">
+          <button onClick="{{ goRequests }}" style="display:flex;align-items:center;gap:14px;width:100%;text-align:left;padding:18px 20px;border-radius:14px;border:1.5px solid var(--warnLine,#e3c9a3);background:var(--warnBg,#faf3e6);cursor:pointer;font-family:inherit;margin-bottom:26px" style-hover="border-color:var(--warn,#b5722a)">
+            <span style="font-size:22px">✋</span>
+            <span style="flex:1"><span style="display:block;font-weight:600;font-size:14.5px">{{ requestSummary }}</span><span style="display:block;font-size:13px;color:var(--tx2,#8a8474)">Nothing is shared until you say yes.</span></span>
+            <span style="color:var(--warn,#b5722a);font-weight:600;font-size:13px">Review →</span>
+          </button>
+        </sc-if>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px">
+          <sc-for list="{{ homeCards }}" as="hc" hint-placeholder-count="3">
+            <button onClick="{{ hc.go }}" style="text-align:left;padding:22px;border-radius:14px;border:1px solid var(--line,#e7e2d6);background:var(--panel,#fbfaf7);cursor:pointer;font-family:inherit;display:flex;flex-direction:column;gap:8px" style-hover="border-color:var(--acc,#3d6b52);box-shadow:0 4px 16px rgba(0,0,0,.05)">
+              <span style="font-size:24px">{{ hc.icon }}</span>
+              <span style="font-weight:600;font-size:15px;color:var(--tx,#26241f)">{{ hc.title }}</span>
+              <span style="font-size:13px;color:var(--tx2,#8a8474);line-height:1.5">{{ hc.desc }}</span>
+            </button>
+          </sc-for>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- FILES -->
+      <sc-if value="{{ isFiles }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:28px 40px;max-width:900px">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px">
+          <h1 style="font-size:20px;font-weight:600;margin:0;flex:1">{{ folderTitle }}</h1>
+          <button onClick="{{ startNewFile }}" style="font-family:inherit;font-size:13.5px;font-weight:600;padding:9px 18px;border-radius:99px;border:none;background:var(--acc,#3d6b52);color:#fff;cursor:pointer" style-hover="filter:brightness(1.08)">+ New file</button>
+          <button onClick="{{ startNewFolder }}" style="font-family:inherit;font-size:13.5px;padding:9px 18px;border-radius:99px;border:1px solid var(--line,#e7e2d6);background:none;color:var(--tx,#26241f);cursor:pointer" style-hover="border-color:var(--acc,#3d6b52)">+ Folder</button>
+        </div>
+        <sc-if value="{{ newThingOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;gap:10px;align-items:center;padding:14px;border-radius:12px;border:1.5px dashed var(--accSoftLine,#b8ccbf);background:var(--accSoft,#eef3ef);margin-bottom:14px">
+            <span style="font-size:16px">{{ newThingIcon }}</span>
+            <input value="{{ newThingName }}" onChange="{{ onNewThingName }}" placeholder="{{ newThingPlaceholder }}" style="flex:1;font-family:'JetBrains Mono',monospace;font-size:13.5px;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#e7e2d6);background:var(--panel,#fbfaf7);color:var(--tx,#26241f);outline:none">
+            <button onClick="{{ confirmNewThing }}" style="font-family:inherit;font-size:13px;font-weight:600;padding:8px 16px;border-radius:8px;border:none;background:var(--acc,#3d6b52);color:#fff;cursor:pointer">Create</button>
+            <button onClick="{{ cancelNewThing }}" style="font-family:inherit;font-size:13px;padding:8px 12px;border-radius:8px;border:none;background:none;color:var(--tx2,#8a8474);cursor:pointer">Cancel</button>
+          </div>
+        </sc-if>
+        <sc-if value="{{ filesLoading }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:40px;text-align:center;color:var(--tx3,#b3ac9a);font-size:13.5px">Loading your things…</div>
+        </sc-if>
+        <sc-if value="{{ filesReady }}" hint-placeholder-val="{{ true }}">
+          <div style="border:1px solid var(--line,#e7e2d6);border-radius:14px;background:var(--panel,#fbfaf7);overflow:hidden">
+            <sc-for list="{{ items }}" as="it" hint-placeholder-count="4">
+              <div style="display:flex;align-items:center;gap:14px;padding:13px 18px;border-bottom:1px solid var(--line,#e7e2d6);cursor:pointer" style-hover="background:var(--hov,#efece3)">
+                <span onClick="{{ it.open }}" style="font-size:19px;width:26px;text-align:center">{{ it.icon }}</span>
+                <span onClick="{{ it.open }}" style="flex:1;min-width:0">
+                  <span style="display:block;font-size:14.5px;font-weight:500">{{ it.name }}</span>
+                  <span style="display:block;font-size:12px;color:var(--tx3,#b3ac9a)">{{ it.meta }}</span>
+                </span>
+                <button onClick="{{ it.share }}" style="{{ it.badgeStyle }}" style-hover="filter:brightness(.96)">{{ it.badgeIcon }} {{ it.badgeLabel }}</button>
+              </div>
+            </sc-for>
+            <sc-if value="{{ emptyFolder }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:40px 20px;text-align:center;color:var(--tx3,#b3ac9a)"><div style="font-size:28px;margin-bottom:8px">🗂</div><div style="font-size:13.5px">Nothing here yet. Use <strong>+ New file</strong> to begin.</div></div>
+            </sc-if>
+          </div>
+          <p style="font-size:12.5px;color:var(--tx3,#b3ac9a);margin-top:14px">🔒 New things start private. The badge on each row shows who can see it — tap it to change.</p>
+        </sc-if>
+      </div>
+      </sc-if>
+
+      <!-- EDITOR -->
+      <sc-if value="{{ inEditor }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:1;display:flex;flex-direction:column;padding:22px 32px 20px;width:100%;box-sizing:border-box;min-height:0">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+          <span style="font-size:20px">{{ editorIcon }}</span>
+          <h1 style="font-size:17px;font-weight:600;margin:0;flex:1;font-family:'JetBrains Mono',monospace">{{ editorName }}</h1>
+          <sc-if value="{{ canPreview }}" hint-placeholder-val="{{ true }}">
+            <button onClick="{{ togglePreview }}" style="font-family:inherit;font-size:12.5px;padding:7px 14px;border-radius:99px;border:1px solid var(--line,#e7e2d6);background:none;color:var(--tx2,#8a8474);cursor:pointer" style-hover="border-color:var(--acc,#3d6b52)">{{ previewLabel }}</button>
+          </sc-if>
+          <button onClick="{{ openShareCurrent }}" style="{{ editorBadgeStyle }}" style-hover="filter:brightness(.96)">{{ editorBadgeIcon }} {{ editorBadgeLabel }}</button>
+          <button onClick="{{ saveFile }}" style="{{ saveBtnStyle }}" style-hover="filter:brightness(1.08)">{{ saveLabel }}</button>
+        </div>
+        <sc-if value="{{ formatHint }}" hint-placeholder-val="{{ false }}"><div style="{{ formatHintStyle }}">{{ formatHint }}</div></sc-if>
+        <div style="flex:1;display:flex;gap:16px;min-height:360px">
+          <textarea value="{{ editorText }}" onChange="{{ onEditorChange }}" spellCheck="false" style="{{ editorPaneStyle }}"></textarea>
+          <sc-if value="{{ previewShown }}" hint-placeholder-val="{{ true }}">
+            <div style="flex:1;min-width:0;overflow:auto;border:1px solid var(--line,#e7e2d6);border-radius:14px;background:var(--panel,#fbfaf7);padding:22px 26px">{{ previewEl }}</div>
+          </sc-if>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- PEOPLE & APPS -->
+      <sc-if value="{{ isPeople }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:28px 40px;max-width:780px">
+        <h1 style="font-size:20px;font-weight:600;margin:0 0 4px">People &amp; apps</h1>
+        <p style="margin:0 0 24px;color:var(--tx2,#8a8474);font-size:14px">Everyone who can currently see any part of your space. Take any of it back whenever you like.</p>
+        <sc-for list="{{ peopleList }}" as="p" hint-placeholder-count="2">
+          <div style="border:1px solid var(--line,#e7e2d6);border-radius:14px;background:var(--panel,#fbfaf7);margin-bottom:12px;overflow:hidden">
+            <button onClick="{{ p.toggle }}" style="display:flex;align-items:center;gap:14px;width:100%;padding:16px 18px;border:none;background:none;cursor:pointer;font-family:inherit;text-align:left" style-hover="background:var(--hov,#efece3)">
+              <span style="{{ p.avatarStyle }}">{{ p.initial }}</span>
+              <span style="flex:1;min-width:0"><span style="display:block;font-size:14.5px;font-weight:600">{{ p.name }}</span><span style="display:block;font-size:12px;color:var(--tx2,#8a8474);font-family:'JetBrains Mono',monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.webId }}</span></span>
+              <span style="color:var(--tx3,#b3ac9a);font-size:13px">{{ p.chev }}</span>
+            </button>
+            <sc-if value="{{ p.open }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:2px 18px 14px;border-top:1px solid var(--line,#e7e2d6)">
+                <sc-for list="{{ p.grants }}" as="g" hint-placeholder-count="2">
+                  <div style="display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--line,#e7e2d6)">
+                    <span style="font-size:15px">{{ g.icon }}</span>
+                    <span style="flex:1;min-width:0"><span style="display:block;font-size:13.5px">{{ g.name }}</span><span style="display:block;font-size:11.5px;color:var(--tx3,#b3ac9a)">{{ g.modes }}</span></span>
+                    <button onClick="{{ g.revoke }}" style="font-family:inherit;font-size:12px;font-weight:600;padding:6px 12px;border-radius:8px;border:1px solid var(--line,#e7e2d6);background:none;color:var(--tx2,#8a8474);cursor:pointer" style-hover="border-color:#a33;color:#a33">Stop</button>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+          </div>
+        </sc-for>
+        <sc-if value="{{ noPeople }}" hint-placeholder-val="{{ false }}">
+          <div style="text-align:center;padding:48px 0;color:var(--tx3,#b3ac9a)"><div style="font-size:30px;margin-bottom:10px">🔒</div><div style="font-size:14px">Nobody can see anything of yours. Fully private.</div></div>
+        </sc-if>
+      </div>
+      </sc-if>
+
+      <!-- REQUESTS -->
+      <sc-if value="{{ isRequests }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:28px 40px;max-width:700px">
+        <h1 style="font-size:20px;font-weight:600;margin:0 0 4px">Requests</h1>
+        <p style="margin:0 0 24px;color:var(--tx2,#8a8474);font-size:14px">Someone wants to see something of yours. Nothing happens until you decide — and any yes can be undone.</p>
+        <sc-for list="{{ requestCards }}" as="rq" hint-placeholder-count="1">
+          <div style="border:1.5px solid var(--line,#e7e2d6);border-radius:16px;background:var(--panel,#fbfaf7);padding:22px;margin-bottom:16px">
+            <div style="display:flex;gap:14px;align-items:flex-start">
+              <span style="{{ rq.avatarStyle }}">{{ rq.initial }}</span>
+              <div style="flex:1"><div style="font-size:15px;font-weight:600">{{ rq.who }}</div><div style="font-size:13px;color:var(--tx2,#8a8474)">{{ rq.whoSub }}</div></div>
+              <span style="font-size:11.5px;color:var(--tx3,#b3ac9a)">{{ rq.when }}</span>
+            </div>
+            <div style="display:grid;gap:10px;margin:18px 0">
+              <div style="display:flex;gap:10px;font-size:13.5px"><span style="width:92px;flex-shrink:0;font-weight:600;color:var(--tx2,#8a8474)">Wants</span><span>{{ rq.what }}</span></div>
+              <div style="display:flex;gap:10px;font-size:13.5px"><span style="width:92px;flex-shrink:0;font-weight:600;color:var(--tx2,#8a8474)">Why</span><span>{{ rq.why }}</span></div>
+              <div style="display:flex;gap:10px;font-size:13.5px"><span style="width:92px;flex-shrink:0;font-weight:600;color:var(--tx2,#8a8474)">If you say no</span><span style="color:var(--tx2,#8a8474)">{{ rq.ifNo }}</span></div>
+            </div>
+            <div style="display:flex;gap:10px;align-items:center">
+              <button onClick="{{ rq.allow }}" style="font-family:inherit;font-size:13.5px;font-weight:600;padding:10px 20px;border-radius:99px;border:none;background:var(--acc,#3d6b52);color:#fff;cursor:pointer" style-hover="filter:brightness(1.08)">Allow — they can look</button>
+              <button onClick="{{ rq.decline }}" style="font-family:inherit;font-size:13.5px;padding:10px 18px;border-radius:99px;border:1px solid var(--line,#e7e2d6);background:none;color:var(--tx,#26241f);cursor:pointer" style-hover="border-color:#a33;color:#a33">No thanks</button>
+            </div>
+          </div>
+        </sc-for>
+        <sc-if value="{{ noRequests }}" hint-placeholder-val="{{ false }}">
+          <div style="text-align:center;padding:48px 0;color:var(--tx3,#b3ac9a)"><div style="font-size:30px;margin-bottom:10px">🍃</div><div style="font-size:14px">All quiet. No one is asking for anything.</div></div>
+        </sc-if>
+      </div>
+      </sc-if>
+    </main>
+
+    <!-- SHARE / ACL DRAWER -->
+    <sc-if value="{{ shareOpen }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ closeShare }}" style="position:fixed;inset:0;background:rgba(20,18,12,.34);z-index:40"></div>
+      <aside style="position:fixed;top:0;right:0;bottom:0;width:min(440px,94vw);background:var(--panel,#fbfaf7);z-index:41;box-shadow:-12px 0 40px rgba(0,0,0,.16);padding:26px 26px 40px;overflow-y:auto;box-sizing:border-box" data-screen-label="Sharing">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+          <span style="font-size:20px">{{ shareIcon }}</span>
+          <h2 style="font-size:16px;font-weight:600;margin:0;flex:1;font-family:'JetBrains Mono',monospace">{{ shareName }}</h2>
+          <button onClick="{{ closeShare }}" style="border:none;background:none;font-size:18px;color:var(--tx2,#8a8474);cursor:pointer;padding:4px">✕</button>
+        </div>
+        <p style="font-size:13px;color:var(--tx2,#8a8474);margin:0 0 20px">Who can see this?</p>
+        <sc-for list="{{ shareChoices }}" as="sh" hint-placeholder-count="3">
+          <button onClick="{{ sh.pick }}" style="{{ sh.style }}" style-hover="border-color:var(--acc,#3d6b52)">
+            <span style="font-size:18px">{{ sh.icon }}</span>
+            <span style="flex:1;text-align:left"><span style="display:block;font-weight:600;font-size:14px;color:var(--tx,#26241f)">{{ sh.title }}</span><span style="display:block;font-size:12.5px;color:var(--tx2,#8a8474)">{{ sh.desc }}</span></span>
+            <span style="{{ sh.dotStyle }}"></span>
+          </button>
+        </sc-for>
+
+        <div style="margin-top:18px;padding-top:18px;border-top:1px solid var(--line,#e7e2d6)">
+          <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--tx2,#8a8474);margin-bottom:10px">Share with a specific person</div>
+          <div style="display:flex;gap:8px">
+            <input value="{{ addWebId }}" onChange="{{ onAddWebId }}" placeholder="their WebID (https://…/profile/card#me)" style="flex:1;font-family:'JetBrains Mono',monospace;font-size:12px;padding:9px 12px;border-radius:9px;border:1px solid var(--line,#e7e2d6);background:var(--bg,#f6f4ef);color:var(--tx,#26241f);outline:none">
+          </div>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button onClick="{{ addPersonRead }}" style="flex:1;font-family:inherit;font-size:12.5px;font-weight:600;padding:9px;border-radius:9px;border:1px solid var(--acc,#3d6b52);background:none;color:var(--acc,#3d6b52);cursor:pointer" style-hover="background:var(--accSoft,#eef3ef)">Let them read</button>
+            <button onClick="{{ addPersonWrite }}" style="flex:1;font-family:inherit;font-size:12.5px;font-weight:600;padding:9px;border-radius:9px;border:1px solid var(--line,#e7e2d6);background:none;color:var(--tx,#26241f);cursor:pointer" style-hover="border-color:var(--acc,#3d6b52)">Read + edit</button>
+          </div>
+        </div>
+
+        <sc-if value="{{ shareGrantsAny }}" hint-placeholder-val="{{ false }}">
+          <div style="margin-top:20px">
+            <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--tx2,#8a8474);margin-bottom:8px">Currently shared with</div>
+            <sc-for list="{{ shareGrants }}" as="sg" hint-placeholder-count="1">
+              <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line,#e7e2d6)">
+                <span style="{{ sg.avatarStyle }}">{{ sg.initial }}</span>
+                <span style="flex:1;min-width:0"><span style="display:block;font-size:13px;font-family:'JetBrains Mono',monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ sg.webId }}</span><span style="display:block;font-size:11.5px;color:var(--tx3,#b3ac9a)">{{ sg.modes }}</span></span>
+                <button onClick="{{ sg.revoke }}" style="font-family:inherit;font-size:12px;font-weight:600;padding:6px 12px;border-radius:8px;border:1px solid var(--line,#e7e2d6);background:none;color:var(--tx2,#8a8474);cursor:pointer" style-hover="border-color:#a33;color:#a33">Stop</button>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <button onClick="{{ toggleWac }}" style="margin-top:22px;width:100%;font-family:inherit;font-size:12.5px;padding:10px;border-radius:10px;border:1px dashed var(--line,#e7e2d6);background:none;color:var(--tx2,#8a8474);cursor:pointer" style-hover="border-color:var(--acc,#3d6b52);color:var(--acc,#3d6b52)">{{ wacToggleLabel }}</button>
+        <sc-if value="{{ wacOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="margin-top:12px;animation:fadeUp .3s ease both">
+            <div style="font-size:11.5px;color:var(--tx3,#b3ac9a);margin-bottom:8px">Raw Web Access Control (WAC) — this is the actual <span style="font-family:'JetBrains Mono',monospace">.acl</span> document on the server.</div>
+            <pre style="margin:0;font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.5;color:var(--tx,#26241f);background:var(--codebg,#f0ede4);border:1px solid var(--line,#e7e2d6);border-radius:11px;padding:14px 15px;overflow-x:auto;white-space:pre-wrap">{{ wacText }}</pre>
+          </div>
+        </sc-if>
+      </aside>
+    </sc-if>
+  </div>
+</sc-if>
+
+<!-- TOAST -->
+<sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+  <div style="position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:14px;background:var(--tx,#26241f);color:var(--bg,#f6f4ef);padding:13px 18px;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.25);font-size:13.5px;max-width:90vw;animation:fadeUp .25s ease both">
+    <span>{{ toast }}</span>
+    <sc-if value="{{ canUndo }}" hint-placeholder-val="{{ false }}"><button onClick="{{ undo }}" style="font-family:inherit;font-size:13px;font-weight:700;border:none;background:none;color:var(--accLite,#8fc0a5);cursor:pointer;text-decoration:underline;padding:0">Undo</button></sc-if>
+  </div>
+</sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:860},&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;daylight&quot;,&quot;options&quot;:[&quot;daylight&quot;,&quot;paper&quot;,&quot;ink&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Look &amp; feel&quot;},&quot;readableFont&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Look &amp; feel&quot;}}">
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      stage: 'boot',           // boot | gate | onboarding | app
+      mode: 'demo',            // demo | live
+      webId: null,
+      offlineNote: false,
+      // onboarding
+      chapter: 0,
+      checkChoice: null,
+      podCreated: false,
+      acctName: '', passphrase: '',
+      pickedFolders: { Notes: true, School: false, Photos: false, Shared: false },
+      firstFileName: 'hello.md',
+      firstFileBody: '',
+      fileSaved: false,
+      obShare: null,
+      obWacOpen: false,
+      // app
+      view: 'home', path: [], editing: null, editUrl: null,
+      editorText: '', editorLoaded: false, dirty: false, showPreview: true,
+      items: [], filesLoading: false, aclCache: {},
+      newThingOpen: false, newThingKind: 'file', newThingName: '',
+      shareFor: null, wacOpen: false, wacText: '', addWebId: '',
+      openPerson: null,
+      requests: [
+        { id: 'r1', who: 'Ms. Delcroix', kind: 'person', whoSub: 'A teacher · pod.nicolasdb.eu/teacher-0206', webId: 'https://pod.nicolasdb.eu/teacher-0206/profile/card#me', target: 'first', what: 'to read your first note', why: '"Curious what you wrote for the intro exercise."', ifNo: 'Nothing changes. She can ask you in person.', when: '2h ago', done: false },
+        { id: 'r2', who: 'FlashLearn', kind: 'app', whoSub: 'A study app you tried', webId: 'https://webid.studyapp.example/agent#id', target: 'first', what: 'read-only access to one note', why: 'To turn your notes into practice cards.', ifNo: 'The app keeps working, just without your notes.', when: 'yesterday', done: false }
+      ],
+      toast: null, undoFn: null, canUndo: false
+    };
+    this.chapters = ['intro', 'box', 'webid', 'keys', 'checkpoint', 'create', 'folders', 'file', 'share', 'recap'];
+  }
+
+  async componentDidMount() {
+    this.setVars();
+    try {
+      this.api = await import('./pod-api.js');
+    } catch (e) {
+      this.api = null;
+    }
+    let res = { loggedIn: false };
+    if (this.api) {
+      try { res = await this.api.Solid.init(); } catch (e) { res = { loggedIn: false, offline: true }; }
+    }
+    if (res.loggedIn) {
+      this.cl = await this.api.Solid.realClient();
+      this.setState({ stage: 'app', mode: 'live', webId: res.webId, view: 'home' });
+      this.loadFolder([]);
+    } else {
+      this.setState({ stage: 'gate', offlineNote: !!res.offline || !this.api });
+    }
+  }
+  componentDidUpdate() { this.setVars(); }
+
+  setVars() {
+    const t = this.props.theme ?? 'daylight';
+    const themes = {
+      daylight: { bg:'#f6f4ef', panel:'#fbfaf7', tx:'#26241f', tx2:'#8a8474', tx3:'#b3ac9a', line:'#e7e2d6', hov:'#efece3', acc:'#3d6b52', accLite:'#8fc0a5', accSoft:'#eef3ef', accSoftLine:'#b8ccbf', warn:'#b5722a', warnBg:'#faf3e6', warnLine:'#e3c9a3', codebg:'#f0ede4' },
+      paper:    { bg:'#f3ead9', panel:'#fbf5e9', tx:'#3a2c15', tx2:'#8a744f', tx3:'#b8a480', line:'#e4d5b8', hov:'#efe4cd', acc:'#a8621f', accLite:'#d29a63', accSoft:'#f6ecd9', accSoftLine:'#e0c294', warn:'#9c5410', warnBg:'#f7ecd6', warnLine:'#dcc08c', codebg:'#efe2c8' },
+      ink:      { bg:'#12140f', panel:'#1b1e17', tx:'#eceadf', tx2:'#9a9585', tx3:'#63604f', line:'rgba(255,255,255,.09)', hov:'#242820', acc:'#8fb98a', accLite:'#b4d6af', accSoft:'rgba(143,185,138,.14)', accSoftLine:'rgba(143,185,138,.4)', warn:'#d99a55', warnBg:'rgba(217,154,85,.13)', warnLine:'rgba(217,154,85,.35)', codebg:'#12140f' }
+    };
+    const th = themes[t] || themes.daylight;
+    const el = document.documentElement;
+    Object.entries(th).forEach(([k,v]) => el.style.setProperty('--'+k, v));
+    el.style.setProperty('--font', this.props.readableFont ? "'Atkinson Hyperlegible'" : "'Lexend'");
+    document.body.style.background = th.bg;
+  }
+
+  toast(msg, undoFn) {
+    clearTimeout(this._tt);
+    this.setState({ toast: msg, undoFn: undoFn || null, canUndo: !!undoFn });
+    this._tt = setTimeout(() => this.setState({ toast: null, undoFn: null, canUndo: false }), 5500);
+  }
+
+  root() { return this.cl ? this.cl.root : 'https://pod.nicolasdb.eu/newcomer/'; }
+  urlFor(path) { return this.root() + path.map(p => p + '/').join(''); }
+
+  // ---------- data ops ----------
+  async loadFolder(path) {
+    if (!this.cl) return;
+    this.setState({ filesLoading: true });
+    try {
+      const items = await this.cl.list(this.urlFor(path));
+      const aclCache = { ...this.state.aclCache };
+      for (const it of items) {
+        if (!aclCache[it.url]) { try { aclCache[it.url] = await this.cl.getAccess(it.url); } catch (e) { aclCache[it.url] = { agents: [], public: this.api.emptyModes() }; } }
+      }
+      this.setState({ items, aclCache, filesLoading: false });
+    } catch (e) { this.setState({ items: [], filesLoading: false }); this.toast('Could not read that folder: ' + e.message); }
+  }
+
+  async openFile(url, name, kind) {
+    this.setState({ view: 'editor', editing: name, editUrl: url, editorLoaded: false, editorText: '', dirty: false });
+    try { const text = await this.cl.readText(url); this.setState({ editorText: text, editorLoaded: true }); }
+    catch (e) { this.setState({ editorText: '', editorLoaded: true }); }
+  }
+
+  async doSave() {
+    if (!this.state.dirty || !this.cl) return;
+    const url = this.state.editUrl;
+    const type = this.mimeFor(this.state.editing);
+    try { await this.cl.writeText(url, this.state.editorText, type); this.setState({ dirty: false }); this.toast('Saved to your pod.'); }
+    catch (e) { this.toast('Save failed: ' + e.message); }
+  }
+
+  mimeFor(name) {
+    if (/\.json$/i.test(name)) return 'application/json';
+    if (/\.md$/i.test(name)) return 'text/markdown';
+    if (/\.(toml|ini|cfg)$/i.test(name)) return 'text/plain';
+    if (/\.(html?)$/i.test(name)) return 'text/html';
+    if (/\.css$/i.test(name)) return 'text/css';
+    if (/\.js$/i.test(name)) return 'text/javascript';
+    return 'text/plain';
+  }
+  extKind(name, isC) { return this.api ? this.api.kindOf(name, isC) : (isC ? 'folder' : 'text'); }
+  iconFor(kind) { return { folder:'📁', json:'🧩', md:'📝', config:'⚙️', code:'💻', text:'📄', file:'📄' }[kind] || '📄'; }
+
+  async createThing() {
+    let name = (this.state.newThingName || '').trim();
+    const isFolder = this.state.newThingKind === 'folder';
+    if (!name) { this.toast('Give it a name first.'); return; }
+    if (isFolder) {
+      name = name.replace(/[^\w\-]+/g, '-');
+      try { await this.cl.makeFolder(this.urlFor(this.state.path) + name + '/'); this.setState({ newThingOpen: false, newThingName: '' }); this.loadFolder(this.state.path); this.toast('Folder created — private.'); }
+      catch (e) { this.toast('Could not create folder: ' + e.message); }
+    } else {
+      if (!/\.\w+$/.test(name)) name += '.md';
+      const url = this.urlFor(this.state.path) + name;
+      const body = /\.json$/i.test(name) ? '{\n  \n}\n' : /\.toml$/i.test(name) ? '# ' + name + '\ntitle = ""\n' : '# ' + name.replace(/\.\w+$/, '') + '\n\n';
+      try { await this.cl.writeText(url, body, this.mimeFor(name)); this.setState({ newThingOpen: false, newThingName: '' }); this.openFile(url, name, this.extKind(name, false)); this.toast('Created ' + name + ' — private, like everything new.'); }
+      catch (e) { this.toast('Could not create file: ' + e.message); }
+    }
+  }
+
+  async refreshAccess(url) {
+    try { const a = await this.cl.getAccess(url); this.setState(s => ({ aclCache: { ...s.aclCache, [url]: a } })); return a; }
+    catch (e) { return null; }
+  }
+
+  visFromAccess(a) {
+    if (!a) return 'private';
+    if (a.public && (a.public.read || a.public.write)) return 'public';
+    if (a.agents && a.agents.some(g => this.api.MODES.some(m => g.modes[m]))) return 'shared';
+    return 'private';
+  }
+  visInfo(v) {
+    return v === 'public' ? { icon:'🌍', label:'Public', color:'var(--warn)' }
+      : v === 'shared' ? { icon:'👥', label:'Shared', color:'var(--acc)' }
+      : { icon:'🔒', label:'Only you', color:'var(--tx2)' };
+  }
+  modeSummary(m) { return this.api.MODES.filter(x => m[x]).map(x => ({read:'read',append:'append',write:'edit',control:'control'})[x]).join(' · ') || 'no access'; }
+
+  async setVisibility(url, vis) {
+    if (!this.cl) return;
+    try {
+      if (vis === 'public') { await this.cl.setPublicAccess(url, { read: true, append: false, write: false, control: false }); this.toast('Now anyone with the link can read this.'); }
+      else if (vis === 'private') {
+        await this.cl.setPublicAccess(url, this.api.emptyModes());
+        const a = this.state.aclCache[url];
+        if (a) for (const g of a.agents) await this.cl.setAgentAccess(url, g.webId, this.api.emptyModes());
+        this.toast('Back to private — only you can see it.');
+      }
+      await this.refreshAccess(url);
+      this.maybeLoadWac(url);
+    } catch (e) { this.toast('Change failed: ' + e.message); }
+  }
+
+  async addPerson(url, webId, canWrite) {
+    if (!webId || !/^https?:\/\//.test(webId)) { this.toast('Paste a full WebID URL (https://…#me).'); return; }
+    try { await this.cl.setAgentAccess(url, webId, { read: true, append: canWrite, write: canWrite, control: false }); await this.refreshAccess(url); this.maybeLoadWac(url); this.setState({ addWebId: '' }); this.toast(canWrite ? 'They can now read and edit this.' : 'They can now read this.'); }
+    catch (e) { this.toast('Could not grant access: ' + e.message); }
+  }
+  async revoke(url, webId) {
+    try { await this.cl.setAgentAccess(url, webId, this.api.emptyModes()); await this.refreshAccess(url); this.maybeLoadWac(url); this.toast('Stopped sharing. They can no longer see it.'); }
+    catch (e) { this.toast('Could not revoke: ' + e.message); }
+  }
+  async maybeLoadWac(url) { if (this.state.wacOpen && this.cl) { try { const t = await this.cl.turtleAcl(url); this.setState({ wacText: t }); } catch (e) {} } }
+
+  // ---------- onboarding provisioning ----------
+  async obCreatePod() {
+    if (!this.cl) this.cl = this.api ? this.api.Solid.demoClient() : null;
+    const slug = (this.state.acctName || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    if (this.cl && slug) this.cl.webId = 'https://pod.nicolasdb.eu/' + slug + '/profile/card#me';
+    this.setState({ podCreated: true, webId: this.cl ? this.cl.webId : null });
+    this.toast(this.state.passphrase ? 'Pod created and locked with your passphrase.' : 'Your pod is ready.');
+  }
+  async obMakeFolders() {
+    const picks = Object.entries(this.state.pickedFolders).filter(([k, v]) => v).map(([k]) => k);
+    for (const f of picks) { try { await this.cl.makeFolder(this.root() + f + '/'); } catch (e) {} }
+  }
+  async obSaveFirst() {
+    let name = this.state.firstFileName.trim() || 'hello.md';
+    if (!/\.\w+$/.test(name)) name += '.md';
+    const body = this.state.firstFileBody || '# Hello\n\nToday I made a space that is mine.\n';
+    this._firstUrl = this.root() + name;
+    this._firstName = name;
+    try { await this.cl.writeText(this._firstUrl, body, this.mimeFor(name)); this.setState({ fileSaved: true }); }
+    catch (e) {}
+  }
+  async obApplyShare(kind) {
+    this.setState({ obShare: kind, obWacOpen: true });
+    if (!this._firstUrl) return;
+    try {
+      if (kind === 'public') await this.cl.setPublicAccess(this._firstUrl, { read: true, append: false, write: false, control: false });
+      else if (kind === 'person') await this.cl.setAgentAccess(this._firstUrl, 'https://pod.nicolasdb.eu/teacher-0206/profile/card#me', { read: true, append: false, write: false, control: false });
+      else { await this.cl.setPublicAccess(this._firstUrl, this.api.emptyModes()); }
+    } catch (e) {}
+  }
+
+  renderVals() {
+    const S = this.state;
+    const stage = S.stage;
+    const chap = this.chapters[S.chapter];
+
+    // ============ GATE ============
+    const gate = {
+      startOnboarding: () => { this.cl = this.api ? this.api.Solid.demoClient() : null; this.setState({ stage: 'onboarding', mode: 'demo', chapter: 0 }); },
+      connectLive: async () => { if (this.api) { try { await this.api.Solid.connect(); } catch (e) { this.toast('Live sign-in needs a real URL. Try the walkthrough — it runs on a demo pod.'); } } },
+      offlineNote: S.offlineNote
+    };
+
+    // ============ ONBOARDING ============
+    const conceptData = {
+      intro: {
+        kicker: 'Welcome', icon: '👋',
+        title: "This won't feel like the usual tech setup.",
+        lead: "No accounts to juggle, no fine print. Just a few small ideas — and by the end you'll actually understand what you own. We go at your pace.",
+        chunks: [
+          { icon: '🧭', title: 'One idea at a time', body: 'Nothing to memorise. Each step builds gently on the last.' },
+          { icon: '🫱', title: "You're in control", body: 'You can go back, skip, or stop whenever. Nothing breaks.' },
+          { icon: '⏱', title: 'About 3 minutes', body: 'By the end you\u2019ll have a real space of your own.' }
+        ],
+        aside: null
+      },
+      box: {
+        kicker: 'Idea 1 of 3 · What it is', icon: '📦',
+        title: 'A pod is a box on the web that belongs to you.',
+        lead: 'Think of a room only you have the key to. Your notes, files and photos live inside — on a server, but under your control, not a company\u2019s.',
+        chunks: [
+          { icon: '🔒', title: 'Private by default', body: 'Everything you put in starts visible to you alone.' },
+          { icon: '📤', title: 'You can hand out copies of the key', body: 'Sharing means letting someone look in — never giving the box away.' },
+          { icon: '🚚', title: 'It moves with you', body: 'Switch apps freely; your things stay in the same box.' }
+        ],
+        aside: null
+      },
+      webid: {
+        kicker: 'Idea 2 of 3 · Who you are', icon: '🪪',
+        title: 'Your WebID is your name on the web.',
+        lead: 'One web address that means \u201cyou\u201d everywhere. It\u2019s how a pod, an app, or a person knows it\u2019s really you — no new password per site.',
+        chunks: [
+          { icon: '🌐', title: 'It\u2019s just a link', body: 'Something like the address below. Yours is created with your pod.' },
+          { icon: '🔑', title: 'It signs you in everywhere', body: 'Any SOLID app recognises the same WebID.' }
+        ],
+        aside: 'https://pod.nicolasdb.eu/newcomer/profile/card#me'
+      },
+      keys: {
+        kicker: 'Idea 3 of 3 · Who sees what', icon: '🗝',
+        title: 'Sharing is a decision — never the default.',
+        lead: 'Every thing in your pod has a tiny rulebook attached: who may look, who may change it. You write those rules with a tap; we translate the technical part.',
+        chunks: [
+          { icon: '👁', title: 'Read', body: 'They can look, but not touch.' },
+          { icon: '✏️', title: 'Edit', body: 'They can look and make changes.' },
+          { icon: '↩️', title: 'Always reversible', body: 'Change your mind and the door closes again instantly.' }
+        ],
+        aside: null
+      }
+    };
+    const cd = conceptData[chap] || null;
+    const phaseFor = (c) => c <= 4 ? 0 : c <= 8 ? 1 : 2;
+    const curPhase = phaseFor(S.chapter);
+    const phases = ['Understand', 'Set up', 'Ready'].map((label, i) => ({
+      label,
+      barStyle: 'height:5px;border-radius:3px;transition:background .3s;background:' + (i < curPhase ? 'var(--acc)' : i === curPhase ? 'var(--acc)' : 'var(--line)') + (i === curPhase ? ';opacity:1' : i < curPhase ? ';opacity:1' : ';opacity:1'),
+      labelStyle: 'font-size:10.5px;margin-top:6px;text-align:center;font-weight:' + (i === curPhase ? '600;color:var(--acc)' : '500;color:var(--tx3)')
+    }));
+
+    const checkOptions = [
+      { key: 'a', label: 'A company stores my stuff and lets me peek at it.' },
+      { key: 'b', label: 'It\u2019s my own box; I decide who else can look inside.' },
+      { key: 'c', label: 'Everything I save is public unless I hide it.' }
+    ].map(o => ({
+      label: o.label,
+      pick: () => this.setState({ checkChoice: o.key }),
+      mark: S.checkChoice === o.key ? (o.key === 'b' ? '✅' : '↩︎') : '',
+      style: 'display:flex;align-items:center;gap:12px;width:100%;padding:15px 17px;border-radius:12px;cursor:pointer;font-family:inherit;background:' + (S.checkChoice === o.key ? (o.key === 'b' ? 'var(--accSoft);border:1.5px solid var(--acc)' : 'var(--panel);border:1.5px solid var(--warnLine)') : 'var(--panel);border:1.5px solid var(--line)')
+    }));
+    const checkFeedback = S.checkChoice == null ? false
+      : S.checkChoice === 'b' ? "Exactly right. It's yours; sharing is a choice you make."
+      : S.checkChoice === 'a' ? "Close — but there's no company in the middle deciding. It's your box, and you hold the key. Try again if you like."
+      : "Almost the opposite, in fact — everything starts private. You open doors on purpose, one at a time.";
+
+    const acctSlug = (S.acctName || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    const newWebId = 'https://pod.nicolasdb.eu/' + (acctSlug || 'your-name') + '/profile/card#me';
+    const pw = S.passphrase || '';
+    const wordCount = pw.trim() ? pw.trim().split(/[\s-]+/).length : 0;
+    const passStrength = !pw ? '' : wordCount >= 4 ? '✓ Strong and memorable.' : wordCount >= 2 ? 'Good — one or two more words makes it much stronger.' : 'A single word is weak — try stringing a few together.';
+
+    const folderMeta = { Notes:'📓', School:'🎒', Photos:'📷', Shared:'🤝' };
+    const folderChoices = Object.keys(folderMeta).map(name => {
+      const on = S.pickedFolders[name];
+      return {
+        name, icon: folderMeta[name],
+        toggle: () => this.setState(st => ({ pickedFolders: { ...st.pickedFolders, [name]: !st.pickedFolders[name] } })),
+        check: on ? '✓' : '',
+        checkStyle: 'width:22px;height:22px;border-radius:7px;display:grid;place-items:center;font-size:13px;font-weight:700;color:#fff;background:' + (on ? 'var(--acc)' : 'transparent') + ';border:1.5px solid ' + (on ? 'var(--acc)' : 'var(--line)'),
+        style: 'display:flex;align-items:center;gap:12px;padding:16px 18px;border-radius:13px;cursor:pointer;font-family:inherit;background:var(--panel);border:1.5px solid ' + (on ? 'var(--acc)' : 'var(--line)')
+      };
+    });
+    const folderPickCount = Object.values(S.pickedFolders).filter(Boolean).length;
+
+    const shareOptionsOb = [
+      { key:'private', icon:'🔒', title:'Keep it to myself', desc:'Only you. The default.' },
+      { key:'person', icon:'👤', title:'Show it to my teacher', desc:'Ms. Delcroix can read it — nobody else.' },
+      { key:'public', icon:'🌍', title:'Anyone with the link', desc:'Read-only, for the wider world.' }
+    ].map(o => {
+      const on = S.obShare === o.key;
+      return {
+        icon: o.icon, title: o.title, desc: o.desc,
+        pick: () => this.obApplyShare(o.key),
+        dotStyle: 'width:18px;height:18px;border-radius:50%;flex-shrink:0;border:2px solid ' + (on ? 'var(--acc);background:var(--acc);box-shadow:inset 0 0 0 3px var(--panel)' : 'var(--line)'),
+        style: 'display:flex;align-items:center;gap:14px;width:100%;padding:15px 17px;border-radius:13px;cursor:pointer;font-family:inherit;background:var(--panel);border:1.5px solid ' + (on ? 'var(--acc)' : 'var(--line)')
+      };
+    });
+    const obWacText = S.obShare === 'public'
+      ? '<#public>\n    a acl:Authorization;\n    acl:agentClass foaf:Agent;\n    acl:accessTo <' + (this._firstName || 'hello.md') + '>;\n    acl:mode acl:Read.'
+      : S.obShare === 'person'
+      ? '<#grant>\n    a acl:Authorization;\n    acl:agent <https://pod.nicolasdb.eu/teacher-0206/profile/card#me>;\n    acl:accessTo <' + (this._firstName || 'hello.md') + '>;\n    acl:mode acl:Read.'
+      : '# Only the <#owner> rule remains — nobody else is listed.\n<#owner>\n    acl:agent <you>;\n    acl:mode acl:Read, acl:Write, acl:Control.';
+
+    const recapItems = [
+      { icon:'📦', title:'The pod', body:'your own box on the web' },
+      { icon:'🪪', title:'Your WebID', body:'your name, recognised everywhere' },
+      { icon:'🗝', title:'Access rules', body:'you choose who reads or edits' },
+      { icon:'↩️', title:'Always reversible', body:'every door closes again' }
+    ];
+
+    // onboarding nav logic
+    const isConcept = stage === 'onboarding' && !!cd;
+    const isCheckpoint = stage === 'onboarding' && chap === 'checkpoint';
+    const isActCreate = stage === 'onboarding' && chap === 'create';
+    const isActFolders = stage === 'onboarding' && chap === 'folders';
+    const isActFile = stage === 'onboarding' && chap === 'file';
+    const isActShare = stage === 'onboarding' && chap === 'share';
+    const isRecap = stage === 'onboarding' && chap === 'recap';
+
+    let nextLabel = 'Continue', nextDisabled = false;
+    if (chap === 'checkpoint') { nextLabel = S.checkChoice === 'b' ? 'Continue' : 'Continue anyway'; }
+    if (chap === 'create') { nextLabel = S.podCreated ? 'Continue' : 'Create my pod'; nextDisabled = !S.podCreated && !acctSlug; }
+    if (chap === 'folders') { nextLabel = 'Create ' + (folderPickCount || 'these') + (folderPickCount === 1 ? ' shelf' : ' shelves'); nextDisabled = folderPickCount === 0; }
+    if (chap === 'file') { nextLabel = S.fileSaved ? 'Continue' : 'Save it'; }
+    if (chap === 'share') { nextLabel = S.obWacOpen ? 'Continue' : 'Pick one to continue'; nextDisabled = !S.obWacOpen; }
+
+    const obNext = async () => {
+      if (chap === 'create' && !S.podCreated) { await this.obCreatePod(); return; }
+      if (chap === 'folders') { await this.obMakeFolders(); }
+      if (chap === 'file' && !S.fileSaved) { await this.obSaveFirst(); return; }
+      this.setState(st => ({ chapter: Math.min(st.chapter + 1, this.chapters.length - 1) }));
+    };
+    const obBack = () => this.setState(st => ({ chapter: Math.max(st.chapter - 1, 0) }));
+
+    // ============ APP shell ============
+    const nav = (view) => () => { this.setState({ view, editing: null, path: view === 'files' ? [] : S.path }); if (view === 'files') this.loadFolder([]); };
+    const pendingReqs = S.requests.filter(r => !r.done);
+    const navDefs = [
+      { key:'home', icon:'⌂', label:'Home' },
+      { key:'files', icon:'🗂', label:'My things' },
+      { key:'people', icon:'👥', label:'People & apps' },
+      { key:'requests', icon:'✋', label:'Requests', badge: pendingReqs.length || false }
+    ];
+    const activeKey = S.view === 'editor' ? 'files' : S.view;
+    const navItems = navDefs.map(n => ({ ...n, go: nav(n.key),
+      style: 'display:flex;align-items:center;gap:10px;padding:11px 10px;border-radius:10px;border:none;cursor:pointer;font-family:inherit;font-size:14px;width:100%;font-weight:' + (activeKey === n.key ? '600;background:var(--accSoft);color:var(--acc)' : '500;background:none;color:var(--tx)') }));
+
+    const crumbs = [];
+    const cS = (last) => 'border:none;background:none;cursor:pointer;font-family:inherit;font-size:13px;padding:2px 4px;color:' + (last ? 'var(--tx);font-weight:600' : 'var(--tx2)');
+    if (S.view === 'home') crumbs.push({ label:'Home', go:nav('home'), style:cS(true), sep:false });
+    else {
+      crumbs.push({ label:'Home', go:nav('home'), style:cS(false), sep:true });
+      if (S.view === 'files' || S.view === 'editor') {
+        crumbs.push({ label:'My things', go:nav('files'), style:cS(S.view==='files' && !S.path.length), sep: S.path.length>0 || S.view==='editor' });
+        S.path.forEach((pid, i) => crumbs.push({ label: pid, go: () => { const np = S.path.slice(0,i+1); this.setState({ view:'files', editing:null, path: np }); this.loadFolder(np); }, style: cS(S.view==='files' && i===S.path.length-1), sep: !(S.view==='files' && i===S.path.length-1) }));
+        if (S.view === 'editor') crumbs.push({ label: S.editing, go: () => {}, style: cS(true), sep:false });
+      }
+      if (S.view === 'people') crumbs.push({ label:'People & apps', go:nav('people'), style:cS(true), sep:false });
+      if (S.view === 'requests') crumbs.push({ label:'Requests', go:nav('requests'), style:cS(true), sep:false });
+    }
+
+    // files list
+    const items = S.items.map(it => {
+      const a = S.aclCache[it.url];
+      const vi = this.visInfo(this.visFromAccess(a));
+      return {
+        icon: this.iconFor(it.kind), name: it.name,
+        meta: it.isContainer ? 'folder' : it.kind,
+        open: it.isContainer ? () => { const np = [...S.path, it.name.replace(/\/$/,'')]; this.setState({ path: np }); this.loadFolder(np); } : () => this.openFile(it.url, it.name, it.kind),
+        share: (e) => { e && e.stopPropagation && e.stopPropagation(); this.setState({ shareFor: it.url, wacOpen: false, addWebId: '' }); this.refreshAccess(it.url); },
+        badgeIcon: vi.icon, badgeLabel: vi.label,
+        badgeStyle: 'display:flex;align-items:center;gap:6px;font-family:inherit;font-size:12px;font-weight:600;padding:6px 12px;border-radius:99px;border:1px solid var(--line);background:var(--bg);cursor:pointer;flex-shrink:0;color:' + vi.color
+      };
+    });
+
+    // editor
+    const eName = S.editing || '';
+    const eKind = eName ? this.extKind(eName, false) : 'text';
+    const isMd = eKind === 'md';
+    let formatHint = false, fmtOk = true;
+    if (eKind === 'json' && S.editorLoaded) { try { JSON.parse(S.editorText || '{}'); formatHint = '✓ Valid JSON — safe to save.'; } catch (e) { fmtOk = false; formatHint = '⚠ JSON isn\u2019t quite valid yet (a comma or bracket). You can still save; nothing breaks.'; } }
+    const eUrl = S.editUrl;
+    const eAcc = eUrl ? S.aclCache[eUrl] : null;
+    const eVi = this.visInfo(this.visFromAccess(eAcc));
+    const previewShown = S.showPreview && (isMd || ['json','toml','config','code','text'].includes(eKind));
+    const previewEl = previewShown ? (isMd ? this.renderMarkdown(S.editorText || '') : this.renderCode(S.editorText || '', eKind)) : null;
+
+    // share drawer
+    const sfUrl = S.shareFor;
+    const sfName = sfUrl ? decodeURIComponent(sfUrl.replace(/\/$/,'').split('/').pop()) : '';
+    const sfAcc = sfUrl ? S.aclCache[sfUrl] : null;
+    const sfVis = this.visFromAccess(sfAcc);
+    const shareChoices = ['private','public'].map(v => {
+      const vi = this.visInfo(v); const on = sfVis === v;
+      return { icon: vi.icon, title: v==='private'?'Only me':'Anyone with the link',
+        desc: v==='private'?'Private. Invisible to everyone else.':'Read-only for anyone who has the URL.',
+        pick: () => this.setVisibility(sfUrl, v),
+        style: 'display:flex;align-items:center;gap:12px;width:100%;padding:14px;border-radius:12px;cursor:pointer;font-family:inherit;margin-bottom:10px;background:none;border:1.5px solid ' + (on ? 'var(--acc)' : 'var(--line)'),
+        dotStyle: 'width:18px;height:18px;border-radius:50%;flex-shrink:0;border:2px solid ' + (on ? 'var(--acc);background:var(--acc);box-shadow:inset 0 0 0 3px var(--panel)' : 'var(--line)') };
+    });
+    const shareGrants = (sfAcc ? sfAcc.agents : []).filter(g => this.api && this.api.MODES.some(m => g.modes[m])).map(g => ({
+      webId: g.webId, initial: (g.name || g.webId).replace(/https?:\/\//,'')[0].toUpperCase(),
+      avatarStyle: 'width:30px;height:30px;border-radius:50%;background:#5b8bc4;color:#fff;display:grid;place-items:center;font-weight:700;font-size:13px;flex-shrink:0',
+      modes: this.modeSummary(g.modes), revoke: () => this.revoke(sfUrl, g.webId)
+    }));
+
+    // people
+    const agentMap = {};
+    Object.entries(S.aclCache).forEach(([url, a]) => {
+      (a.agents || []).forEach(g => { if (!this.api || !this.api.MODES.some(m => g.modes[m])) return; (agentMap[g.webId] = agentMap[g.webId] || { webId: g.webId, name: g.name, grants: [] }).grants.push({ url, modes: g.modes }); });
+    });
+    const peopleList = Object.values(agentMap).map(p => ({
+      webId: p.webId, name: p.name || p.webId.replace(/https?:\/\//,'').split('/')[0],
+      initial: (p.name || p.webId.replace(/https?:\/\//,''))[0].toUpperCase(),
+      avatarStyle: 'width:36px;height:36px;border-radius:50%;background:#5b8bc4;color:#fff;display:grid;place-items:center;font-weight:700;font-size:15px;flex-shrink:0',
+      toggle: () => this.setState(st => ({ openPerson: st.openPerson === p.webId ? null : p.webId })),
+      open: S.openPerson === p.webId, chev: S.openPerson === p.webId ? '▲' : '▼',
+      grants: p.grants.map(gr => ({ icon: '📄', name: decodeURIComponent(gr.url.replace(/\/$/,'').split('/').pop()), modes: 'can ' + this.modeSummary(gr.modes), revoke: () => this.revoke(gr.url, p.webId) }))
+    }));
+
+    // requests
+    const requestCards = pendingReqs.map(r => ({
+      who: r.who, whoSub: r.whoSub, what: r.what, why: r.why, ifNo: r.ifNo, when: r.when,
+      initial: r.who[0], avatarStyle: 'width:40px;height:40px;border-radius:' + (r.kind==='app'?'10px':'50%') + ';background:' + (r.kind==='app'?'#8a6dc4':'#c48a5b') + ';color:#fff;display:grid;place-items:center;font-weight:700;font-size:16px;flex-shrink:0',
+      allow: async () => { const url = this._firstUrl || (this.root() + 'hello.md'); try { await this.cl.setAgentAccess(url, r.webId, { read:true, append:false, write:false, control:false }); await this.refreshAccess(url); } catch(e){} this.setState(st => ({ requests: st.requests.map(x => x.id===r.id ? {...x, done:true} : x) })); this.toast(r.who + ' can now read it. Undo anytime.'); },
+      decline: () => { this.setState(st => ({ requests: st.requests.map(x => x.id===r.id ? {...x, done:true} : x) })); this.toast('Declined — nothing was shared.'); }
+    }));
+
+    return {
+      isBoot: stage === 'boot',
+      isGate: stage === 'gate', ...gate,
+      isOnboarding: stage === 'onboarding',
+      isApp: stage === 'app',
+
+      // onboarding
+      phases,
+      quitOnboarding: () => { if (!this.cl && this.api) this.cl = this.api.Solid.demoClient(); this.setState({ stage:'app', mode: S.mode, webId: this.cl ? this.cl.webId : null, view:'home' }); this.loadFolder([]); },
+      isConcept, conceptKicker: cd?cd.kicker:'', conceptIcon: cd?cd.icon:'', conceptTitle: cd?cd.title:'', conceptLead: cd?cd.lead:'', conceptChunks: cd?cd.chunks:[],
+      conceptAside: cd?cd.aside:false, conceptAsideStyle: 'font-family:\'JetBrains Mono\',monospace;font-size:12.5px;color:var(--acc);background:var(--accSoft);border:1px solid var(--accSoftLine);border-radius:11px;padding:12px 15px;word-break:break-all',
+      isCheckpoint, checkOptions, checkFeedback,
+      isActCreate, newWebId, podCreated: S.podCreated,
+      acctName: S.acctName, onAcctName: (e)=>this.setState({acctName:e.target.value}),
+      passphrase: S.passphrase, onPassphrase: (e)=>this.setState({passphrase:e.target.value}), passStrength,
+      isActFolders, folderChoices, folderCountLine: folderPickCount ? folderPickCount + ' selected — a good, small start.' : 'Pick at least one to continue.',
+      isActFile, firstFileName: S.firstFileName, onFirstName: (e)=>this.setState({firstFileName:e.target.value}), firstFileBody: S.firstFileBody, onFirstBody:(e)=>this.setState({firstFileBody:e.target.value, fileSaved:false}), fileSaved: S.fileSaved,
+      isActShare, shareFileName: this._firstName || S.firstFileName, shareOptionsOb, obWacOpen: S.obWacOpen, obWacText,
+      isRecap, recapItems, enterApp: () => { this.setState({ stage:'app', webId: this.cl ? this.cl.webId : null, view:'home' }); this.loadFolder([]); },
+      showObNav: stage === 'onboarding' && !isRecap,
+      canBack: S.chapter > 0, obBack, obNext, nextLabel, nextDisabled,
+      nextStyle: 'font-family:inherit;font-size:14.5px;font-weight:600;padding:13px 26px;border-radius:99px;border:none;cursor:' + (nextDisabled?'not-allowed':'pointer') + ';color:#fff;background:var(--acc);opacity:' + (nextDisabled?'.45':'1'),
+
+      // app shell
+      showSidebar: !(S.view === 'editor'),
+      podHost: 'pod.nicolasdb.eu', navItems, crumbs,
+      demoBadge: S.mode === 'demo',
+      shortWebId: (S.webId || (this.cl && this.cl.webId) || 'newcomer').replace('https://',''),
+      signOut: async () => { if (this.api && S.mode==='live') await this.api.Solid.disconnect(); this.setState({ stage:'gate', webId:null, aclCache:{}, items:[], path:[], view:'home' }); },
+
+      isHome: S.view==='home',
+      hasRequests: pendingReqs.length>0, requestSummary: pendingReqs.length===1 ? '1 person is asking to see something' : pendingReqs.length + ' requests are waiting', goRequests: nav('requests'),
+      homeCards: [
+        { icon:'🗂', title:'My things', desc:'Your files and folders. All private unless you choose otherwise.', go:nav('files') },
+        { icon:'👥', title:'People & apps', desc:'See exactly who can see what — and take it back anytime.', go:nav('people') },
+        { icon:'✋', title:'Requests', desc:'When someone wants access, they ask. You decide.', go:nav('requests') }
+      ],
+
+      isFiles: S.view==='files',
+      folderTitle: S.path.length ? S.path[S.path.length-1] : 'My things',
+      filesLoading: S.filesLoading, filesReady: !S.filesLoading,
+      items, emptyFolder: !S.filesLoading && items.length===0,
+      startNewFile: () => this.setState({ newThingOpen:true, newThingKind:'file', newThingName:'' }),
+      startNewFolder: () => this.setState({ newThingOpen:true, newThingKind:'folder', newThingName:'' }),
+      newThingOpen: S.newThingOpen, newThingIcon: S.newThingKind==='folder'?'📁':'📄',
+      newThingPlaceholder: S.newThingKind==='folder'?'folder-name':'name.md · name.json · name.toml · name.txt',
+      newThingName: S.newThingName, onNewThingName:(e)=>this.setState({newThingName:e.target.value}),
+      confirmNewThing: () => this.createThing(), cancelNewThing: () => this.setState({newThingOpen:false}),
+
+      inEditor: S.view==='editor',
+      editorIcon: this.iconFor(eKind), editorName: eName,
+      editorText: S.editorText, onEditorChange:(e)=>this.setState({editorText:e.target.value, dirty:true}),
+      editorPaneStyle: 'flex:1;min-width:0;resize:none;font-size:13.5px;line-height:1.7;padding:20px 22px;border-radius:14px;border:1px solid var(--line);background:var(--panel);color:var(--tx);outline:none;box-sizing:border-box;font-family:\'JetBrains Mono\',monospace',
+      canPreview: isMd || ['json','toml','config','code','text'].includes(eKind),
+      previewShown, previewEl, showPreview: S.showPreview,
+      togglePreview: () => this.setState(st=>({showPreview:!st.showPreview})), previewLabel: S.showPreview ? 'Hide preview' : (isMd?'Preview':'Highlight'),
+      formatHint, formatHintStyle: 'font-size:12.5px;padding:9px 14px;border-radius:9px;margin-bottom:12px;font-weight:500;' + (fmtOk?'background:var(--accSoft);color:var(--acc)':'background:var(--warnBg);color:var(--warn)'),
+      saveFile: () => this.doSave(), saveLabel: S.dirty?'Save':'Saved ✓',
+      saveBtnStyle: 'font-family:inherit;font-size:13.5px;font-weight:600;padding:9px 20px;border-radius:99px;border:none;cursor:pointer;color:#fff;background:' + (S.dirty?'var(--acc)':'var(--tx3)'),
+      editorBadgeIcon: eVi.icon, editorBadgeLabel: eVi.label,
+      editorBadgeStyle: 'display:flex;align-items:center;gap:6px;font-family:inherit;font-size:12px;font-weight:600;padding:7px 13px;border-radius:99px;border:1px solid var(--line);background:var(--bg);cursor:pointer;color:'+eVi.color,
+      openShareCurrent: () => { this.setState({ shareFor: eUrl, wacOpen:false, addWebId:'' }); this.refreshAccess(eUrl); },
+
+      isPeople: S.view==='people', peopleList, noPeople: peopleList.length===0,
+      isRequests: S.view==='requests', requestCards, noRequests: pendingReqs.length===0,
+
+      // share drawer
+      shareOpen: !!sfUrl, closeShare: () => this.setState({ shareFor:null, wacOpen:false }),
+      shareIcon: '📄', shareName: sfName, shareChoices,
+      shareGrants, shareGrantsAny: shareGrants.length>0,
+      addWebId: S.addWebId, onAddWebId:(e)=>this.setState({addWebId:e.target.value}),
+      addPersonRead: () => this.addPerson(sfUrl, S.addWebId.trim(), false),
+      addPersonWrite: () => this.addPerson(sfUrl, S.addWebId.trim(), true),
+      toggleWac: async () => { const open=!S.wacOpen; this.setState({wacOpen:open}); if(open&&this.cl){ try{const t=await this.cl.turtleAcl(sfUrl); this.setState({wacText:t});}catch(e){} } },
+      wacOpen: S.wacOpen, wacText: S.wacText, wacToggleLabel: S.wacOpen ? '▾ Hide the technical rules (WAC)' : '▸ Show the technical rules (WAC)',
+
+      toast: S.toast, canUndo: S.canUndo, undo: () => { const fn=S.undoFn; this.setState({toast:null,undoFn:null,canUndo:false}); if(fn)fn(); }
+    };
+  }
+
+  // ---------- tiny renderers (derived display) ----------
+  renderMarkdown(src) {
+    const R = React.createElement;
+    const lines = src.split('\n');
+    const out = []; let list = null; let key = 0;
+    const inline = (t) => {
+      const parts = []; let rest = t; let k = 0;
+      const re = /(\*\*([^*]+)\*\*|`([^`]+)`|\*([^*]+)\*|\[([^\]]+)\]\(([^)]+)\))/;
+      let m;
+      while ((m = re.exec(rest))) {
+        if (m.index > 0) parts.push(rest.slice(0, m.index));
+        if (m[2]) parts.push(R('strong', { key: k++ }, m[2]));
+        else if (m[3]) parts.push(R('code', { key: k++, style: { fontFamily: "'JetBrains Mono',monospace", background: 'var(--codebg)', padding: '1px 5px', borderRadius: '4px', fontSize: '.9em' } }, m[3]));
+        else if (m[4]) parts.push(R('em', { key: k++ }, m[4]));
+        else if (m[5]) parts.push(R('a', { key: k++, href: m[6], style: { color: 'var(--acc)' } }, m[5]));
+        rest = rest.slice(m.index + m[0].length);
+      }
+      if (rest) parts.push(rest);
+      return parts;
+    };
+    const flush = () => { if (list) { out.push(R('ul', { key: key++, style: { margin: '8px 0', paddingLeft: '22px' } }, list)); list = null; } };
+    for (const raw of lines) {
+      const line = raw.replace(/\s+$/, '');
+      let m;
+      if ((m = /^(#{1,4})\s+(.*)/.exec(line))) { flush(); const lvl = m[1].length; out.push(R('h' + Math.min(lvl,4), { key: key++, style: { fontSize: (26 - lvl * 3) + 'px', fontWeight: 600, margin: '16px 0 8px', lineHeight: 1.3 } }, inline(m[2]))); }
+      else if ((m = /^\s*[-*]\s+\[([ xX])\]\s+(.*)/.exec(line))) { (list = list || []).push(R('li', { key: key++, style: { listStyle: 'none', marginLeft: '-18px' } }, (m[1].trim() ? '☑ ' : '☐ '), inline(m[2]))); }
+      else if ((m = /^\s*[-*]\s+(.*)/.exec(line))) { (list = list || []).push(R('li', { key: key++, style: { margin: '3px 0' } }, inline(m[1]))); }
+      else if (line.trim() === '') { flush(); }
+      else { flush(); out.push(R('p', { key: key++, style: { margin: '8px 0', lineHeight: 1.7 } }, inline(line))); }
+    }
+    flush();
+    return R('div', { style: { fontSize: '14.5px', color: 'var(--tx)' } }, out.length ? out : R('span', { style: { color: 'var(--tx3)' } }, 'Nothing to preview yet.'));
+  }
+
+  renderCode(src, kind) {
+    const R = React.createElement;
+    const C = { key: 'var(--acc)', str: '#b5722a', num: '#7c6df0', com: 'var(--tx3)', punct: 'var(--tx2)' };
+    const lineEl = (line, i) => {
+      const spans = []; let k = 0;
+      if (/^\s*(#|\/\/)/.test(line)) return R('div', { key: i }, R('span', { style: { color: C.com } }, line || ' '));
+      const re = /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\b\d+(?:\.\d+)?\b|[{}\[\]:,]|[A-Za-z_][\w-]*\s*(?==))/g;
+      let last = 0, m;
+      while ((m = re.exec(line))) {
+        if (m.index > last) spans.push(line.slice(last, m.index));
+        const tok = m[0];
+        let color = C.punct;
+        if (/^["']/.test(tok)) color = C.str;
+        else if (/^\d/.test(tok)) color = C.num;
+        else if (/=\s*$|=$/.test(tok) || /[A-Za-z_]/.test(tok[0])) color = C.key;
+        spans.push(R('span', { key: k++, style: { color } }, tok));
+        last = m.index + tok.length;
+      }
+      if (last < line.length) spans.push(line.slice(last));
+      return R('div', { key: i, style: { display: 'flex' } },
+        R('span', { style: { width: '30px', flexShrink: 0, color: 'var(--tx3)', userSelect: 'none', textAlign: 'right', paddingRight: '12px' } }, i + 1),
+        R('span', { style: { whiteSpace: 'pre-wrap', wordBreak: 'break-word', flex: 1 } }, spans.length ? spans : ' '));
+    };
+    return R('pre', { style: { margin: 0, fontFamily: "'JetBrains Mono',monospace", fontSize: '12.5px', lineHeight: 1.7, color: 'var(--tx)' } }, src.split('\n').map(lineEl));
+  }
+}
+</script>
+</body>
+</html>

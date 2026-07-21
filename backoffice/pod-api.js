@@ -1,0 +1,286 @@
+// pod-api.js — one interface, two backends.
+//   RealBackend  → live Community Solid Server via the Inrupt libraries
+//   DemoBackend  → in-memory pod so the whole experience is explorable
+//                  even when an OIDC redirect can't complete (e.g. in a preview)
+//
+// The app never talks to the libraries directly — it holds a `client` with:
+//   list(url) · readText(url) · writeText(url,text,type) · makeFolder(url)
+//   remove(url) · getAccess(url) · setAgentAccess(url,webId,modes)
+//   setPublicAccess(url,modes) · turtleAcl(url)
+//
+// Loaded once, from esm.sh. At a proper URL the real path just works.
+
+const ISSUER = "https://pod.nicolasdb.eu/";
+const CLIENT_NAME = "Pod Backoffice";
+
+let _libs = null;
+async function loadLibs() {
+  if (_libs) return _libs;
+  const [authn, sc] = await Promise.all([
+    import("https://esm.sh/@inrupt/solid-client-authn-browser@2.3.0"),
+    import("https://esm.sh/@inrupt/solid-client@2.1.0"),
+  ]);
+  _libs = { authn, sc };
+  return _libs;
+}
+
+// ---------- shape helpers shared by both backends ----------
+export const MODES = ["read", "append", "write", "control"];
+export function emptyModes() {
+  return { read: false, append: false, write: false, control: false };
+}
+function baseName(url) {
+  const u = url.replace(/\/$/, "");
+  return decodeURIComponent(u.slice(u.lastIndexOf("/") + 1)) || "/";
+}
+function extOf(name) {
+  const m = /\.([a-z0-9]+)$/i.exec(name);
+  return m ? m[1].toLowerCase() : "";
+}
+export function kindOf(name, isContainer) {
+  if (isContainer) return "folder";
+  const e = extOf(name);
+  if (["json"].includes(e)) return "json";
+  if (["md", "markdown"].includes(e)) return "md";
+  if (["toml", "yaml", "yml", "ini", "cfg"].includes(e)) return "config";
+  if (["js", "ts", "py", "css", "html", "sh", "rb", "go", "rs"].includes(e)) return "code";
+  if (["txt", "log", ""].includes(e)) return "text";
+  return "file";
+}
+
+// =====================================================================
+//  REAL BACKEND
+// =====================================================================
+class RealBackend {
+  constructor(libs, session) {
+    this.sc = libs.sc;
+    this.fetch = session.fetch;
+    this.webId = session.info.webId;
+  }
+  async list(url) {
+    const ds = await this.sc.getSolidDataset(url, { fetch: this.fetch });
+    const urls = this.sc.getContainedResourceUrlAll(ds);
+    return urls.map((u) => {
+      const isContainer = u.endsWith("/");
+      const name = baseName(u);
+      return { url: u, name, isContainer, kind: kindOf(name, isContainer) };
+    });
+  }
+  async readText(url) {
+    const file = await this.sc.getFile(url, { fetch: this.fetch });
+    return await file.text();
+  }
+  async writeText(url, text, type = "text/plain") {
+    await this.sc.overwriteFile(url, new Blob([text], { type }), {
+      contentType: type,
+      fetch: this.fetch,
+    });
+    return true;
+  }
+  async makeFolder(url) {
+    await this.sc.createContainerAt(url, { fetch: this.fetch });
+    return true;
+  }
+  async remove(url) {
+    if (url.endsWith("/")) await this.sc.deleteContainer(url, { fetch: this.fetch });
+    else await this.sc.deleteFile(url, { fetch: this.fetch });
+    return true;
+  }
+  async getAccess(url) {
+    const ua = this.sc.universalAccess;
+    const agents = await ua.getAgentAccessAll(url, { fetch: this.fetch });
+    const pub = await ua.getPublicAccess(url, { fetch: this.fetch });
+    return {
+      agents: Object.entries(agents || {}).map(([webId, m]) => ({ webId, modes: m })),
+      public: pub || emptyModes(),
+    };
+  }
+  async setAgentAccess(url, webId, modes) {
+    await this.sc.universalAccess.setAgentAccess(url, webId, modes, { fetch: this.fetch });
+    return true;
+  }
+  async setPublicAccess(url, modes) {
+    await this.sc.universalAccess.setPublicAccess(url, modes, { fetch: this.fetch });
+    return true;
+  }
+  async turtleAcl(url) {
+    // Best-effort fetch of the raw .acl document for the "advanced" view.
+    try {
+      const aclUrl = url.endsWith("/") ? url + ".acl" : url + ".acl";
+      const res = await this.fetch(aclUrl);
+      if (res.ok) return await res.text();
+    } catch (e) {}
+    return "# No standalone .acl document — access is inherited from a parent container.";
+  }
+}
+
+// =====================================================================
+//  DEMO BACKEND — an in-memory CSS-shaped pod (the school scenario)
+// =====================================================================
+const DEMO_ROOT = "https://pod.nicolasdb.eu/newcomer/";
+export const DEMO_WEBID = "https://pod.nicolasdb.eu/newcomer/profile/card#me";
+
+function seedTree() {
+  // path -> node. Containers end with "/".
+  const t = {};
+  const add = (path, opts = {}) => {
+    t[path] = {
+      url: DEMO_ROOT + path,
+      isContainer: path.endsWith("/"),
+      body: opts.body ?? "",
+      type: opts.type ?? "text/plain",
+      acl: opts.acl ?? { agents: [], public: emptyModes() },
+    };
+  };
+  return { t, add };
+}
+
+class DemoBackend {
+  constructor() {
+    const { t, add } = seedTree();
+    this.root = DEMO_ROOT;
+    this.webId = DEMO_WEBID;
+    add("");            // starter is deliberately near-empty: onboarding fills it
+    this.t = t;
+    this._agentNames = {
+      "https://pod.nicolasdb.eu/teacher-0206/profile/card#me": "Ms. Delcroix (teacher)",
+      "https://pod.nicolasdb.eu/parent-0070/profile/card#me": "Dad",
+      "https://webid.studyapp.example/agent#id": "FlashLearn (an app)",
+    };
+  }
+  agentName(webId) {
+    return this._agentNames[webId] || baseName(webId.split("#")[0].replace(/\/profile\/card$/, ""));
+  }
+  _norm(url) {
+    return url.startsWith("http") ? url : DEMO_ROOT + url;
+  }
+  async list(url) {
+    url = this._norm(url);
+    const prefix = url;
+    const depth = prefix.replace(DEMO_ROOT, "").split("/").filter(Boolean).length;
+    const out = [];
+    for (const key of Object.keys(this.t)) {
+      const full = this.t[key].url;
+      if (full === prefix || !full.startsWith(prefix)) continue;
+      const rest = full.replace(prefix, "").replace(/\/$/, "");
+      if (rest.split("/").filter(Boolean).length !== 1) continue; // direct children only
+      const isContainer = this.t[key].isContainer;
+      const name = baseName(full);
+      out.push({ url: full, name, isContainer, kind: kindOf(name, isContainer) });
+    }
+    return out.sort((a, b) => (b.isContainer - a.isContainer) || a.name.localeCompare(b.name));
+  }
+  async readText(url) {
+    url = this._norm(url);
+    const k = Object.keys(this.t).find((x) => this.t[x].url === url);
+    return k ? this.t[k].body : "";
+  }
+  async writeText(url, text, type = "text/plain") {
+    url = this._norm(url);
+    let k = Object.keys(this.t).find((x) => this.t[x].url === url);
+    if (!k) { k = url.replace(DEMO_ROOT, ""); this.t[k] = { url, isContainer: false, acl: { agents: [], public: emptyModes() } }; }
+    this.t[k].body = text; this.t[k].type = type; this.t[k].isContainer = false;
+    return true;
+  }
+  async makeFolder(url) {
+    url = this._norm(url); if (!url.endsWith("/")) url += "/";
+    const k = url.replace(DEMO_ROOT, "");
+    if (!this.t[k]) this.t[k] = { url, isContainer: true, body: "", acl: { agents: [], public: emptyModes() } };
+    return true;
+  }
+  async remove(url) {
+    url = this._norm(url);
+    for (const k of Object.keys(this.t)) if (this.t[k].url === url || this.t[k].url.startsWith(url)) delete this.t[k];
+    return true;
+  }
+  _node(url) {
+    url = this._norm(url);
+    return this.t[Object.keys(this.t).find((x) => this.t[x].url === url)];
+  }
+  async getAccess(url) {
+    const n = this._node(url);
+    if (!n) return { agents: [], public: emptyModes() };
+    return {
+      agents: n.acl.agents.map((a) => ({ webId: a.webId, modes: { ...a.modes }, name: this.agentName(a.webId) })),
+      public: { ...n.acl.public },
+    };
+  }
+  async setAgentAccess(url, webId, modes) {
+    const n = this._node(url); if (!n) return false;
+    const any = Object.values(modes).some(Boolean);
+    n.acl.agents = n.acl.agents.filter((a) => a.webId !== webId);
+    if (any) n.acl.agents.push({ webId, modes: { ...emptyModes(), ...modes } });
+    return true;
+  }
+  async setPublicAccess(url, modes) {
+    const n = this._node(url); if (!n) return false;
+    n.acl.public = { ...emptyModes(), ...modes };
+    return true;
+  }
+  async turtleAcl(url) {
+    const n = this._node(url); if (!n) return "# resource not found";
+    const target = baseName(n.url);
+    const L = [
+      "@prefix acl: <http://www.w3.org/ns/auth/acl#>.",
+      "@prefix foaf: <http://xmlns.com/foaf/0.1/>.",
+      "",
+      `# Access control for <${target}>`,
+      "<#owner>",
+      "    a acl:Authorization;",
+      `    acl:agent <${this.webId}>;`,
+      `    acl:accessTo <${n.url}>;`,
+      "    acl:mode acl:Read, acl:Write, acl:Control.",
+    ];
+    n.acl.agents.forEach((a, i) => {
+      const modes = MODES.filter((m) => a.modes[m]).map((m) => "acl:" + m[0].toUpperCase() + m.slice(1));
+      if (!modes.length) return;
+      L.push("", `<#grant${i}>`, "    a acl:Authorization;",
+        `    acl:agent <${a.webId}>;`, `    acl:accessTo <${n.url}>;`,
+        `    acl:mode ${modes.join(", ")}.`);
+    });
+    const pubModes = MODES.filter((m) => n.acl.public[m]).map((m) => "acl:" + m[0].toUpperCase() + m.slice(1));
+    if (pubModes.length) {
+      L.push("", "<#public>", "    a acl:Authorization;", "    acl:agentClass foaf:Agent;",
+        `    acl:accessTo <${n.url}>;`, `    acl:mode ${pubModes.join(", ")}.`);
+    }
+    return L.join("\n");
+  }
+}
+
+// =====================================================================
+//  SOLID — session + backend factory
+// =====================================================================
+export const Solid = {
+  issuer: ISSUER,
+  async init() {
+    // Returns { loggedIn, webId } after processing any redirect.
+    try {
+      const { authn } = await loadLibs();
+      const info = await authn.handleIncomingRedirect({ restorePreviousSession: true });
+      if (info && info.isLoggedIn) return { loggedIn: true, webId: info.webId };
+    } catch (e) {
+      // Library couldn't load / no network (e.g. sandboxed preview). Demo still works.
+      return { loggedIn: false, webId: null, offline: true, error: String(e) };
+    }
+    return { loggedIn: false, webId: null };
+  },
+  async connect() {
+    const { authn } = await loadLibs();
+    await authn.login({
+      oidcIssuer: ISSUER,
+      redirectUrl: window.location.href,
+      clientName: CLIENT_NAME,
+    });
+  },
+  async disconnect() {
+    try { const { authn } = await loadLibs(); await authn.logout(); } catch (e) {}
+  },
+  async realClient() {
+    const libs = await loadLibs();
+    const session = libs.authn.getDefaultSession();
+    return new RealBackend(libs, session);
+  },
+  demoClient() {
+    return new DemoBackend();
+  },
+};

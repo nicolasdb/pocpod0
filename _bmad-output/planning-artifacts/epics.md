@@ -201,6 +201,28 @@ The comprehensive troll run generates a funder-readable categorized report, the 
 **FRs covered:** FR33, FR34, FR38, FR39
 **Note:** Original TUI approach (mission_control.py) superseded by FastAPI + HTML ACL dashboard pivot (Story 6.2). ACL dashboard is a keeper into Epic 4. Troll interaction migrates to Discord (#security_logs + DM) per Epic 6 retro decision.
 
+### Epic 7: Pod Owner Experience _(ADDED 2026-07-21 — sprint change: Epic 4 parked, first-user UX prioritized)_
+Real users can create an account and pod on our CSS instance and manage their pod content and ACLs through a cognitive-ergonomics-first backoffice — the first user-facing product surface of the stack.
+**Origin:** High-fidelity runnable mockup (SOLID Pod Management Interface, Claude design). Design principles: Miller's Law (≤4 chunks), Hick's Law (one primary action), progressive disclosure (friendly ACL → raw WAC on demand), reversibility.
+**Relationship:** Prerequisite-sibling of Story 4.3 (Nicolas onboarding proof). ACL dashboard (6.2) = observer view; backoffice sharing = owner view — both kept.
+**Dashboard backlog:** none (this IS a user surface)
+
+### Story 7.1: Backoffice Deploy & Real Account Registration
+As a new user, I can reach the pod backoffice at `https://pod.nicolasdb.eu/` (replacing the CSS default welcome page), create a real CSS account + pod from the onboarding flow, and manage my files and sharing against my live pod.
+- Import mockup bundle into repo (new `backoffice/` dir); serve at `https://pod.nicolasdb.eu/` root via CSS `StaticAssetHandler` config (`/` → index.html, `/pod-api.js`, `/support.js`), replacing the default CSS welcome page. Same-origin: no CORS, `redirectUrl: window.location.href` works unchanged.
+- Wire onboarding "Create my pod" to CSS `.account/` controls API: `GET /.account/` → `POST /.account/account` (cookie) → `controls.password.create {email,password}` → `controls.account.pod {name}`; auth via `Authorization: CSS-Account-Token $VALUE`
+- Decide + implement Inrupt lib strategy (esm.sh runtime import vs bundled self-host). Keep pinned versions (authn-browser 2.3.0 / solid-client 2.1.0); npm latest are 5.0.0 / 3.0.0 major bumps — upgrade out of scope
+- Verify live mode E2E on VPS: login, file CRUD, sharing drawer grants/revokes, WAC panel reads real .acl
+- Fallback (timebox): link-out to CSS registration page, "I already have a pod" path takes over
+- No HTML rewrite — mockup deploys as-is, only demo-provisioning call swapped for real API calls
+
+### Story 7.2: CSS Registration Pages Restyle
+As a new user landing on the CSS-served registration/login/consent pages, I experience the same visual language and cognitive care as the backoffice.
+- Override CSS registration/login/consent templates (CSS template customization mechanism)
+- Apply backoffice tokens: daylight theme, Lexend / Atkinson Hyperlegible / JetBrains Mono, sage accent `#3d6b52`, ≤4 chunks per step, one primary action per screen
+- Keep flows functional: account create, pod provisioning, OIDC consent (client name "Pod Backoffice")
+- WCAG 2.1 AA (4.5:1 contrast, focus-visible)
+
 ## Epic 1: Pod Sovereignty & Access Control
 
 Learners own their data in Solid Pods with enforceable, auditable access control — the fundamental sovereignty primitive is proven and adversarially validated.
