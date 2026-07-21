@@ -7,6 +7,7 @@ services:
     volumes:
       - css-data:/data
       - ./infra/css/config.json:/config.json:ro${VOLUME_FLAGS:-}
+      - ./backoffice:/backoffice:ro${VOLUME_FLAGS:-}
     command:
       - "-p"
       - "3000"

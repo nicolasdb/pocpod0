@@ -15,7 +15,6 @@
     "css:config/identity/oidc/default.json",
     "css:config/identity/ownership/token.json",
     "css:config/identity/pod/static.json",
-    "css:config/ldp/authentication/debug-auth-header.json",
     "css:config/ldp/authorization/webacl.json",
     "css:config/ldp/handler/default.json",
     "css:config/ldp/metadata-parser/default.json",
@@ -36,9 +35,83 @@
   "@graph": [
     {
       "comment": [
-        "PoC dev config: file-system storage + debug-auth-header authentication.",
-        "debug-auth-header allows Authorization: WebID <webid> header for identity simulation (SEC-1).",
-        "DO NOT USE IN PRODUCTION."
+        "PoC dev config: file-system storage.",
+        "Story 7.1: custom CredentialsExtractor unions the REAL Solid-OIDC token path",
+        "(DPoP + Bearer, from css:config/ldp/authentication/dpop-bearer.json) WITH the",
+        "debug UnsecureWebIdExtractor (Authorization: WebID <uri>, from debug-auth-header.json).",
+        "Both auth base configs define urn:solid-server:default:CredentialsExtractor, so they",
+        "cannot both be imported; this restates the combined waterfall in one definition instead.",
+        "Why both are needed: real backoffice users (Epic 7) authenticate via OIDC and were getting",
+        "a blanket 401 on every write/.acl request because debug-auth-header alone dropped the DPoP",
+        "extractor entirely. The ~15 internal automation files (pipeline/, agents/) still rely on the",
+        "WebID header via the Docker-internal CSS_CONNECT_URL path.",
+        "SECURITY: UnsecureWebIdExtractor trusts Authorization: WebID <uri> with no verification.",
+        "That header is stripped at the nginx-gateway edge for all public traffic (Story 4.4.1,",
+        "04-pocpod0.conf), so it is only reachable from inside the Docker network. DO NOT remove",
+        "that edge stripping. DO NOT USE this debug extractor on a server exposed without it."
+      ],
+      "@id": "urn:solid-server:default:CredentialsExtractor",
+      "@type": "CachedHandler",
+      "source": {
+        "@id": "urn:solid-server:default:UnionCredentialsExtractor",
+        "@type": "UnionCredentialsExtractor",
+        "extractors": [
+          {
+            "@id": "urn:solid-server:default:AccessTokenExtractor",
+            "@type": "WaterfallHandler",
+            "handlers": [
+              {
+                "@id": "urn:solid-server:default:DPoPWebIdExtractor",
+                "@type": "DPoPWebIdExtractor",
+                "originalUrlExtractor": {
+                  "@id": "urn:solid-server:default:DPoPUrlExtractor",
+                  "@type": "OriginalUrlExtractor",
+                  "args_identifierStrategy": { "@id": "urn:solid-server:default:IdentifierStrategy" }
+                }
+              },
+              {
+                "@id": "urn:solid-server:default:BearerWebIdExtractor",
+                "@type": "BearerWebIdExtractor"
+              }
+            ]
+          },
+          { "@type": "UnsecureWebIdExtractor" },
+          {
+            "@id": "urn:solid-server:default:PublicCredentialsExtractor",
+            "@type": "PublicCredentialsExtractor"
+          }
+        ]
+      }
+    },
+    {
+      "comment": [
+        "Story 7.1: serve the pod backoffice at the root of pod.nicolasdb.eu instead of the CSS",
+        "default welcome page. Additive to css:config/http/static/default.json's",
+        "StaticAssetHandler (same @id) - Components.js concatenates the array-valued `assets`",
+        "property across definitions sharing an @id, so only new entries are listed here;",
+        "redeclaring @type/baseUrl/options_expires here would conflict with the base definition."
+      ],
+      "@id": "urn:solid-server:default:StaticAssetHandler",
+      "@type": "StaticAssetHandler",
+      "assets": [
+        {
+          "@id": "urn:solid-server:pocpod0:BackofficeIndexAsset",
+          "@type": "StaticAssetEntry",
+          "relativeUrl": "/",
+          "filePath": "/backoffice/index.html"
+        },
+        {
+          "@id": "urn:solid-server:pocpod0:BackofficePodApiAsset",
+          "@type": "StaticAssetEntry",
+          "relativeUrl": "/pod-api.js",
+          "filePath": "/backoffice/pod-api.js"
+        },
+        {
+          "@id": "urn:solid-server:pocpod0:BackofficeSupportAsset",
+          "@type": "StaticAssetEntry",
+          "relativeUrl": "/support.js",
+          "filePath": "/backoffice/support.js"
+        }
       ]
     }
   ]

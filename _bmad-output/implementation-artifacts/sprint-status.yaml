@@ -1,7 +1,7 @@
 ---
 project_name: pocpod0
 sprint_generated: 2026-03-18
-last_updated: 2026-07-21  # Story 4.4.1 opened (unplanned VPS infra consolidation — CSS onto shared nginx-gateway, security fix, OpenClaw retirement kicked off but not finished). Epic 7 added (sprint change proposal 2026-07-21): Epic 4 parked, pod-owner backoffice prioritized. Stories 7.1 and 7.2 drafted, ready-for-dev.
+last_updated: 2026-07-21  # Story 4.4.1 opened (unplanned VPS infra consolidation — CSS onto shared nginx-gateway, security fix, OpenClaw retirement kicked off but not finished). Epic 7 added (sprint change proposal 2026-07-21): Epic 4 parked, pod-owner backoffice prioritized. Stories 7.1 and 7.2 drafted, ready-for-dev. Story 7.1 implemented + deployed to VPS, moved to review — also fixed a live CSS auth-config bug (debug-auth-header.json was disabling all real OIDC logins, not just this story's new accounts).
 tracking_system: file-system
 project_key: NOKEY
 communication_language: English
@@ -116,7 +116,7 @@ development_status:
   # Origin: runnable mockup bundle "SOLID Pod Management Interface.zip" (see backoffice/ + its HANDOFF.md).
   # Deploy target: https://pod.nicolasdb.eu/ root (replaces CSS default welcome page), not a separate hostname.
   epic-7: in-progress
-  story-7-1-backoffice-deploy-real-account-registration: ready-for-dev
+  story-7-1-backoffice-deploy-real-account-registration: review
   story-7-2-css-registration-pages-restyle: ready-for-dev
   epic-7-retrospective: optional
 

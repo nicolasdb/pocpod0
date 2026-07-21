@@ -16,9 +16,14 @@ const CLIENT_NAME = "Pod Backoffice";
 let _libs = null;
 async function loadLibs() {
   if (_libs) return _libs;
+  // `?bundle` forces esm.sh to inline the whole dependency subtree into one file.
+  // Required as of 2026-07-21: without it, esm.sh's default per-module resolution
+  // pulls a newer @inrupt/oidc-client-ext against the pinned old @inrupt/oidc-client,
+  // and that UMD package only exposes a `default` export under esm.sh's CJS-interop,
+  // breaking named imports (`SessionMonitor`/`UserManager`) deep in the OIDC chain.
   const [authn, sc] = await Promise.all([
-    import("https://esm.sh/@inrupt/solid-client-authn-browser@2.3.0"),
-    import("https://esm.sh/@inrupt/solid-client@2.1.0"),
+    import("https://esm.sh/@inrupt/solid-client-authn-browser@2.3.0?bundle"),
+    import("https://esm.sh/@inrupt/solid-client@2.1.0?bundle"),
   ]);
   _libs = { authn, sc };
   return _libs;
@@ -56,6 +61,17 @@ class RealBackend {
     this.sc = libs.sc;
     this.fetch = session.fetch;
     this.webId = session.info.webId;
+    // Best-guess default so root()/urlFor() never see `undefined` before init() resolves.
+    this.root = this.webId.replace(/profile\/card#me$/, "");
+  }
+  async init() {
+    try {
+      const pods = await this.sc.getPodUrlAll(this.webId, { fetch: this.fetch });
+      if (pods && pods[0]) this.root = pods[0];
+    } catch (e) {
+      // Keep the webId-derived fallback set in the constructor.
+    }
+    return this;
   }
   async list(url) {
     const ds = await this.sc.getSolidDataset(url, { fetch: this.fetch });
@@ -278,9 +294,45 @@ export const Solid = {
   async realClient() {
     const libs = await loadLibs();
     const session = libs.authn.getDefaultSession();
-    return new RealBackend(libs, session);
+    return await new RealBackend(libs, session).init();
   },
   demoClient() {
     return new DemoBackend();
+  },
+  // Real CSS account/pod registration (Story 7.1). Endpoint sequence + field
+  // names verified live against pod.nicolasdb.eu with a throwaway account
+  // (2026-07-21): GET /.account/ -> POST controls.account.create ->
+  // POST controls.password.create (authed) -> POST controls.account.pod (authed) -> login()
+  async registerAccount(podName, password) {
+    const indexRes = await fetch(new URL("/.account/", ISSUER));
+    if (!indexRes.ok) throw new Error("Could not reach account API.");
+    const { controls } = await indexRes.json();
+
+    const accountRes = await fetch(controls.account.create, { method: "POST" });
+    if (!accountRes.ok) throw new Error("Could not create account.");
+    const { authorization } = await accountRes.json();
+    if (!authorization) throw new Error("Account created but no session token returned.");
+    const authHeader = { authorization: `CSS-Account-Token ${authorization}` };
+
+    const accountIndexRes = await fetch(new URL("/.account/", ISSUER), { headers: authHeader });
+    const { controls: authedControls } = await accountIndexRes.json();
+
+    const email = `${podName}@pod.nicolasdb.eu.local`;
+    const passwordRes = await fetch(authedControls.password.create, {
+      method: "POST",
+      headers: { ...authHeader, "content-type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    if (!passwordRes.ok) throw new Error("Could not set a login credential.");
+
+    const podRes = await fetch(authedControls.account.pod, {
+      method: "POST",
+      headers: { ...authHeader, "content-type": "application/json" },
+      body: JSON.stringify({ name: podName }),
+    });
+    if (!podRes.ok) throw new Error("Could not create the pod.");
+    const { webId } = await podRes.json();
+
+    return { webId, email, podName };
   },
 };

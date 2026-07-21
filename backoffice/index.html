@@ -570,8 +570,27 @@ class Component extends DCLogic {
     } else {
       this.setState({ stage: 'gate', offlineNote: !!res.offline || !this.api });
     }
+    // Browser Back/Forward support: without this, the app has zero history
+    // entries of its own, so Back exits the tab instead of stepping back a
+    // gate/onboarding-chapter/app-view — even mid-flow.
+    this._lastNavKey = this._navKey();
+    history.replaceState(this._navSnapshot(), '', location.href);
+    window.addEventListener('popstate', (e) => {
+      this._skipNextPush = true;
+      this.setState(e.state || { stage: 'gate', chapter: 0 });
+    });
   }
-  componentDidUpdate() { this.setVars(); }
+  componentDidUpdate() {
+    this.setVars();
+    const key = this._navKey();
+    if (key !== this._lastNavKey) {
+      this._lastNavKey = key;
+      if (this._skipNextPush) this._skipNextPush = false;
+      else history.pushState(this._navSnapshot(), '', location.href);
+    }
+  }
+  _navSnapshot() { return { stage: this.state.stage, chapter: this.state.chapter, view: this.state.view, path: this.state.path }; }
+  _navKey() { const s = this._navSnapshot(); return s.stage + '|' + s.chapter + '|' + s.view + '|' + (s.path || []).join('/'); }
 
   setVars() {
     const t = this.props.theme ?? 'daylight';
@@ -699,8 +718,23 @@ class Component extends DCLogic {
 
   // ---------- onboarding provisioning ----------
   async obCreatePod() {
-    if (!this.cl) this.cl = this.api ? this.api.Solid.demoClient() : null;
     const slug = (this.state.acctName || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    if (this.api && slug) {
+      try {
+        const password = this.state.passphrase || Math.random().toString(36).slice(2) + 'Aa1!';
+        const { webId } = await this.api.Solid.registerAccount(slug, password);
+        this.setState({ podCreated: true, webId, mode: 'live' });
+        this.toast(this.state.passphrase ? 'Pod created and locked with your passphrase.' : 'Your pod is ready.');
+        // Hands off to the real OIDC login so the new account lands authenticated (AC3).
+        await this.api.Solid.connect();
+        return;
+      } catch (e) {
+        this.toast('Could not create your pod: ' + e.message);
+        return;
+      }
+    }
+    // Offline/sandboxed preview (no real origin, e.g. handleIncomingRedirect couldn't run): demo pod only.
+    if (!this.cl) this.cl = this.api ? this.api.Solid.demoClient() : null;
     if (this.cl && slug) this.cl.webId = 'https://pod.nicolasdb.eu/' + slug + '/profile/card#me';
     this.setState({ podCreated: true, webId: this.cl ? this.cl.webId : null });
     this.toast(this.state.passphrase ? 'Pod created and locked with your passphrase.' : 'Your pod is ready.');
