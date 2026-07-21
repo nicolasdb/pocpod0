@@ -48,7 +48,6 @@ fi
 echo ""
 echo "📁 Creating data directories..."
 mkdir -p infra/css/pods/{ayoub,claire-student-1,claire-student-2,fatima-child-1,fatima-child-2,school-community}
-mkdir -p infra/nginx/ssl
 mkdir -p infra/oxigraph
 mkdir -p infra/qdrant
 echo "✓ Data directories created"
