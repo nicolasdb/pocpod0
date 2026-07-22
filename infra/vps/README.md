@@ -123,15 +123,23 @@ This deletes: `pocpod0_css-data`, `pocpod0_openclaw-data-default`, `pocpod0_oxig
 
 After a factory reset you must re-run Stage 0 provision.
 
-### Backup named volumes before reset
+### Backup named volumes before reset (or any risky live test)
 
 ```bash
-ssh hetzner "mkdir -p /home/nicolas/pocpod0/backups"
-ssh hetzner "docker run --rm -v pocpod0_css-data:/data alpine tar czf - /data > backups/css-data-$(date +%F).tar.gz"
-ssh hetzner "docker run --rm -v pocpod0_openclaw-data-default:/data alpine tar czf - /data > backups/openclaw-data-$(date +%F).tar.gz"
-ssh hetzner "docker run --rm -v pocpod0_oxigraph-data:/data alpine tar czf - /data > backups/oxigraph-data-$(date +%F).tar.gz"
-ssh hetzner "docker run --rm -v pocpod0_qdrant-data:/data alpine tar czf - /data > backups/qdrant-data-$(date +%F).tar.gz"
+make vps-backup             # manual, run now — includes css-data
 ```
+
+A nightly cron (03:00, 7-day retention) also runs automatically — installed via:
+
+```bash
+make vps-backup-schedule    # one-time: installs infra/vps/nightly-backup.sh + cron entry
+```
+
+Verify it's active: `ssh hetzner crontab -l`. Backups land in `/home/nicolas/pocpod0/backups/`.
+
+> Installed 2026-07-22 after a code-review live test touched the root `.acl` with
+> no backup to restore from (Story 7.1). Always run `make vps-backup` before any
+> exploratory testing against the live CSS server, even with the cron in place.
 
 ### Fallback to local dev
 

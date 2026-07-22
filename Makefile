@@ -15,7 +15,7 @@ VPS_PATH       = /home/nicolas/pocpod0
         pipeline pipeline-dry dashboard troll setup \
         cli-devices \
         vps-push vps-build vps-deploy vps-setup vps-pipeline \
-        vps-devices-list vps-devices-approve vps-backup
+        vps-devices-list vps-devices-approve vps-backup vps-backup-schedule
 
 # ── Help ─────────────────────────────────────────────────────────────────────
 
@@ -41,7 +41,8 @@ help:
 	@echo "  vps-pipeline      Run ingestion pipeline on VPS (in tmux session)"
 	@echo "  vps-devices-list  List pending/paired WebUI devices on VPS"
 	@echo "  vps-devices-approve ID=<requestId>  Approve WebUI pairing on VPS"
-	@echo "  vps-backup        Backup named volumes → VPS backups/ directory"
+	@echo "  vps-backup        Backup named volumes → VPS backups/ directory (manual, run now)"
+	@echo "  vps-backup-schedule  Install nightly cron on VPS running vps-backup (keeps last 7 days)"
 
 # ── Local: image management ───────────────────────────────────────────────────
 
@@ -157,10 +158,22 @@ vps-devices-list:
 vps-devices-approve:
 	ssh $(VPS_REMOTE) "docker exec openclaw-gateway openclaw devices approve $(ID)"
 
-# Backup all named volumes to VPS backups/ directory
+# Backup all named volumes to VPS backups/ directory (manual, run now)
 vps-backup:
 	ssh $(VPS_REMOTE) "mkdir -p $(VPS_PATH)/backups"
 	ssh $(VPS_REMOTE) "docker run --rm -v pocpod0_css-data:/data alpine tar czf - /data > $(VPS_PATH)/backups/css-data-$$(date +%F).tar.gz && echo 'css-data backed up'"
 	ssh $(VPS_REMOTE) "docker run --rm -v pocpod0_openclaw-data-default:/data alpine tar czf - /data > $(VPS_PATH)/backups/openclaw-data-$$(date +%F).tar.gz && echo 'openclaw-data backed up'"
 	ssh $(VPS_REMOTE) "docker run --rm -v pocpod0_oxigraph-data:/data alpine tar czf - /data > $(VPS_PATH)/backups/oxigraph-data-$$(date +%F).tar.gz && echo 'oxigraph-data backed up'"
 	ssh $(VPS_REMOTE) "docker run --rm -v pocpod0_qdrant-data:/data alpine tar czf - /data > $(VPS_PATH)/backups/qdrant-data-$$(date +%F).tar.gz && echo 'qdrant-data backed up'"
+
+# Install a nightly cron on the VPS that runs the same backups as `vps-backup`
+# and trims anything older than 7 days. vps-backup itself was previously a
+# manual-only command — nobody had ever run it, so no css-data backup existed
+# before a code-review incident touched the live root .acl with none to
+# restore from (Story 7.1, 2026-07-22). This closes that gap going forward.
+vps-backup-schedule:
+	ssh $(VPS_REMOTE) "mkdir -p $(VPS_PATH)/backups"
+	scp infra/vps/nightly-backup.sh $(VPS_REMOTE):$(VPS_PATH)/backups/nightly-backup.sh
+	ssh $(VPS_REMOTE) "chmod +x $(VPS_PATH)/backups/nightly-backup.sh"
+	ssh $(VPS_REMOTE) '(crontab -l 2>/dev/null | grep -v nightly-backup.sh; echo "0 3 * * * $(VPS_PATH)/backups/nightly-backup.sh >> $(VPS_PATH)/backups/nightly-backup.log 2>&1") | crontab -'
+	@echo "Nightly backup cron installed (03:00 daily, 7-day retention). Verify: ssh $(VPS_REMOTE) crontab -l"
