@@ -14,6 +14,21 @@ const ISSUER = "https://pod.nicolasdb.eu/";
 const CLIENT_NAME = "Pod Backoffice";
 
 let _libs = null;
+
+// In-progress account registrations, keyed by podName, so a retry after a
+// mid-flow failure resumes on the same CSS account instead of orphaning it
+// (see Solid.registerAccount). Lives for the page session only.
+const _pendingRegistrations = {};
+
+// Best-effort human-readable detail from a failed CSS JSON-API response.
+async function _errDetail(res) {
+  try {
+    const body = await res.clone().json();
+    if (body && (body.message || body.name)) return body.message || body.name;
+  } catch (e) { /* non-JSON body */ }
+  return `HTTP ${res.status}`;
+}
+
 async function loadLibs() {
   if (_libs) return _libs;
   // `?bundle` forces esm.sh to inline the whole dependency subtree into one file.
@@ -303,36 +318,78 @@ export const Solid = {
   // names verified live against pod.nicolasdb.eu with a throwaway account
   // (2026-07-21): GET /.account/ -> POST controls.account.create ->
   // POST controls.password.create (authed) -> POST controls.account.pod (authed) -> login()
+  //
+  // RESUMABLE: CSS's account.create is anonymous and unconditional — every call
+  // mints a brand-new account. So a naive retry after a mid-flow failure would
+  // orphan the half-built account AND then fail again on the duplicate email at
+  // password.create. To stay idempotent, the in-progress account token + which
+  // steps already succeeded are stashed per podName; a retry resumes from the
+  // failed step on the SAME account instead of creating another one.
   async registerAccount(podName, password) {
-    const indexRes = await fetch(new URL("/.account/", ISSUER));
-    if (!indexRes.ok) throw new Error("Could not reach account API.");
-    const { controls } = await indexRes.json();
+    // Defense in depth: CSS's controls.account.pod treats a missing/empty `name`
+    // as "claim the pod root" instead of rejecting it (confirmed live 2026-07-22,
+    // undocumented) — reject here so this can never reach the network, even if
+    // called directly (the UI already guards this in obCreatePod).
+    if (!podName) throw new Error("Pod name is required.");
 
-    const accountRes = await fetch(controls.account.create, { method: "POST" });
-    if (!accountRes.ok) throw new Error("Could not create account.");
-    const { authorization } = await accountRes.json();
-    if (!authorization) throw new Error("Account created but no session token returned.");
-    const authHeader = { authorization: `CSS-Account-Token ${authorization}` };
-
-    const accountIndexRes = await fetch(new URL("/.account/", ISSUER), { headers: authHeader });
-    const { controls: authedControls } = await accountIndexRes.json();
-
+    let pending = _pendingRegistrations[podName];
     const email = `${podName}@pod.nicolasdb.eu.local`;
-    const passwordRes = await fetch(authedControls.password.create, {
-      method: "POST",
-      headers: { ...authHeader, "content-type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
-    if (!passwordRes.ok) throw new Error("Could not set a login credential.");
 
-    const podRes = await fetch(authedControls.account.pod, {
-      method: "POST",
-      headers: { ...authHeader, "content-type": "application/json" },
-      body: JSON.stringify({ name: podName }),
-    });
-    if (!podRes.ok) throw new Error("Could not create the pod.");
-    const { webId } = await podRes.json();
+    // Step 0+1: create the account (only if we don't already hold a token for it).
+    if (!pending) {
+      const indexRes = await fetch(new URL("/.account/", ISSUER));
+      if (!indexRes.ok) throw new Error("Could not reach account API.");
+      const index = await indexRes.json();
+      const createUrl = index.controls?.account?.create;
+      if (!createUrl) throw new Error("Account API did not expose an account-create endpoint.");
 
+      const accountRes = await fetch(createUrl, { method: "POST" });
+      if (!accountRes.ok) throw new Error(`Could not create account (${await _errDetail(accountRes)}).`);
+      const { authorization } = await accountRes.json();
+      if (!authorization) throw new Error("Account created but no session token returned.");
+
+      pending = _pendingRegistrations[podName] = {
+        authorization, passwordDone: false, webId: null,
+      };
+    }
+
+    const authHeader = { authorization: `CSS-Account-Token ${pending.authorization}` };
+
+    // Re-fetch the authed controls each resume — endpoint URLs are token-scoped.
+    const accountIndexRes = await fetch(new URL("/.account/", ISSUER), { headers: authHeader });
+    if (!accountIndexRes.ok) throw new Error(`Could not authenticate the new account (${await _errDetail(accountIndexRes)}).`);
+    const { controls: authedControls } = await accountIndexRes.json();
+    const passwordUrl = authedControls?.password?.create;
+    const podUrl = authedControls?.account?.pod;
+    if (!passwordUrl || !podUrl) throw new Error("Account API did not expose the expected password/pod endpoints.");
+
+    // Step 2: add the password login (skip if a prior attempt already did it —
+    // re-POSTing the same email would fail on the duplicate).
+    if (!pending.passwordDone) {
+      const passwordRes = await fetch(passwordUrl, {
+        method: "POST",
+        headers: { ...authHeader, "content-type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      if (!passwordRes.ok) throw new Error(`Could not set a login credential (${await _errDetail(passwordRes)}).`);
+      pending.passwordDone = true;
+    }
+
+    // Step 3: create the pod. CSS removes the linked WebID on pod-create failure,
+    // so retrying this step on the same account is safe.
+    if (!pending.webId) {
+      const podRes = await fetch(podUrl, {
+        method: "POST",
+        headers: { ...authHeader, "content-type": "application/json" },
+        body: JSON.stringify({ name: podName }),
+      });
+      if (!podRes.ok) throw new Error(`Could not create the pod (${await _errDetail(podRes)}).`);
+      const { webId } = await podRes.json();
+      pending.webId = webId;
+    }
+
+    const webId = pending.webId;
+    delete _pendingRegistrations[podName]; // fully provisioned — clear resume state
     return { webId, email, podName };
   },
 };

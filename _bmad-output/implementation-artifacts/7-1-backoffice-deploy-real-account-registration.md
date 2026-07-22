@@ -1,6 +1,6 @@
 # Story 7.1: Backoffice Deploy & Real Account Registration
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -122,6 +122,31 @@ Claude Sonnet 5
 - `docker-compose.yml` — modified (backoffice read-only volume mount)
 - `backoffice/pod-api.js` — modified (added `Solid.registerAccount`; `RealBackend.init()`/`.root` fix; `?bundle` on both esm.sh imports)
 - `backoffice/index.html` — modified (`obCreatePod` wired to real registration; browser history/Back-button support added)
+
+### Review Findings
+
+- [x] [Review][Decision→Patch] registerAccount was not idempotent — CSS account.create is anonymous+unconditional, so a retry after mid-flow failure orphaned the half-built account AND failed again on the duplicate email. FIXED: made resumable via a per-podName pending-registration cache (`_pendingRegistrations`) that stashes the account token + completed steps and resumes from the failed step on the SAME account [backoffice/pod-api.js]. Root-cause investigation confirmed the 17 orphan accounts found on the VPS came from dev/E2E iterations (pod folders deleted from /data, but `.internal/accounts/` records left behind), NOT from this code path in production. See "Orphan account cleanup" below.
+- [x] [Review][Patch] Empty slug after sanitization now toasts an error instead of silently falling through to the offline/demo path [backoffice/index.html]
+- [x] [Review][Patch] Fallback password now uses crypto.getRandomValues (was Math.random) [backoffice/index.html:_randomPassword]
+- [x] [Review][Patch] accountIndexRes now checked for .ok before destructuring controls [backoffice/pod-api.js]
+- [x] [Review][Patch] Guards added before accessing controls.account.create / password.create / account.pod — clear error instead of opaque TypeError if API shape differs [backoffice/pod-api.js]
+- [x] [Review][Patch] Account/pod-creation failures now surface the server's actual error detail via _errDetail() [backoffice/pod-api.js]
+- [x] [Review][Defer] _skipNextPush instance-mutation race in popstate/componentDidUpdate [backoffice/index.html:41-53] — deferred, pre-existing, speculative
+- [x] [Review][Defer] webId.replace fallback fragile for non-standard WebIDs [backoffice/pod-api.js:112] — deferred, pre-existing, low likelihood
+- [x] [Review][Defer] UnsecureWebIdExtractor security posture depends entirely on external nginx-gateway repo header-stripping [infra/css/config.json:243] — deferred, pre-existing architecture from Story 4.4.1, already documented
+- [x] [Review][Defer] getPodUrlAll no refresh/retry on timing race leaving stale root [backoffice/pod-api.js:114-121] — deferred, pre-existing, speculative
+
+#### Orphan account cleanup (VPS, dev hygiene)
+
+Investigation during review found 17 orphan CSS accounts in `pocpod0_css-data:/data/.internal/accounts/` on the VPS — pod folders were deleted from `/data` during Story 4.4.1 + 7.1 E2E iterations, but the account/webIdLink/pod **index records were never removed** (they live in `.internal/`, not the pod folder). Slugs: all `e2e-story71-*`, `e2e-final-*`, `story71-verify`, `throwaway-*`. Only real pod `hyperscope_ndb` has a live folder. The ~100 `admin-XXXX` folders are seeded pipeline pods (Story 6.0), unrelated.
+
+**Sweep attempted 2026-07-22, deliberately not completed.** CSS's JSON API has no full-account-delete endpoint — `controls.password.delete` refuses to remove an account's last login, so the zero-login state that would trigger CSS's internal auto-cleanup timeout can never be reached over HTTP. The real delete path (`AccountStore.delete()`) only exists inside the server process, not exposed externally. Given the live incident below came from acting on an unverified CSS behavior, hand-editing the 18 accounts' index/data files directly on the VPS without a backup was judged not worth the risk — actual exposure from leaving them is zero (no `.acl` grants, no pod data, not linked to `/`). Left as tracked tech debt; full detail and remediation options in deferred-work.md.
+
+#### Live verification of the resumable fix (2026-07-22)
+
+Deployed the patched `pod-api.js`/`index.html` to `pod.nicolasdb.eu` (bind-mounted, no rebuild). Verified via direct CSS account-API calls that: (1) retrying `controls.account.pod` with the same account token after a forced failure reuses the account rather than creating a new one — confirms the core resumability assumption our `_pendingRegistrations` cache relies on; (2) our client-side `obCreatePod` guard already prevents calling `registerAccount` with an empty pod name, so the "root pod hijack" behavior discovered below is not reachable through the real UI. Added a matching server-call guard in `registerAccount` itself as defense in depth, deployed live.
+
+**Incident found + fixed during this verification:** a malformed test request (empty body, bypassing the UI) caused CSS to create a pod at the site root, overwriting the root `.acl` and granting a test WebID full control over the whole storage root. No backup existed. Fixed live: root `.acl` restored to public-read-only, leftover pod data removed, other pods confirmed unaffected (each has its own `.acl`). Full incident writeup in deferred-work.md. Site confirmed healthy throughout (backoffice serving 200, pod-api.js reachable) — the StaticAssetHandler override at `/` was never at risk since it wins over LDP resolution for GET requests.
 
 ### Change Log
 

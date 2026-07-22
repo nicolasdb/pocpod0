@@ -517,6 +517,15 @@
 </div>
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:860},&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;daylight&quot;,&quot;options&quot;:[&quot;daylight&quot;,&quot;paper&quot;,&quot;ink&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Look &amp; feel&quot;},&quot;readableFont&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Look &amp; feel&quot;}}">
+// Cryptographically-strong fallback password for users who leave the passphrase
+// blank (Math.random is not suitable for anything credential-shaped).
+function _randomPassword() {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  const b64 = btoa(String.fromCharCode(...bytes)).replace(/[+/=]/g, '');
+  return b64 + 'Aa1!'; // guarantee the mixed-class requirement regardless of encoding
+}
+
 class Component extends DCLogic {
   constructor(props) {
     super(props);
@@ -719,9 +728,15 @@ class Component extends DCLogic {
   // ---------- onboarding provisioning ----------
   async obCreatePod() {
     const slug = (this.state.acctName || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    if (this.api && !slug) {
+      // Name had no usable [a-z0-9] characters — don't silently fall through to
+      // the offline/demo path, which would look like a real pod was created.
+      this.toast('Please enter a name with at least one letter or number.');
+      return;
+    }
     if (this.api && slug) {
       try {
-        const password = this.state.passphrase || Math.random().toString(36).slice(2) + 'Aa1!';
+        const password = this.state.passphrase || _randomPassword();
         const { webId } = await this.api.Solid.registerAccount(slug, password);
         this.setState({ podCreated: true, webId, mode: 'live' });
         this.toast(this.state.passphrase ? 'Pod created and locked with your passphrase.' : 'Your pod is ready.');
