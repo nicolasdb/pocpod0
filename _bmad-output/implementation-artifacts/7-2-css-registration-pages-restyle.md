@@ -1,6 +1,6 @@
 # Story 7.2: CSS Registration Pages Restyle
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -62,7 +62,7 @@ Two surfaces were conflated at story-creation time and are now both explicitly i
 ## Dev Notes
 
 - **Depends on Story 7.1 for design-token source of truth** — do not invent new tokens; the backoffice mockup is the canonical design system for this whole user-facing surface. Pull exact values from `backoffice/index.html`/HANDOFF.md, not memory or approximation.
-- **Scope boundary:** this story restyles CSS's own server-rendered account/OIDC pages. It does NOT touch `backoffice/index.html` (that's Story 7.1's surface) and does NOT change CSS's underlying account/OIDC logic — visual/copy layer only, functionality must be provably unchanged (AC4).
+- **Scope boundary:** this story restyles CSS's own server-rendered account/OIDC pages, and does NOT change CSS's underlying account/OIDC logic — visual/copy layer only, functionality must be provably unchanged (AC4). (Originally scoped to also exclude `backoffice/index.html` entirely; superseded same-day by the Scope Clarification below once the `create` chapter was identified as the real CSS registration step.)
 - **CSS version:** `solidproject/community-server:7` (docker-compose.yml:3). Template override mechanisms are version-specific — confirm against this exact major version, not assumed from older CSS docs.
 - **Design principles (same as backoffice, HANDOFF.md):** cognitive ergonomics + Laws of UX — Miller's Law (≤4 chunks/step), Hick's Law (one primary action), progressive disclosure, Zeigarnik/Goal-Gradient (visible phase progress), Peak-End (recap finale), reversibility (undo toasts) — apply whichever are relevant to a registration/consent flow (Miller's + Hick's most directly; multi-step progress framing if the account→pod flow spans multiple screens).
 - **Existing project standard:** WCAG 2.1 AA is an established project requirement (4.5:1 contrast, focus-visible) — this is not new scope invented for this story, it's the project's baseline bar for all user-facing surfaces.
@@ -104,20 +104,40 @@ claude-sonnet-5 (Claude Code)
 - **AC6 (consent clientName):** the stock `consent.html.ejs` injects `client.client_name` into `<dl id="client">`; the new stylesheet styles that block (sage card). clientName display is a template-data concern the restyle preserves, not a TODO.
 - **AC7 / email gap (Nicolas's catch):** the "Let's make your box." screen (backoffice `create` chapter) is the real CSS registration step. It previously collected only name + passphrase while `pod-api.js` fabricated `${podName}@pod.nicolasdb.eu.local` — meaning an owner could never sign back in. Added a required email field (state + `onEmail` + loose-but-real validation gating the "Create my pod" button and re-checked in `obCreatePod`), and `registerAccount(podName, password, email)` now uses the real email (synthetic kept only as a defensive fallback for an empty value). Still 4 chunks on the screen (name, email, passphrase, WebID preview) → Miller's Law holds.
 - **Visual QA:** headless screenshots of login + register + the create chapter confirm the design system renders correctly (panel card, pill CTAs, secondary outline buttons, rebranded chrome). Emoji/font glyphs render as fallback in offline headless but load normally on the real deploy (network available).
-- **Not yet deployed to VPS.** Changes verified locally only; `make vps-deploy` still needed to ship. Bind-mounts wired in `docker-compose.yml` via `${VOLUME_FLAGS:-}`, same as 7.1's mounts. Mount-flag correctness: local `.env` sets `VOLUME_FLAGS=,Z` (Fedora SELinux relabel); the VPS is a non-SELinux **docker compose** host where `,Z` is meaningless. Added `VOLUME_FLAGS=` (empty) to `infra/vps/.env.vps` so the VPS override zeroes it out for ALL bind-mounts (fixes a latent pre-existing wart on the 7.1 mounts too, not just these).
+- **Deployed to VPS 2026-07-23 (Nicolas, manual).** Live-verified on `pod.nicolasdb.eu`: `tokens.css` reachable (200), `main.css`/`tokens.css` both served with the `?v=7-pod2` cache-bust, SSOT marker present, "Let's make your locker" copy live, consent-box CSS-grid fix present. Bind-mounts wired in `docker-compose.yml` via `${VOLUME_FLAGS:-}`, same as 7.1's mounts. Mount-flag correctness: local `.env` sets `VOLUME_FLAGS=,Z` (Fedora SELinux relabel); the VPS is a non-SELinux **docker compose** host where `,Z` is meaningless. Added `VOLUME_FLAGS=` (empty) to `infra/vps/.env.vps` so the VPS override zeroes it out for ALL bind-mounts (fixes a latent pre-existing wart on the 7.1 mounts too, not just these).
 
 ### File List
 
 - `infra/css/main.css` (new) — restyled CSS identity-page stylesheet (backoffice design system)
 - `infra/css/main.html.ejs` (new) — rebranded CSS page wrapper/chrome
-- `docker-compose.yml` (modified) — two additive bind-mounts overriding the CSS template stylesheet + wrapper
+- `docker-compose.yml` (modified) — four additive bind-mounts overriding the CSS template stylesheet, wrapper, and (post-review) the create-pod + consent page bodies
+- `infra/css/templates/identity/account/create-pod.html.ejs` (new, post-review) — stock CSS pod-creation page body with plain-language WebID/pod glosses; text-only diff from stock, ids/names/JS untouched
+- `infra/css/templates/identity/oidc/consent.html.ejs` (new, post-review) — stock CSS OIDC consent page body with plain-language WebID gloss; text-only diff from stock, ids/names/JS untouched
 - `infra/vps/.env.vps` (modified) — pin `VOLUME_FLAGS=` empty (VPS is non-SELinux docker; strips the local `,Z` relabel flag from all bind-mounts)
-- `backoffice/index.html` (modified) — email field in the `create` chapter (state, handler, validation gate, input + copy); required-passphrase gate + copy; links `/tokens.css`; `setVars()` no longer duplicates the daylight palette (falls back to tokens.css `:root`)
-- `backoffice/pod-api.js` (modified) — `registerAccount` accepts a real `email` (synthetic placeholder now fallback-only)
+- `backoffice/index.html` (modified) — email field in the `create` chapter (state, handler, validation gate, input + copy); required-passphrase gate + copy; links `/tokens.css`; deduped email regex into `EMAIL_RE` (post-review); `setVars()` no longer duplicates the daylight palette — all bare `var()` usages now carry CSS fallbacks instead (post-review)
+- `backoffice/pod-api.js` (modified) — `registerAccount` accepts a real `email` (synthetic placeholder now fallback-only); tracks `pending.email` so a resumed retry can't silently misreport an unregistered email as used (post-review)
 - `backoffice/tokens.css` (new) — single source of truth for the daylight design tokens, served at `/tokens.css`
 - `infra/css/config.json` (modified) — additive `StaticAssetEntry` serving `/tokens.css` from `backoffice/tokens.css`
-- `_bmad-output/implementation-artifacts/7-2-css-registration-pages-restyle.md` (modified) — scope clarification, Tasks 5–6, AC7–9, this record
-- `_bmad-output/implementation-artifacts/sprint-status.yaml` (modified) — status → review
+- `_bmad-output/implementation-artifacts/7-2-css-registration-pages-restyle.md` (modified) — scope clarification, Tasks 5–6, AC7–9, Review Findings, this record
+- `_bmad-output/implementation-artifacts/deferred-work.md` (modified) — 4 items deferred from this review
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` (modified) — status → done
+
+### Review Findings
+
+- [x] [Review][Decision] AC7/AC8 mandatory-field enforcement is `this.api`-gated, bypassed entirely in offline/preview/demo mode — `backoffice/index.html` (nextDisabled + obCreatePod validation guards) and `backoffice/pod-api.js`. Three independent review layers flagged this convergently. **Resolved:** accepted as-is — no real CSS account is ever created in that branch (falls to the local demo-pod stub), so AC7/8's actual purpose can't be violated there; matches the pre-existing slug-guard pattern.
+- [x] [Review][Decision] AC9 (single-source-of-truth palette) is knowingly violated: `backoffice/index.html`'s `setVars()` still hardcodes the full daylight palette identical to `backoffice/tokens.css`, a documented compromise to avoid an unstyled flash on inline `var()` usages with no CSS fallback. **Resolved:** fixed properly — added CSS fallbacks (`var(--acc,#3d6b52)` etc, 65 usages) to every bare `var()` in `index.html`, then removed the JS daylight duplicate from `setVars()`; paper/ink themes still set/clear via JS as before.
+- [x] [Review][Decision] AC2 (jargon-free copy) has no diff evidence for CSS's own stock page-body templates (register/login/consent `.ejs` content) — the diff only restyles chrome/stylesheet (`main.css`, `main.html.ejs`), not page-body copy. **Resolved:** fixed now — pulled CSS v7's stock `create-pod.html.ejs` and `oidc/consent.html.ejs` (the two most jargon-heavy, most-reached page bodies), added plain-language WebID/pod glosses as text-only edits (ids/names/JS byte-identical to stock), bind-mounted as two new overrides in `docker-compose.yml`. `login`/`register`/`forgot` bodies were already jargon-free in stock CSS — no override needed there.
+- [x] [Review][Patch] Duplicate email regex `/^[^\s@]+@[^\s@]+\.[^\s@]+$/` hand-copied twice in `backoffice/index.html` (submit handler + render-time `emailValid`) — extracted to one `EMAIL_RE` constant.
+- [x] [Review][Patch] `registerAccount` retry/idempotency bug: if `pending.passwordDone` is already true and the caller retries with a changed email, the new email is never re-POSTed to CSS but is returned as if it were — `backoffice/pod-api.js:371,396`. Fixed: `pending.email` now tracks the email actually registered; a resume reuses it instead of trusting a possibly-stale argument.
+- [x] [Review][Patch] Stale Dev Notes line "No changes to `backoffice/` in this story" contradicted the later Scope Clarification and the actual diff — corrected.
+- [x] [Review][Defer] Passphrase/password field is `type="text"` (unmasked), now elevated to a mandatory secret by AC8 [backoffice/index.html] — deferred, pre-existing since Story 7.1.
+- [x] [Review][Defer] Google Fonts `@import` on auth/consent pages (privacy/perf/offline risk) [infra/css/main.css] — deferred, mirrors existing backoffice pattern, not new to this story.
+- [x] [Review][Defer] `:has()` selector with no fallback for the consent client-logo gap fix [infra/css/main.css] — deferred, cosmetic-only degradation on old browsers, documented coupling to stock DOM.
+- [x] [Review][Defer] AC6 "Pod Backoffice" clientName display claimed verified but no direct screenshot evidence of the string itself — deferred, low-risk, spot-check manually.
+
+### Post-Review Verification
+
+Re-verified live against a throwaway `podman run` container with `--baseUrl http://localhost:3999/` and all 6 bind-mounts (config, backoffice, main.css, main.html.ejs, create-pod.html.ejs, consent.html.ejs): login page renders with `tokens.css`/`main.css` wired and rebranded chrome; full account→password→pod-create round-trip via the raw JSON API still returns 200/200/200 through the overridden `create-pod.html.ejs` template, with the new "Choose a name for your pod — your own storage space..." / "Choose which WebID — your identity address on the web..." copy confirmed present in the served HTML. `node --check` clean on `pod-api.js` and the extracted `index.html` DC script block after the `setVars()`/`EMAIL_RE` edits.
 
 ## Change Log
 

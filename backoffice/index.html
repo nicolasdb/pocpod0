@@ -526,6 +526,8 @@
 </div>
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:860},&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;daylight&quot;,&quot;options&quot;:[&quot;daylight&quot;,&quot;paper&quot;,&quot;ink&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Look &amp; feel&quot;},&quot;readableFont&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Look &amp; feel&quot;}}">
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 class Component extends DCLogic {
   constructor(props) {
     super(props);
@@ -603,25 +605,25 @@ class Component extends DCLogic {
 
   setVars() {
     const t = this.props.theme ?? 'daylight';
-    // Daylight is the single source of truth in /tokens.css (:root). Only the ALTERNATE
-    // themes are defined here and override :root on <html>; switching back to daylight
-    // clears those overrides so the tokens.css values show through again.
-    // MUST mirror backoffice/tokens.css (:root daylight values) exactly — tokens.css is
-    // the canonical, documented source (and is what the CSS-server pages consume directly).
-    // JS still sets daylight explicitly here too, on purpose: many inline styles in this
-    // file use bare var(--acc) etc with NO CSS fallback, so they'd render unstyled for any
-    // instant the external tokens.css stylesheet hasn't loaded/applied yet. Setting the
-    // vars directly removes that dependency on load timing/order.
-    const themes = {
-      daylight: { bg:'#f6f4ef', panel:'#fbfaf7', tx:'#26241f', tx2:'#8a8474', tx3:'#b3ac9a', line:'#e7e2d6', hov:'#efece3', acc:'#3d6b52', accLite:'#8fc0a5', accSoft:'#eef3ef', accSoftLine:'#b8ccbf', warn:'#b5722a', warnBg:'#faf3e6', warnLine:'#e3c9a3', codebg:'#f0ede4' },
-      paper:    { bg:'#f3ead9', panel:'#fbf5e9', tx:'#3a2c15', tx2:'#8a744f', tx3:'#b8a480', line:'#e4d5b8', hov:'#efe4cd', acc:'#a8621f', accLite:'#d29a63', accSoft:'#f6ecd9', accSoftLine:'#e0c294', warn:'#9c5410', warnBg:'#f7ecd6', warnLine:'#dcc08c', codebg:'#efe2c8' },
-      ink:      { bg:'#12140f', panel:'#1b1e17', tx:'#eceadf', tx2:'#9a9585', tx3:'#63604f', line:'rgba(255,255,255,.09)', hov:'#242820', acc:'#8fb98a', accLite:'#b4d6af', accSoft:'rgba(143,185,138,.14)', accSoftLine:'rgba(143,185,138,.4)', warn:'#d99a55', warnBg:'rgba(217,154,85,.13)', warnLine:'rgba(217,154,85,.35)', codebg:'#12140f' }
+    // Daylight is the single source of truth in /tokens.css (:root) — not duplicated here.
+    // Only the ALTERNATE themes are defined below and override :root on <html>; switching
+    // back to daylight clears those overrides so the tokens.css values show through again.
+    // Every inline var(--acc,#3d6b52) etc usage in this file now carries the daylight value
+    // as its own CSS fallback, so there's no unstyled flash before tokens.css/JS applies.
+    const altThemes = {
+      paper: { bg:'#f3ead9', panel:'#fbf5e9', tx:'#3a2c15', tx2:'#8a744f', tx3:'#b8a480', line:'#e4d5b8', hov:'#efe4cd', acc:'#a8621f', accLite:'#d29a63', accSoft:'#f6ecd9', accSoftLine:'#e0c294', warn:'#9c5410', warnBg:'#f7ecd6', warnLine:'#dcc08c', codebg:'#efe2c8' },
+      ink:   { bg:'#12140f', panel:'#1b1e17', tx:'#eceadf', tx2:'#9a9585', tx3:'#63604f', line:'rgba(255,255,255,.09)', hov:'#242820', acc:'#8fb98a', accLite:'#b4d6af', accSoft:'rgba(143,185,138,.14)', accSoftLine:'rgba(143,185,138,.4)', warn:'#d99a55', warnBg:'rgba(217,154,85,.13)', warnLine:'rgba(217,154,85,.35)', codebg:'#12140f' }
     };
-    const th = themes[t] || themes.daylight;
+    const daylightBg = '#f6f4ef';
     const el = document.documentElement;
-    Object.entries(th).forEach(([k,v]) => el.style.setProperty('--'+k, v));
+    const th = altThemes[t];
+    if (th) {
+      Object.entries(th).forEach(([k,v]) => el.style.setProperty('--'+k, v));
+    } else {
+      Object.keys(altThemes.paper).forEach(k => el.style.removeProperty('--'+k));
+    }
     el.style.setProperty('--font', this.props.readableFont ? "'Atkinson Hyperlegible'" : "'Lexend'");
-    document.body.style.background = th.bg;
+    document.body.style.background = th ? th.bg : daylightBg;
   }
 
   toast(msg, undoFn) {
@@ -702,9 +704,9 @@ class Component extends DCLogic {
     return 'private';
   }
   visInfo(v) {
-    return v === 'public' ? { icon:'🌍', label:'Public', color:'var(--warn)' }
-      : v === 'shared' ? { icon:'👥', label:'Shared', color:'var(--acc)' }
-      : { icon:'🔒', label:'Only you', color:'var(--tx2)' };
+    return v === 'public' ? { icon:'🌍', label:'Public', color:'var(--warn,#b5722a)' }
+      : v === 'shared' ? { icon:'👥', label:'Shared', color:'var(--acc,#3d6b52)' }
+      : { icon:'🔒', label:'Only you', color:'var(--tx2,#8a8474)' };
   }
   modeSummary(m) { return this.api.MODES.filter(x => m[x]).map(x => ({read:'read',append:'append',write:'edit',control:'control'})[x]).join(' · ') || 'no access'; }
 
@@ -744,7 +746,7 @@ class Component extends DCLogic {
       return;
     }
     const email = (this.state.email || '').trim();
-    if (this.api && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    if (this.api && !EMAIL_RE.test(email)) {
       // Real email is required so the owner can log back in later (Story 7.2).
       this.toast('Please enter a valid email — it’s how you sign back in later.');
       return;
@@ -861,8 +863,8 @@ class Component extends DCLogic {
     const curPhase = phaseFor(S.chapter);
     const phases = ['Understand', 'Set up', 'Ready'].map((label, i) => ({
       label,
-      barStyle: 'height:5px;border-radius:3px;transition:background .3s;background:' + (i < curPhase ? 'var(--acc)' : i === curPhase ? 'var(--acc)' : 'var(--line)') + (i === curPhase ? ';opacity:1' : i < curPhase ? ';opacity:1' : ';opacity:1'),
-      labelStyle: 'font-size:10.5px;margin-top:6px;text-align:center;font-weight:' + (i === curPhase ? '600;color:var(--acc)' : '500;color:var(--tx3)')
+      barStyle: 'height:5px;border-radius:3px;transition:background .3s;background:' + (i < curPhase ? 'var(--acc,#3d6b52)' : i === curPhase ? 'var(--acc,#3d6b52)' : 'var(--line,#e7e2d6)') + (i === curPhase ? ';opacity:1' : i < curPhase ? ';opacity:1' : ';opacity:1'),
+      labelStyle: 'font-size:10.5px;margin-top:6px;text-align:center;font-weight:' + (i === curPhase ? '600;color:var(--acc,#3d6b52)' : '500;color:var(--tx3,#b3ac9a)')
     }));
 
     const checkOptions = [
@@ -873,7 +875,7 @@ class Component extends DCLogic {
       label: o.label,
       pick: () => this.setState({ checkChoice: o.key }),
       mark: S.checkChoice === o.key ? (o.key === 'b' ? '✅' : '↩︎') : '',
-      style: 'display:flex;align-items:center;gap:12px;width:100%;padding:15px 17px;border-radius:12px;cursor:pointer;font-family:inherit;background:' + (S.checkChoice === o.key ? (o.key === 'b' ? 'var(--accSoft);border:1.5px solid var(--acc)' : 'var(--panel);border:1.5px solid var(--warnLine)') : 'var(--panel);border:1.5px solid var(--line)')
+      style: 'display:flex;align-items:center;gap:12px;width:100%;padding:15px 17px;border-radius:12px;cursor:pointer;font-family:inherit;background:' + (S.checkChoice === o.key ? (o.key === 'b' ? 'var(--accSoft,#eef3ef);border:1.5px solid var(--acc,#3d6b52)' : 'var(--panel,#fbfaf7);border:1.5px solid var(--warnLine,#e3c9a3)') : 'var(--panel,#fbfaf7);border:1.5px solid var(--line,#e7e2d6)')
     }));
     const checkFeedback = S.checkChoice == null ? false
       : S.checkChoice === 'b' ? "Exactly right. It's yours; sharing is a choice you make."
@@ -885,7 +887,7 @@ class Component extends DCLogic {
     // Story 7.2: a real email is required — it's how the owner logs back in later
     // (CSS keys the password login on it). Deliberately loose validation: just
     // "looks like an email", no over-strict regex that rejects valid addresses.
-    const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((S.email || '').trim());
+    const emailValid = EMAIL_RE.test((S.email || '').trim());
     // A secret is required (>=8 chars); passphrase-vs-password is the only optional part.
     const passOk = (S.passphrase || '').trim().length >= 8;
     const pw = S.passphrase || '';
@@ -899,8 +901,8 @@ class Component extends DCLogic {
         name, icon: folderMeta[name],
         toggle: () => this.setState(st => ({ pickedFolders: { ...st.pickedFolders, [name]: !st.pickedFolders[name] } })),
         check: on ? '✓' : '',
-        checkStyle: 'width:22px;height:22px;border-radius:7px;display:grid;place-items:center;font-size:13px;font-weight:700;color:#fff;background:' + (on ? 'var(--acc)' : 'transparent') + ';border:1.5px solid ' + (on ? 'var(--acc)' : 'var(--line)'),
-        style: 'display:flex;align-items:center;gap:12px;padding:16px 18px;border-radius:13px;cursor:pointer;font-family:inherit;background:var(--panel);border:1.5px solid ' + (on ? 'var(--acc)' : 'var(--line)')
+        checkStyle: 'width:22px;height:22px;border-radius:7px;display:grid;place-items:center;font-size:13px;font-weight:700;color:#fff;background:' + (on ? 'var(--acc,#3d6b52)' : 'transparent') + ';border:1.5px solid ' + (on ? 'var(--acc,#3d6b52)' : 'var(--line,#e7e2d6)'),
+        style: 'display:flex;align-items:center;gap:12px;padding:16px 18px;border-radius:13px;cursor:pointer;font-family:inherit;background:var(--panel,#fbfaf7);border:1.5px solid ' + (on ? 'var(--acc,#3d6b52)' : 'var(--line,#e7e2d6)')
       };
     });
     const folderPickCount = Object.values(S.pickedFolders).filter(Boolean).length;
@@ -914,8 +916,8 @@ class Component extends DCLogic {
       return {
         icon: o.icon, title: o.title, desc: o.desc,
         pick: () => this.obApplyShare(o.key),
-        dotStyle: 'width:18px;height:18px;border-radius:50%;flex-shrink:0;border:2px solid ' + (on ? 'var(--acc);background:var(--acc);box-shadow:inset 0 0 0 3px var(--panel)' : 'var(--line)'),
-        style: 'display:flex;align-items:center;gap:14px;width:100%;padding:15px 17px;border-radius:13px;cursor:pointer;font-family:inherit;background:var(--panel);border:1.5px solid ' + (on ? 'var(--acc)' : 'var(--line)')
+        dotStyle: 'width:18px;height:18px;border-radius:50%;flex-shrink:0;border:2px solid ' + (on ? 'var(--acc,#3d6b52);background:var(--acc,#3d6b52);box-shadow:inset 0 0 0 3px var(--panel,#fbfaf7)' : 'var(--line,#e7e2d6)'),
+        style: 'display:flex;align-items:center;gap:14px;width:100%;padding:15px 17px;border-radius:13px;cursor:pointer;font-family:inherit;background:var(--panel,#fbfaf7);border:1.5px solid ' + (on ? 'var(--acc,#3d6b52)' : 'var(--line,#e7e2d6)')
       };
     });
     const obWacText = S.obShare === 'public'
@@ -942,7 +944,7 @@ class Component extends DCLogic {
 
     let nextLabel = 'Continue', nextDisabled = false;
     if (chap === 'checkpoint') { nextLabel = S.checkChoice === 'b' ? 'Continue' : 'Continue anyway'; }
-    if (chap === 'create') { nextLabel = S.podCreated ? 'Continue' : 'Create my pod'; nextDisabled = !S.podCreated && (!acctSlug || !emailValid || !passOk); }
+    if (chap === 'create') { nextLabel = S.podCreated ? 'Continue' : 'Create my pod'; nextDisabled = !S.podCreated && (!acctSlug || (this.api && (!emailValid || !passOk))); }
     if (chap === 'folders') { nextLabel = 'Create ' + (folderPickCount || 'these') + (folderPickCount === 1 ? ' shelf' : ' shelves'); nextDisabled = folderPickCount === 0; }
     if (chap === 'file') { nextLabel = S.fileSaved ? 'Continue' : 'Save it'; }
     if (chap === 'share') { nextLabel = S.obWacOpen ? 'Continue' : 'Pick one to continue'; nextDisabled = !S.obWacOpen; }
@@ -966,10 +968,10 @@ class Component extends DCLogic {
     ];
     const activeKey = S.view === 'editor' ? 'files' : S.view;
     const navItems = navDefs.map(n => ({ ...n, go: nav(n.key),
-      style: 'display:flex;align-items:center;gap:10px;padding:11px 10px;border-radius:10px;border:none;cursor:pointer;font-family:inherit;font-size:14px;width:100%;font-weight:' + (activeKey === n.key ? '600;background:var(--accSoft);color:var(--acc)' : '500;background:none;color:var(--tx)') }));
+      style: 'display:flex;align-items:center;gap:10px;padding:11px 10px;border-radius:10px;border:none;cursor:pointer;font-family:inherit;font-size:14px;width:100%;font-weight:' + (activeKey === n.key ? '600;background:var(--accSoft,#eef3ef);color:var(--acc,#3d6b52)' : '500;background:none;color:var(--tx,#26241f)') }));
 
     const crumbs = [];
-    const cS = (last) => 'border:none;background:none;cursor:pointer;font-family:inherit;font-size:13px;padding:2px 4px;color:' + (last ? 'var(--tx);font-weight:600' : 'var(--tx2)');
+    const cS = (last) => 'border:none;background:none;cursor:pointer;font-family:inherit;font-size:13px;padding:2px 4px;color:' + (last ? 'var(--tx,#26241f);font-weight:600' : 'var(--tx2,#8a8474)');
     if (S.view === 'home') crumbs.push({ label:'Home', go:nav('home'), style:cS(true), sep:false });
     else {
       crumbs.push({ label:'Home', go:nav('home'), style:cS(false), sep:true });
@@ -992,7 +994,7 @@ class Component extends DCLogic {
         open: it.isContainer ? () => { const np = [...S.path, it.name.replace(/\/$/,'')]; this.setState({ path: np }); this.loadFolder(np); } : () => this.openFile(it.url, it.name, it.kind),
         share: (e) => { e && e.stopPropagation && e.stopPropagation(); this.setState({ shareFor: it.url, wacOpen: false, addWebId: '' }); this.refreshAccess(it.url); },
         badgeIcon: vi.icon, badgeLabel: vi.label,
-        badgeStyle: 'display:flex;align-items:center;gap:6px;font-family:inherit;font-size:12px;font-weight:600;padding:6px 12px;border-radius:99px;border:1px solid var(--line);background:var(--bg);cursor:pointer;flex-shrink:0;color:' + vi.color
+        badgeStyle: 'display:flex;align-items:center;gap:6px;font-family:inherit;font-size:12px;font-weight:600;padding:6px 12px;border-radius:99px;border:1px solid var(--line,#e7e2d6);background:var(--bg,#f6f4ef);cursor:pointer;flex-shrink:0;color:' + vi.color
       };
     });
 
@@ -1018,8 +1020,8 @@ class Component extends DCLogic {
       return { icon: vi.icon, title: v==='private'?'Only me':'Anyone with the link',
         desc: v==='private'?'Private. Invisible to everyone else.':'Read-only for anyone who has the URL.',
         pick: () => this.setVisibility(sfUrl, v),
-        style: 'display:flex;align-items:center;gap:12px;width:100%;padding:14px;border-radius:12px;cursor:pointer;font-family:inherit;margin-bottom:10px;background:none;border:1.5px solid ' + (on ? 'var(--acc)' : 'var(--line)'),
-        dotStyle: 'width:18px;height:18px;border-radius:50%;flex-shrink:0;border:2px solid ' + (on ? 'var(--acc);background:var(--acc);box-shadow:inset 0 0 0 3px var(--panel)' : 'var(--line)') };
+        style: 'display:flex;align-items:center;gap:12px;width:100%;padding:14px;border-radius:12px;cursor:pointer;font-family:inherit;margin-bottom:10px;background:none;border:1.5px solid ' + (on ? 'var(--acc,#3d6b52)' : 'var(--line,#e7e2d6)'),
+        dotStyle: 'width:18px;height:18px;border-radius:50%;flex-shrink:0;border:2px solid ' + (on ? 'var(--acc,#3d6b52);background:var(--acc,#3d6b52);box-shadow:inset 0 0 0 3px var(--panel,#fbfaf7)' : 'var(--line,#e7e2d6)') };
     });
     const shareGrants = (sfAcc ? sfAcc.agents : []).filter(g => this.api && this.api.MODES.some(m => g.modes[m])).map(g => ({
       webId: g.webId, initial: (g.name || g.webId).replace(/https?:\/\//,'')[0].toUpperCase(),
@@ -1059,7 +1061,7 @@ class Component extends DCLogic {
       phases,
       quitOnboarding: () => { if (!this.cl && this.api) this.cl = this.api.Solid.demoClient(); this.setState({ stage:'app', mode: S.mode, webId: this.cl ? this.cl.webId : null, view:'home' }); this.loadFolder([]); },
       isConcept, conceptKicker: cd?cd.kicker:'', conceptIcon: cd?cd.icon:'', conceptTitle: cd?cd.title:'', conceptLead: cd?cd.lead:'', conceptChunks: cd?cd.chunks:[],
-      conceptAside: cd?cd.aside:false, conceptAsideStyle: 'font-family:\'JetBrains Mono\',monospace;font-size:12.5px;color:var(--acc);background:var(--accSoft);border:1px solid var(--accSoftLine);border-radius:11px;padding:12px 15px;word-break:break-all',
+      conceptAside: cd?cd.aside:false, conceptAsideStyle: 'font-family:\'JetBrains Mono\',monospace;font-size:12.5px;color:var(--acc,#3d6b52);background:var(--accSoft,#eef3ef);border:1px solid var(--accSoftLine,#b8ccbf);border-radius:11px;padding:12px 15px;word-break:break-all',
       isCheckpoint, checkOptions, checkFeedback,
       isActCreate, newWebId, podCreated: S.podCreated,
       acctName: S.acctName, onAcctName: (e)=>this.setState({acctName:e.target.value}),
@@ -1071,7 +1073,7 @@ class Component extends DCLogic {
       isRecap, recapItems, enterApp: () => { this.setState({ stage:'app', webId: this.cl ? this.cl.webId : null, view:'home' }); this.loadFolder([]); },
       showObNav: stage === 'onboarding' && !isRecap,
       canBack: S.chapter > 0, obBack, obNext, nextLabel, nextDisabled,
-      nextStyle: 'font-family:inherit;font-size:14.5px;font-weight:600;padding:13px 26px;border-radius:99px;border:none;cursor:' + (nextDisabled?'not-allowed':'pointer') + ';color:#fff;background:var(--acc);opacity:' + (nextDisabled?'.45':'1'),
+      nextStyle: 'font-family:inherit;font-size:14.5px;font-weight:600;padding:13px 26px;border-radius:99px;border:none;cursor:' + (nextDisabled?'not-allowed':'pointer') + ';color:#fff;background:var(--acc,#3d6b52);opacity:' + (nextDisabled?'.45':'1'),
 
       // app shell
       showSidebar: !(S.view === 'editor'),
@@ -1102,15 +1104,15 @@ class Component extends DCLogic {
       inEditor: S.view==='editor',
       editorIcon: this.iconFor(eKind), editorName: eName,
       editorText: S.editorText, onEditorChange:(e)=>this.setState({editorText:e.target.value, dirty:true}),
-      editorPaneStyle: 'flex:1;min-width:0;resize:none;font-size:13.5px;line-height:1.7;padding:20px 22px;border-radius:14px;border:1px solid var(--line);background:var(--panel);color:var(--tx);outline:none;box-sizing:border-box;font-family:\'JetBrains Mono\',monospace',
+      editorPaneStyle: 'flex:1;min-width:0;resize:none;font-size:13.5px;line-height:1.7;padding:20px 22px;border-radius:14px;border:1px solid var(--line,#e7e2d6);background:var(--panel,#fbfaf7);color:var(--tx,#26241f);outline:none;box-sizing:border-box;font-family:\'JetBrains Mono\',monospace',
       canPreview: isMd || ['json','toml','config','code','text'].includes(eKind),
       previewShown, previewEl, showPreview: S.showPreview,
       togglePreview: () => this.setState(st=>({showPreview:!st.showPreview})), previewLabel: S.showPreview ? 'Hide preview' : (isMd?'Preview':'Highlight'),
-      formatHint, formatHintStyle: 'font-size:12.5px;padding:9px 14px;border-radius:9px;margin-bottom:12px;font-weight:500;' + (fmtOk?'background:var(--accSoft);color:var(--acc)':'background:var(--warnBg);color:var(--warn)'),
+      formatHint, formatHintStyle: 'font-size:12.5px;padding:9px 14px;border-radius:9px;margin-bottom:12px;font-weight:500;' + (fmtOk?'background:var(--accSoft,#eef3ef);color:var(--acc,#3d6b52)':'background:var(--warnBg,#faf3e6);color:var(--warn,#b5722a)'),
       saveFile: () => this.doSave(), saveLabel: S.dirty?'Save':'Saved ✓',
-      saveBtnStyle: 'font-family:inherit;font-size:13.5px;font-weight:600;padding:9px 20px;border-radius:99px;border:none;cursor:pointer;color:#fff;background:' + (S.dirty?'var(--acc)':'var(--tx3)'),
+      saveBtnStyle: 'font-family:inherit;font-size:13.5px;font-weight:600;padding:9px 20px;border-radius:99px;border:none;cursor:pointer;color:#fff;background:' + (S.dirty?'var(--acc,#3d6b52)':'var(--tx3,#b3ac9a)'),
       editorBadgeIcon: eVi.icon, editorBadgeLabel: eVi.label,
-      editorBadgeStyle: 'display:flex;align-items:center;gap:6px;font-family:inherit;font-size:12px;font-weight:600;padding:7px 13px;border-radius:99px;border:1px solid var(--line);background:var(--bg);cursor:pointer;color:'+eVi.color,
+      editorBadgeStyle: 'display:flex;align-items:center;gap:6px;font-family:inherit;font-size:12px;font-weight:600;padding:7px 13px;border-radius:99px;border:1px solid var(--line,#e7e2d6);background:var(--bg,#f6f4ef);cursor:pointer;color:'+eVi.color,
       openShareCurrent: () => { this.setState({ shareFor: eUrl, wacOpen:false, addWebId:'' }); this.refreshAccess(eUrl); },
 
       isPeople: S.view==='people', peopleList, noPeople: peopleList.length===0,
@@ -1142,9 +1144,9 @@ class Component extends DCLogic {
       while ((m = re.exec(rest))) {
         if (m.index > 0) parts.push(rest.slice(0, m.index));
         if (m[2]) parts.push(R('strong', { key: k++ }, m[2]));
-        else if (m[3]) parts.push(R('code', { key: k++, style: { fontFamily: "'JetBrains Mono',monospace", background: 'var(--codebg)', padding: '1px 5px', borderRadius: '4px', fontSize: '.9em' } }, m[3]));
+        else if (m[3]) parts.push(R('code', { key: k++, style: { fontFamily: "'JetBrains Mono',monospace", background: 'var(--codebg,#f0ede4)', padding: '1px 5px', borderRadius: '4px', fontSize: '.9em' } }, m[3]));
         else if (m[4]) parts.push(R('em', { key: k++ }, m[4]));
-        else if (m[5]) parts.push(R('a', { key: k++, href: m[6], style: { color: 'var(--acc)' } }, m[5]));
+        else if (m[5]) parts.push(R('a', { key: k++, href: m[6], style: { color: 'var(--acc,#3d6b52)' } }, m[5]));
         rest = rest.slice(m.index + m[0].length);
       }
       if (rest) parts.push(rest);
@@ -1161,12 +1163,12 @@ class Component extends DCLogic {
       else { flush(); out.push(R('p', { key: key++, style: { margin: '8px 0', lineHeight: 1.7 } }, inline(line))); }
     }
     flush();
-    return R('div', { style: { fontSize: '14.5px', color: 'var(--tx)' } }, out.length ? out : R('span', { style: { color: 'var(--tx3)' } }, 'Nothing to preview yet.'));
+    return R('div', { style: { fontSize: '14.5px', color: 'var(--tx,#26241f)' } }, out.length ? out : R('span', { style: { color: 'var(--tx3,#b3ac9a)' } }, 'Nothing to preview yet.'));
   }
 
   renderCode(src, kind) {
     const R = React.createElement;
-    const C = { key: 'var(--acc)', str: '#b5722a', num: '#7c6df0', com: 'var(--tx3)', punct: 'var(--tx2)' };
+    const C = { key: 'var(--acc,#3d6b52)', str: '#b5722a', num: '#7c6df0', com: 'var(--tx3,#b3ac9a)', punct: 'var(--tx2,#8a8474)' };
     const lineEl = (line, i) => {
       const spans = []; let k = 0;
       if (/^\s*(#|\/\/)/.test(line)) return R('div', { key: i }, R('span', { style: { color: C.com } }, line || ' '));
@@ -1184,10 +1186,10 @@ class Component extends DCLogic {
       }
       if (last < line.length) spans.push(line.slice(last));
       return R('div', { key: i, style: { display: 'flex' } },
-        R('span', { style: { width: '30px', flexShrink: 0, color: 'var(--tx3)', userSelect: 'none', textAlign: 'right', paddingRight: '12px' } }, i + 1),
+        R('span', { style: { width: '30px', flexShrink: 0, color: 'var(--tx3,#b3ac9a)', userSelect: 'none', textAlign: 'right', paddingRight: '12px' } }, i + 1),
         R('span', { style: { whiteSpace: 'pre-wrap', wordBreak: 'break-word', flex: 1 } }, spans.length ? spans : ' '));
     };
-    return R('pre', { style: { margin: 0, fontFamily: "'JetBrains Mono',monospace", fontSize: '12.5px', lineHeight: 1.7, color: 'var(--tx)' } }, src.split('\n').map(lineEl));
+    return R('pre', { style: { margin: 0, fontFamily: "'JetBrains Mono',monospace", fontSize: '12.5px', lineHeight: 1.7, color: 'var(--tx,#26241f)' } }, src.split('\n').map(lineEl));
   }
 }
 </script>

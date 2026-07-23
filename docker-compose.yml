@@ -12,6 +12,12 @@ services:
       # backoffice design system by overriding the shared stylesheet + page chrome.
       - ./infra/css/main.css:/community-server/templates/styles/main.css:ro${VOLUME_FLAGS:-}
       - ./infra/css/main.html.ejs:/community-server/templates/main.html.ejs:ro${VOLUME_FLAGS:-}
+      # Story 7.2 (AC2 copy pass): plain-language gloss on WebID/pod jargon in the two
+      # stock page bodies that carry the most jargon (pod creation, OIDC consent).
+      # Text-only changes — every id/name/class/script is byte-identical to stock, so
+      # CSS's own client-side JS (which drives these forms) keeps working (AC4).
+      - ./infra/css/templates/identity/account/create-pod.html.ejs:/community-server/templates/identity/account/create-pod.html.ejs:ro${VOLUME_FLAGS:-}
+      - ./infra/css/templates/identity/oidc/consent.html.ejs:/community-server/templates/identity/oidc/consent.html.ejs:ro${VOLUME_FLAGS:-}
     command:
       - "-p"
       - "3000"

@@ -367,7 +367,10 @@ export const Solid = {
     if (!passwordUrl || !podUrl) throw new Error("Account API did not expose the expected password/pod endpoints.");
 
     // Step 2: add the password login (skip if a prior attempt already did it —
-    // re-POSTing the same email would fail on the duplicate).
+    // re-POSTing the same email would fail on the duplicate). Once this step has
+    // run, `pending.email` is the email CSS actually has on file — a retry that
+    // passes a different `email` argument must not silently report the new,
+    // never-registered value as if it were used.
     if (!pending.passwordDone) {
       const passwordRes = await fetch(passwordUrl, {
         method: "POST",
@@ -376,6 +379,9 @@ export const Solid = {
       });
       if (!passwordRes.ok) throw new Error(`Could not set a login credential (${await _errDetail(passwordRes)}).`);
       pending.passwordDone = true;
+      pending.email = email;
+    } else {
+      email = pending.email;
     }
 
     // Step 3: create the pod. CSS removes the linked WebID on pod-create failure,

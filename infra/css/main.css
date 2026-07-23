@@ -91,11 +91,11 @@ main h2 {
   margin: 1em 0 0;
   font-size: 1.2em;
   font-weight: 600;
-  color: var(--tx2);
+  color: var(--tx2-strong);
 }
 main p {
   margin: .75em 0;
-  color: var(--tx2);
+  color: var(--tx2-strong);
 }
 main h1 + p,
 main h2 + p {
@@ -169,7 +169,7 @@ dl#client dt {
   grid-column: 1;
   margin: 0;
   font-weight: 600;
-  color: var(--tx2);
+  color: var(--tx2-strong);
 }
 dl#client dt:after { content: ": "; }
 dl#client dd {

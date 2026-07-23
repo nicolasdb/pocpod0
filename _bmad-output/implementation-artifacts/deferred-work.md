@@ -51,6 +51,13 @@
 - UnsecureWebIdExtractor security posture depends entirely on external nginx-gateway repo header-stripping [infra/css/config.json:243] — pre-existing architecture decision from Story 4.4.1, already flagged in config comments.
 - getPodUrlAll no refresh/retry if timing race leaves stale root [backoffice/pod-api.js:114-121] — speculative, no concrete repro found.
 
+## Deferred from: code review of story-7.2 (2026-07-23)
+
+- Passphrase/password field is `type="text"` (unmasked), now elevated to a mandatory secret by AC8 [backoffice/index.html] — pre-existing since Story 7.1, worth revisiting given the field is no longer optional.
+- Google Fonts `@import` on auth/consent pages (privacy leak — Google sees every login-page load; also a single point of failure) [infra/css/main.css] — mirrors existing backoffice pattern from Story 7.1, not new to this story.
+- `main div:has(> #client_logo) { display: block; }` (the consent client-logo gap fix) has no fallback for browsers without `:has()` support (Safari <15.4, Firefox <121) — degrades to the original cosmetic phantom-gap bug, not a functional break [infra/css/main.css].
+- AC6 "Pod Backoffice" clientName display claimed verified in Completion Notes, but no direct screenshot/evidence of that specific string rendering was captured — only the surrounding layout fix (grid vs float) was screenshot-verified. Low-risk; spot-check manually before pilot.
+
 ## Orphan CSS account cleanup — VPS (from code review of story-7.1, 2026-07-22)
 
 - 18 orphan CSS account records in `pocpod0_css-data:/data/.internal/accounts/` on the VPS (17 original from Story 4.4.1/7.1 E2E dev iterations + 1 from a code-review verification test, see incident note below). Pod folders/data removed from /data but account/webIdLink/pod index records remain in `.internal/`. Slugs: e2e-story71-*, e2e-final-*, story71-verify, throwaway-*, review-resume-test-17598.
