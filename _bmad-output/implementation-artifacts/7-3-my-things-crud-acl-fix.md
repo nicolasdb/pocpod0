@@ -1,6 +1,6 @@
 # Story 7.3: My Things — File Upload, CRUD & ACL Fix
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -50,6 +50,26 @@ Also confirmed: default pod ACL uses the **root `.acl` as a single inheritance a
 - [x] Task 5: A11y + regression (AC: #7, #8)
   - [x] 5.1 New controls (upload label/input, delete buttons) use `aria-label`s, are native keyboard-operable elements (label+input, button), and carry `style-focus-visible`/`style-focus-within` outline rules consistent with the existing design tokens' focus treatment.
   - [x] 5.2 No regression: this story's diff touches only `RealBackend`'s ACL/upload methods and the Files/editor/share-drawer UI in `index.html` — the onboarding chapters, `registerAccount`, and `obCreatePod` (the 7.1/7.2 E2E path) were not modified. Syntax-checked the full extracted app script (`node --check`) after edits; no changes intersect the account/password/pod-create flow.
+
+### Review Findings
+
+Code review 2026-07-23 (3-layer: Blind Hunter, Edge Case Hunter, Acceptance Auditor) against commit `2c6afea`.
+
+- [x] [Review][Decision] `_writeAcl` full-document rewrite silently drops any Turtle authorization it can't parse (`acl:agentGroup`, `acl:origin`, unrecognized `agentClass`) — resolved with Nicolas: team pods (group-based sharing) are imminent, so this is a real near-term risk, not theoretical. Fixed cheap/safe now rather than build full round-trip support blind: `getAccess` flags unparseable blocks as `unknownBlocks`; `setAgentAccess`/`setPublicAccess` refuse to write (throw) instead of silently deleting them; `rename`'s ACL carry-over skips + warns instead of losing it silently. Full group-ACL round-trip support deferred until team-pod requirements are concrete.
+
+- [x] [Review][Patch] Turtle injection via unsanitized webId in `_writeAcl` [backoffice/pod-api.js] — `acl:agent <${webId}>` spliced raw into Turtle PUT body; UI regex didn't reject `<`/`>`/`"`. Fixed: strict webId validation (`^https?://[^\s<>"]+$`) enforced both in UI (`addPerson`) and at the API boundary (`setAgentAccess`).
+- [x] [Review][Patch] Path traversal / unsanitized filenames in create, upload, rename [backoffice/index.html] — folder rename allowed literal `..` segment; upload used `file.name` raw as URL segment. Fixed: new shared `safeFileName()` helper strips `/`, `\`, `..`, `<>"'`, control chars; applied in `createThing`, `uploadFiles`, `doRename`.
+- [x] [Review][Patch] `_aclUrlFor` dead no-op ternary [backoffice/pod-api.js] — both branches returned the same value; simplified to `url + ".acl"`.
+- [x] [Review][Patch] `countDescendants()` defined but never wired into delete confirm [backoffice/pod-api.js, backoffice/index.html] — story claimed an "honest confirm ('N things inside')" that didn't exist. Fixed: `armDelete` now fetches the count for containers and the confirm button shows "+N inside".
+- [x] [Review][Patch] `getAccess` fetch failure silently reported as "no access" [backoffice/index.html] — indistinguishable from a real private state. Fixed: failed fetches are tagged `error: true` and surfaced as a distinct "Access rules unknown (fetch failed)" badge.
+- [x] [Review][Patch] `remove()` swallowed `list()` failure, then attempted `deleteContainer` on a container it never actually emptied [backoffice/pod-api.js] — hits the exact CSS 409 the function exists to avoid. Fixed: listing failure now aborts with a clear error instead of proceeding.
+- [x] [Review][Patch] Container `rename()` non-atomic, no rollback on partial child failure [backoffice/pod-api.js] — a mid-loop failure left a half-copied duplicate tree at the destination with the original still in place. Fixed: listing failure and partial-child failure now both roll back (best-effort delete) the partially-created destination before re-throwing, and the original is never touched until the whole copy succeeds.
+- [x] [Review][Patch] Editor stale `editUrl` after row-level rename [backoffice/index.html] — checked, no gap: `doRename` already resets `view` to `'files'` when the renamed item is the one open in the editor, so a stale Save-to-old-URL can't occur.
+
+- [x] [Review][Defer] TOCTOU on all "already exists" collision checks (create/rename/upload) [backoffice/index.html] — deferred, pre-existing pattern across the whole API (no ETag/If-Match, client-cache-only guard); needs an optimistic-concurrency design, not scoped to this story.
+- [x] [Review][Defer] Upload batch: weak per-file failure aggregation, no size/progress guard [backoffice/pod-api.js, backoffice/index.html] — deferred, explicitly in scope of story 7.6 (bulk/large-file hardening), already drafted.
+- [x] [Review][Defer] Delegate with inherited Control could overwrite the real pod owner's `#owner` authorization via hardcoded `this.webId` [backoffice/pod-api.js] — deferred, real risk only once multi-collaborator Control-delegation is a live flow; current app model is single-owner (Nicolas). Revisit alongside team-pod work.
+- [x] [Review][Defer] Turtle lexer mishandles backslash-escaped quotes inside string literals [backoffice/pod-api.js `_turtleStatements`] — deferred, narrow input shape (foreign-authored `.acl` with escaped quotes), not hit by this app's own writes.
 
 ## Dev Notes
 

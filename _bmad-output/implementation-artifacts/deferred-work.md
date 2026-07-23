@@ -1,5 +1,17 @@
 # Deferred Work
 
+## Deferred from: code review of story-7.4 (2026-07-23)
+
+- Hardcoded `ISSUER`/token-endpoint (`pod.nicolasdb.eu`) in `pod-api.js` — fine for single-tenant VPS today, revisit if backoffice ever targets multiple pod deployments.
+- `safeFileName` misses DEL (`\x7f`), bidi/RTL-override, and zero-width chars — pre-existing hardening gap, out of 7.4's scope, worth a pass alongside 7.6 hardening.
+- Credential name-strip regex (`id.replace(/_[0-9a-f-]{36}$/i, "")`) assumes CSS's `_<uuid>` id-suffix shape; breaks if CSS changes format or an app name coincidentally matches the pattern.
+- `DemoBackend.createClientCredential` id format (`name_demo-xxxxxxxx`) diverges from the real CSS id shape, so the demo path never exercises the real name-display stripping logic.
+- `getAccess()` sets an `error` flag only on the `loadFolder` load path; `refreshAccess`/rename's ACL-carry `getAccess` calls don't, so a transient ACL-fetch failure can show misleadingly clean "private" state in some UI spots and "unknown" in others.
+- AC1 ("name + when") — issuance timestamp isn't shown because CSS's `client-credentials/` list endpoint doesn't return one; not implementable without an upstream CSS change.
+- `countDescendants`/`confirmDelete` arm-count race under rapid arm/disarm clicks on the delete button — cosmetic, low likelihood.
+- `_refuseIfUnknownAcl` blocks all editing on any resource with a non-foaf `agentClass`/`agentGroup`/`origin` ACL block, with no in-UI path forward besides raw Turtle edit — pre-existing documented TODO, revisit once group-sharing UI lands.
+
+
 ## File-manager hardening — deferred from Story 7.3 to new Story 7.6 (2026-07-23)
 
 Story 7.3 live-testing on a real messy pod (`hyperscope_ndb`, partly populated by the third-party `focus.noeldemartin.com` todo app) surfaced robustness gaps beyond 7.3's CRUD/ACL/upload scope. Captured as **Story 7.6 (drafted, ready-for-dev)** rather than scope-creeping 7.3:
@@ -94,3 +106,10 @@ Spun up a throwaway pod on live VPS CSS (v0.5 account API) to kill stale assumpt
 While live-testing the resumable `registerAccount` fix, a curl call to `controls.account.pod` with an intentionally malformed body (`{}`, no `name` — meant to force a retry-path failure) was **not rejected by CSS**. It created a pod at the **site root** (`https://pod.nicolasdb.eu/`), overwriting the root `.acl` to grant a throwaway test WebID full `Read/Write/Control` over the entire storage root. No `css-data` backup existed. Fixed immediately: root `.acl` restored to public-read-only (best-effort reconstruction, not a byte-for-byte backup restore — no original was available). The account's password login was deleted where possible; CSS refused deletion since it was the account's only login, so the credential itself still exists but the security exposure (root access grant) is closed. The leftover pod's disk data was removed via `rm -rf` (same pattern as the story's own throwaway-pod cleanup). Other pods (`ayoub`, `claire`, etc.) were unaffected — each has its own `.acl` overriding root's default inheritance, confirmed live.
 
 **Root cause / lesson:** CSS's `controls.account.pod` treats a missing `name` as "claim the pod root" rather than rejecting the request — undocumented, surprising behavior. Our app's client-side code already guards against this (`obCreatePod` never calls `registerAccount` with an empty slug), so this is **not reachable through the real UI** — it only occurred because a manual curl test bypassed that client-side guard. Still, worth a defense-in-depth note: `registerAccount` in `pod-api.js` could reject an empty `podName` before hitting the network as an extra guard, and CSS deployments handling untrusted direct API traffic should treat this root-claim behavior as a known footgun.
+
+## Deferred from: code review of story-7.3 (2026-07-23)
+
+- TOCTOU on all "already exists" collision checks (create/rename/upload) [backoffice/index.html] — client-cache-only guard, no ETag/If-Match. Needs an optimistic-concurrency design across the whole API, not scoped to this story.
+- Upload batch: weak per-file failure aggregation, no size/progress guard for large files [backoffice/pod-api.js, backoffice/index.html] — explicitly in scope of story 7.6 (bulk/large-file hardening), already drafted.
+- Delegate with inherited Control could overwrite the real pod owner's `#owner` authorization via hardcoded `this.webId` in `_writeAcl` [backoffice/pod-api.js] — real risk only once multi-collaborator Control-delegation is a live flow; current app model is single-owner (Nicolas). Revisit alongside team-pod work.
+- Turtle lexer (`_turtleStatements`) mishandles backslash-escaped quotes inside string literals [backoffice/pod-api.js] — narrow input shape (foreign-authored `.acl` with escaped quotes), not hit by this app's own writes.

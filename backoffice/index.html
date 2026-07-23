@@ -383,7 +383,7 @@
                   <button onClick="{{ it.share }}" style="{{ it.badgeStyle }}" style-hover="filter:brightness(.96)">{{ it.badgeIcon }} {{ it.badgeLabel }}</button>
                   <button onClick="{{ it.rename }}" aria-label="{{ it.renameLabel }}" style="border:none;background:none;color:var(--tx3,#b3ac9a);cursor:pointer;font-size:14px;padding:6px" style-hover="color:var(--acc,#3d6b52)" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">✏️</button>
                   <sc-if value="{{ it.armed }}" hint-placeholder-val="{{ false }}">
-                    <button onClick="{{ it.del }}" aria-label="{{ it.confirmLabel }}" style="border:1px solid #a33;background:#a33;color:#fff;cursor:pointer;font-size:12px;font-weight:600;padding:6px 12px;border-radius:8px;flex-shrink:0" style-hover="filter:brightness(1.08)" style-focus-visible="outline:2px solid #a33;outline-offset:2px">Confirm delete</button>
+                    <button onClick="{{ it.del }}" aria-label="{{ it.confirmLabel }}" style="border:1px solid #a33;background:#a33;color:#fff;cursor:pointer;font-size:12px;font-weight:600;padding:6px 12px;border-radius:8px;flex-shrink:0" style-hover="filter:brightness(1.08)" style-focus-visible="outline:2px solid #a33;outline-offset:2px">Confirm delete{{ it.confirmCountSuffix }}</button>
                   </sc-if>
                   <sc-if value="{{ it.notArmed }}" hint-placeholder-val="{{ true }}">
                     <button onClick="{{ it.arm }}" aria-label="{{ it.delLabel }}" style="border:none;background:none;color:var(--tx3,#b3ac9a);cursor:pointer;font-size:15px;padding:6px" style-hover="color:#a33" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">🗑</button>
@@ -428,7 +428,9 @@
       <sc-if value="{{ isPeople }}" hint-placeholder-val="{{ false }}">
       <div style="padding:28px 40px;max-width:780px">
         <h1 style="font-size:20px;font-weight:600;margin:0 0 4px">People &amp; apps</h1>
-        <p style="margin:0 0 24px;color:var(--tx2,#8a8474);font-size:14px">Everyone who can currently see any part of your space. Take any of it back whenever you like.</p>
+        <p style="margin:0 0 24px;color:var(--tx2,#8a8474);font-size:14px">Two different things: who can <em>look into</em> your space, and which apps you've handed a key to <em>act</em> for you. Both are yours to take back anytime.</p>
+
+        <div style="font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--tx2,#8a8474);margin:0 0 12px;display:flex;align-items:center;gap:8px"><span>👁</span> People &amp; apps who can see your space</div>
         <sc-for list="{{ peopleList }}" as="p" hint-placeholder-count="2">
           <div style="border:1px solid var(--line,#e7e2d6);border-radius:14px;background:var(--panel,#fbfaf7);margin-bottom:12px;overflow:hidden">
             <button onClick="{{ p.toggle }}" style="display:flex;align-items:center;gap:14px;width:100%;padding:16px 18px;border:none;background:none;cursor:pointer;font-family:inherit;text-align:left" style-hover="background:var(--hov,#efece3)">
@@ -450,9 +452,116 @@
           </div>
         </sc-for>
         <sc-if value="{{ noPeople }}" hint-placeholder-val="{{ false }}">
-          <div style="text-align:center;padding:48px 0;color:var(--tx3,#b3ac9a)"><div style="font-size:30px;margin-bottom:10px">🔒</div><div style="font-size:14px">Nobody can see anything of yours. Fully private.</div></div>
+          <div style="text-align:center;padding:32px 0;color:var(--tx3,#b3ac9a)"><div style="font-size:30px;margin-bottom:10px">🔒</div><div style="font-size:14px">Nobody can see anything of yours. Fully private.</div></div>
         </sc-if>
+
+        <!-- OUTBOUND: apps & credentials -->
+        <div style="margin-top:36px;padding-top:28px;border-top:1px solid var(--line,#e7e2d6)">
+          <div style="font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--tx2,#8a8474);margin:0 0 6px;display:flex;align-items:center;gap:8px"><span>🔑</span> Apps &amp; credentials you've issued</div>
+          <p style="margin:0 0 16px;color:var(--tx2,#8a8474);font-size:13.5px">A credential is a key you give to a program — a Discord bot, a bridge, a script — so it can read or write in your pod without you present.</p>
+
+          <!-- honest WAC limitation note -->
+          <div style="font-size:12.5px;color:var(--tx2,#8a8474);background:var(--warnBg,#faf3e6);border:1px solid var(--warnLine,#e3c9a3);border-radius:11px;padding:12px 14px;margin-bottom:18px;line-height:1.55">⚠︎ <strong>A credential acts as you.</strong> It carries your identity and can do whatever <em>you</em> can do in your pod — today it can't be limited to just one app's data. Your real safety controls are: share as little as possible with each thing (least-privilege), name credentials clearly, and <strong>revoke</strong> the moment you're done. Revoking is instant.</div>
+
+          <!-- unlock gate (real mode needs an account sign-in for this API) -->
+          <sc-if value="{{ credsUnlocked }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+              <button onClick="{{ startMint }}" style="font-family:inherit;font-size:13.5px;font-weight:600;padding:10px 20px;border-radius:99px;border:none;background:var(--acc,#3d6b52);color:#fff;cursor:pointer" style-hover="filter:brightness(1.08)" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">+ Connect an app</button>
+              <span style="flex:1"></span>
+              <button onClick="{{ lockCreds }}" style="font-family:inherit;font-size:12.5px;padding:8px 14px;border-radius:99px;border:1px solid var(--line,#e7e2d6);background:none;color:var(--tx2,#8a8474);cursor:pointer" style-hover="border-color:var(--acc,#3d6b52)" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">Lock</button>
+            </div>
+
+            <sc-if value="{{ credsLoading }}" hint-placeholder-val="{{ false }}">
+              <div style="text-align:center;padding:24px 0;color:var(--tx3,#b3ac9a);font-size:13px">Loading credentials…</div>
+            </sc-if>
+
+            <sc-for list="{{ credItems }}" as="c" hint-placeholder-count="1">
+              <div style="display:flex;align-items:center;gap:12px;border:1px solid var(--line,#e7e2d6);border-radius:12px;background:var(--panel,#fbfaf7);padding:14px 16px;margin-bottom:10px">
+                <span style="font-size:18px">🤖</span>
+                <span style="flex:1;min-width:0"><span style="display:block;font-size:14px;font-weight:600">{{ c.name }}</span><span style="display:block;font-size:11.5px;color:var(--tx3,#b3ac9a);font-family:'JetBrains Mono',monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.id }}</span></span>
+                <sc-if value="{{ c.notArmed }}" hint-placeholder-val="{{ true }}">
+                  <button onClick="{{ c.arm }}" aria-label="{{ c.revokeLabel }}" style="font-family:inherit;font-size:12px;font-weight:600;padding:7px 14px;border-radius:8px;border:1px solid var(--line,#e7e2d6);background:none;color:var(--tx2,#8a8474);cursor:pointer" style-hover="border-color:#a33;color:#a33" style-focus-visible="outline:2px solid #a33;outline-offset:1px">Revoke</button>
+                </sc-if>
+                <sc-if value="{{ c.armed }}" hint-placeholder-val="{{ false }}">
+                  <button onClick="{{ c.confirmRevoke }}" aria-label="{{ c.confirmLabel }}" style="font-family:inherit;font-size:12px;font-weight:600;padding:7px 14px;border-radius:8px;border:1px solid #a33;background:#a33;color:#fff;cursor:pointer" style-focus-visible="outline:2px solid var(--tx,#26241f);outline-offset:1px">Confirm revoke</button>
+                </sc-if>
+              </div>
+            </sc-for>
+
+            <sc-if value="{{ noCreds }}" hint-placeholder-val="{{ false }}">
+              <div style="text-align:center;padding:28px 0;color:var(--tx3,#b3ac9a)"><div style="font-size:26px;margin-bottom:8px">🔌</div><div style="font-size:13.5px">No apps connected yet. "Connect an app" mints a key you can hand to a bot or script.</div></div>
+            </sc-if>
+          </sc-if>
+
+          <sc-if value="{{ credsLocked }}" hint-placeholder-val="{{ false }}">
+            <div style="border:1px solid var(--line,#e7e2d6);border-radius:14px;background:var(--panel,#fbfaf7);padding:20px 22px">
+              <p style="margin:0 0 14px;font-size:13.5px;color:var(--tx2,#8a8474)">Managing app keys uses a separate sign-in (your pod email + password) — the browser login that got you here doesn't unlock it. Enter them once to see and manage your credentials.</p>
+              <label style="display:block;font-size:12px;font-weight:600;margin-bottom:5px">Email</label>
+              <input value="{{ credEmail }}" onChange="{{ onCredEmail }}" type="email" autocomplete="username" placeholder="you@example.org" style="width:100%;box-sizing:border-box;font-family:inherit;font-size:13.5px;padding:10px 12px;border-radius:9px;border:1px solid var(--line,#e7e2d6);background:var(--bg,#f6f4ef);color:var(--tx,#26241f);outline:none;margin-bottom:12px" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">
+              <label style="display:block;font-size:12px;font-weight:600;margin-bottom:5px">Password</label>
+              <input value="{{ credPassword }}" onChange="{{ onCredPassword }}" type="password" autocomplete="current-password" placeholder="your pod password" style="width:100%;box-sizing:border-box;font-family:inherit;font-size:13.5px;padding:10px 12px;border-radius:9px;border:1px solid var(--line,#e7e2d6);background:var(--bg,#f6f4ef);color:var(--tx,#26241f);outline:none;margin-bottom:14px" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">
+              <button onClick="{{ unlockCreds }}" style="font-family:inherit;font-size:13.5px;font-weight:600;padding:10px 22px;border-radius:99px;border:none;background:var(--acc,#3d6b52);color:#fff;cursor:pointer" style-hover="filter:brightness(1.08)" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">Unlock app management</button>
+            </div>
+          </sc-if>
+        </div>
       </div>
+      </sc-if>
+
+      <!-- ONE-TIME SECRET REVEAL (Story 7.4) -->
+      <sc-if value="{{ mintedOpen }}" hint-placeholder-val="{{ false }}">
+        <div onClick="{{ closeMinted }}" style="position:fixed;inset:0;background:rgba(20,18,12,.44);z-index:50"></div>
+        <div role="dialog" aria-modal="true" aria-label="New credential" onKeyDown="{{ escCloseMinted }}" tabindex="-1" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:min(560px,94vw);max-height:88vh;overflow-y:auto;background:var(--panel,#fbfaf7);border-radius:18px;z-index:51;box-shadow:0 20px 60px rgba(0,0,0,.28);padding:26px 28px 30px;box-sizing:border-box">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+            <span style="font-size:22px">🔑</span>
+            <h2 style="font-size:17px;font-weight:600;margin:0;flex:1">"{{ mintedName }}" is ready</h2>
+            <button onClick="{{ closeMinted }}" aria-label="Close" style="border:none;background:none;font-size:18px;color:var(--tx2,#8a8474);cursor:pointer;padding:4px" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">✕</button>
+          </div>
+          <div style="font-size:13px;color:var(--warn,#b5722a);background:var(--warnBg,#faf3e6);border:1px solid var(--warnLine,#e3c9a3);border-radius:11px;padding:12px 14px;margin:6px 0 18px;line-height:1.5"><strong>Copy the secret now — you will never see it again.</strong> It isn't stored anywhere in this app. If you lose it, revoke this credential and make a new one.</div>
+
+          <div style="font-size:12px;font-weight:600;color:var(--tx2,#8a8474);margin-bottom:5px">Client ID</div>
+          <div style="display:flex;gap:8px;margin-bottom:16px">
+            <code style="flex:1;min-width:0;font-family:'JetBrains Mono',monospace;font-size:12px;padding:10px 12px;border-radius:9px;border:1px solid var(--line,#e7e2d6);background:var(--codebg,#f0ede4);overflow-x:auto;white-space:nowrap">{{ mintedId }}</code>
+            <button onClick="{{ copyId }}" style="font-family:inherit;font-size:12.5px;font-weight:600;padding:0 14px;border-radius:9px;border:1px solid var(--line,#e7e2d6);background:none;color:var(--tx,#26241f);cursor:pointer" style-hover="border-color:var(--acc,#3d6b52)" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">Copy</button>
+          </div>
+
+          <div style="font-size:12px;font-weight:600;color:var(--tx2,#8a8474);margin-bottom:5px">Secret</div>
+          <sc-if value="{{ secretRevealed }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;gap:8px;margin-bottom:18px">
+              <code style="flex:1;min-width:0;font-family:'JetBrains Mono',monospace;font-size:12px;padding:10px 12px;border-radius:9px;border:1px solid var(--acc,#3d6b52);background:var(--codebg,#f0ede4);overflow-x:auto;white-space:nowrap">{{ mintedSecret }}</code>
+              <button onClick="{{ copySecret }}" style="font-family:inherit;font-size:12.5px;font-weight:600;padding:0 14px;border-radius:9px;border:1px solid var(--acc,#3d6b52);background:var(--acc,#3d6b52);color:#fff;cursor:pointer" style-focus-visible="outline:2px solid var(--tx,#26241f);outline-offset:1px">Copy</button>
+            </div>
+          </sc-if>
+          <sc-if value="{{ secretHidden }}" hint-placeholder-val="{{ true }}">
+            <button onClick="{{ revealSecret }}" style="width:100%;font-family:inherit;font-size:13px;font-weight:600;padding:11px;border-radius:9px;border:1px dashed var(--acc,#3d6b52);background:none;color:var(--acc,#3d6b52);cursor:pointer;margin-bottom:18px" style-hover="background:var(--accSoft,#eef3ef)" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">👁 Reveal secret (shown once)</button>
+          </sc-if>
+
+          <div style="font-size:12px;font-weight:600;color:var(--tx2,#8a8474);margin-bottom:5px;display:flex;align-items:center;gap:8px">How to connect <span style="flex:1"></span><button onClick="{{ copyRecipe }}" style="font-family:inherit;font-size:11.5px;font-weight:600;padding:5px 11px;border-radius:8px;border:1px solid var(--line,#e7e2d6);background:none;color:var(--tx,#26241f);cursor:pointer" style-hover="border-color:var(--acc,#3d6b52)" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">Copy details</button></div>
+          <pre style="margin:0;font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.55;color:var(--tx,#26241f);background:var(--codebg,#f0ede4);border:1px solid var(--line,#e7e2d6);border-radius:11px;padding:14px 15px;overflow-x:auto;white-space:pre-wrap">{{ recipeText }}</pre>
+          <p style="font-size:11.5px;color:var(--tx3,#b3ac9a);margin:10px 0 0">The secret above is not included in these details — paste it into your bot's config separately.</p>
+
+          <button onClick="{{ closeMinted }}" style="margin-top:20px;width:100%;font-family:inherit;font-size:13.5px;font-weight:600;padding:11px;border-radius:99px;border:1px solid var(--line,#e7e2d6);background:none;color:var(--tx,#26241f);cursor:pointer" style-hover="border-color:var(--acc,#3d6b52)" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">I've stored the secret — done</button>
+        </div>
+      </sc-if>
+
+      <!-- MINT DIALOG (Story 7.4) -->
+      <sc-if value="{{ mintOpen }}" hint-placeholder-val="{{ false }}">
+        <div onClick="{{ cancelMint }}" style="position:fixed;inset:0;background:rgba(20,18,12,.44);z-index:50"></div>
+        <div role="dialog" aria-modal="true" aria-label="Connect an app" onKeyDown="{{ escCancelMint }}" tabindex="-1" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:min(480px,94vw);background:var(--panel,#fbfaf7);border-radius:18px;z-index:51;box-shadow:0 20px 60px rgba(0,0,0,.28);padding:26px 28px 28px;box-sizing:border-box">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+            <span style="font-size:20px">🔌</span>
+            <h2 style="font-size:16px;font-weight:600;margin:0;flex:1">Connect an app</h2>
+            <button onClick="{{ cancelMint }}" aria-label="Close" style="border:none;background:none;font-size:18px;color:var(--tx2,#8a8474);cursor:pointer;padding:4px" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">✕</button>
+          </div>
+          <label style="display:block;font-size:12px;font-weight:600;margin-bottom:5px">Name <span style="font-weight:400;color:var(--tx3,#b3ac9a)">— so you recognise it later</span></label>
+          <input value="{{ mintName }}" onChange="{{ onMintName }}" placeholder="e.g. discord-bridge" style="width:100%;box-sizing:border-box;font-family:inherit;font-size:13.5px;padding:10px 12px;border-radius:9px;border:1px solid var(--line,#e7e2d6);background:var(--bg,#f6f4ef);color:var(--tx,#26241f);outline:none;margin-bottom:14px" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">
+          <label style="display:block;font-size:12px;font-weight:600;margin-bottom:5px">Acts as <span style="font-weight:400;color:var(--tx3,#b3ac9a)">— defaults to you</span></label>
+          <input value="{{ mintWebId }}" onChange="{{ onMintWebId }}" placeholder="{{ mintWebIdPlaceholder }}" style="width:100%;box-sizing:border-box;font-family:'JetBrains Mono',monospace;font-size:12px;padding:10px 12px;border-radius:9px;border:1px solid var(--line,#e7e2d6);background:var(--bg,#f6f4ef);color:var(--tx,#26241f);outline:none;margin-bottom:8px" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">
+          <p style="font-size:11.5px;color:var(--tx3,#b3ac9a);margin:0 0 18px">Leave blank to let it act as you. The secret is shown once, on the next screen.</p>
+          <div style="display:flex;gap:10px">
+            <button onClick="{{ confirmMint }}" style="flex:1;font-family:inherit;font-size:13.5px;font-weight:600;padding:11px;border-radius:99px;border:none;background:var(--acc,#3d6b52);color:#fff;cursor:pointer" style-hover="filter:brightness(1.08)" style-focus-visible="outline:2px solid var(--tx,#26241f);outline-offset:1px">Create credential</button>
+            <button onClick="{{ cancelMint }}" style="font-family:inherit;font-size:13.5px;padding:11px 18px;border-radius:99px;border:1px solid var(--line,#e7e2d6);background:none;color:var(--tx,#26241f);cursor:pointer" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">Cancel</button>
+          </div>
+        </div>
       </sc-if>
 
       <!-- REQUESTS -->
@@ -581,6 +690,13 @@ class Component extends DCLogic {
       renameUrl: null, renameVal: '',
       shareFor: null, wacOpen: false, wacText: '', addWebId: '',
       openPerson: null,
+      // apps & credentials (Story 7.4)
+      credsUnlocked: false, credsList: [], credsLoading: false,
+      credEmail: '', credPassword: '',
+      mintOpen: false, mintName: '', mintWebId: '',
+      mintedSecret: null,      // transient {id,secret,resource,name,webId} — DOM only, never persisted
+      secretRevealed: false,   // gate the actual secret chars behind an explicit reveal
+      credConfirmRevoke: null, // resource url armed for revoke confirmation
       requests: [
         { id: 'r1', who: 'Ms. Delcroix', kind: 'person', whoSub: 'A teacher · pod.nicolasdb.eu/teacher-0206', webId: 'https://pod.nicolasdb.eu/teacher-0206/profile/card#me', target: 'first', what: 'to read your first note', why: '"Curious what you wrote for the intro exercise."', ifNo: 'Nothing changes. She can ask you in person.', when: '2h ago', done: false },
         { id: 'r2', who: 'FlashLearn', kind: 'app', whoSub: 'A study app you tried', webId: 'https://webid.studyapp.example/agent#id', target: 'first', what: 'read-only access to one note', why: 'To turn your notes into practice cards.', ifNo: 'The app keeps working, just without your notes.', when: 'yesterday', done: false }
@@ -593,7 +709,7 @@ class Component extends DCLogic {
   async componentDidMount() {
     this.setVars();
     try {
-      this.api = await import('./pod-api.js?v=7-3-7');
+      this.api = await import('./pod-api.js?v=7-4-1');
     } catch (e) {
       this.api = null;
     }
@@ -673,7 +789,7 @@ class Component extends DCLogic {
       // items was making N sequential round trips (visibly slow on real pods).
       const toFetch = items.filter(it => !aclCache[it.url]);
       const fetched = await Promise.all(toFetch.map(it =>
-        this.cl.getAccess(it.url).catch(() => ({ agents: [], public: this.api.emptyModes() }))
+        this.cl.getAccess(it.url).catch(() => ({ agents: [], public: this.api.emptyModes(), error: true }))
       ));
       toFetch.forEach((it, i) => { aclCache[it.url] = fetched[i]; });
       this.setState({ items, aclCache, filesLoading: false });
@@ -704,6 +820,14 @@ class Component extends DCLogic {
     return 'text/plain';
   }
   extKind(name, isC) { return this.api ? this.api.kindOf(name, isC) : (isC ? 'folder' : 'text'); }
+  // A file name becomes both a URL path segment and (once shared) a Turtle
+  // `acl:accessTo <./name>` target — strip anything that could traverse out of the
+  // current folder (`/`, `..`) or break URI/Turtle syntax (`<>"` etc).
+  safeFileName(name) {
+    let n = (name || '').normalize('NFC').replace(/[\/\\<>"'`\x00-\x1f]+/g, '-').replace(/\.{2,}/g, '-');
+    n = n.replace(/^-+/, '') || 'file';
+    return n;
+  }
   iconFor(kind) { return { folder:'📁', json:'🧩', md:'📝', config:'⚙️', code:'💻', text:'📄', file:'📄' }[kind] || '📄'; }
 
   async createThing() {
@@ -718,6 +842,7 @@ class Component extends DCLogic {
       try { await this.cl.makeFolder(this.urlFor(this.state.path) + name + '/'); this.setState({ newThingOpen: false, newThingName: '' }); this.loadFolder(this.state.path); this.toast('Folder created — private.'); }
       catch (e) { this.toast('Could not create folder: ' + e.message); }
     } else {
+      name = this.safeFileName(name);
       if (!/\.\w+$/.test(name)) name += '.md';
       // A same-named new file would overwrite the existing one and destroy its content —
       // refuse outright (this is "New file", not "replace"; use the editor to edit it).
@@ -736,15 +861,17 @@ class Component extends DCLogic {
     // destructive action and confirm it, matching the delete-confirmation bar.
     const existing = new Set((this.state.items || []).map(it => it.name));
     for (const file of files) {
-      if (existing.has(file.name) && !confirm(`"${file.name}" already exists here. Replace it?`)) continue;
-      this.setState({ uploadStatus: `Uploading ${file.name}…` });
+      const name = this.safeFileName(file.name);
+      if (existing.has(name) && !confirm(`"${name}" already exists here. Replace it?`)) continue;
+      existing.add(name);
+      this.setState({ uploadStatus: `Uploading ${name}…` });
       try {
-        const url = this.urlFor(this.state.path) + file.name;
+        const url = this.urlFor(this.state.path) + name;
         await this.cl.uploadFile(url, file);
-        this.setState({ uploadStatus: `✓ ${file.name} uploaded.` });
+        this.setState({ uploadStatus: `✓ ${name} uploaded.` });
       } catch (e) {
         // One file failing must not silently drop the rest — keep going and report per-file.
-        this.toast(`Could not upload ${file.name}: ${e.message}`);
+        this.toast(`Could not upload ${name}: ${e.message}`);
       }
     }
     this.setState({ uploadStatus: false });
@@ -753,10 +880,15 @@ class Component extends DCLogic {
 
   // Two-tap delete: first tap arms (reveals a "Confirm" button), second tap within
   // the window deletes. Auto-disarms after a timeout so nothing stays primed.
-  armDelete(url) {
+  armDelete(url, isContainer) {
     clearTimeout(this._delTimer);
-    this.setState({ confirmDelete: url });
-    this._delTimer = setTimeout(() => this.setState({ confirmDelete: null }), 4000);
+    this.setState({ confirmDelete: url, confirmDeleteCount: null });
+    this._delTimer = setTimeout(() => this.setState({ confirmDelete: null, confirmDeleteCount: null }), 4000);
+    if (isContainer) {
+      this.cl.countDescendants(url).then(n => {
+        if (this.state.confirmDelete === url) this.setState({ confirmDeleteCount: n });
+      }).catch(() => {});
+    }
   }
   async deleteThing(url, name, isContainer) {
     clearTimeout(this._delTimer);
@@ -776,7 +908,7 @@ class Component extends DCLogic {
     const oldUrl = this.state.renameUrl;
     const isContainer = oldUrl.endsWith('/');
     let name = (this.state.renameVal || '').trim();
-    if (isContainer) name = name.replace(/[^\w\-]+/g, '-'); else name = name.replace(/\//g, '-');
+    if (isContainer) name = name.replace(/[^\w\-]+/g, '-'); else name = this.safeFileName(name);
     if (!name) { this.toast('Give it a name.'); return; }
     const parent = oldUrl.replace(/\/$/, '').replace(/[^/]+$/, '');
     const newUrl = parent + name + (isContainer ? '/' : '');
@@ -785,8 +917,8 @@ class Component extends DCLogic {
     const collides = (this.state.items || []).some(it => it.url === newUrl);
     if (collides && !confirm(`"${name}" already exists here. Replace it?`)) return;
     try {
-      await this.cl.rename(oldUrl, newUrl);
-      this.toast(`Renamed to ${name}.`);
+      const result = await this.cl.rename(oldUrl, newUrl);
+      this.toast((result && result.warning) ? result.warning : `Renamed to ${name}.`);
       this.setState(s => { const c = { ...s.aclCache }; delete c[oldUrl]; return { renameUrl: null, aclCache: c, view: (s.view === 'editor' && s.editUrl === oldUrl) ? 'files' : s.view }; });
       this.loadFolder(this.state.path);
     } catch (e) { this.toast('Could not rename: ' + e.message); }
@@ -799,6 +931,7 @@ class Component extends DCLogic {
 
   visFromAccess(a) {
     if (!a) return 'private';
+    if (a.error) return 'error';
     if (a.public && (a.public.read || a.public.write)) return 'public';
     if (a.agents && a.agents.some(g => this.api.MODES.some(m => g.modes[m]))) return 'shared';
     if (a.inherited) return 'inherited';
@@ -808,6 +941,7 @@ class Component extends DCLogic {
     return v === 'public' ? { icon:'🌍', label:'Public', color:'var(--warn,#b5722a)' }
       : v === 'shared' ? { icon:'👥', label:'Shared', color:'var(--acc,#3d6b52)' }
       : v === 'inherited' ? { icon:'↳', label:'Inherits from parent', color:'var(--tx2,#8a8474)' }
+      : v === 'error' ? { icon:'⚠️', label:'Access rules unknown (fetch failed)', color:'var(--warn,#b5722a)' }
       : { icon:'🔒', label:'Only you', color:'var(--tx2,#8a8474)' };
   }
   modeSummary(m) { return this.api.MODES.filter(x => m[x]).map(x => ({read:'read',append:'append',write:'edit',control:'control'})[x]).join(' · ') || 'no access'; }
@@ -828,7 +962,7 @@ class Component extends DCLogic {
   }
 
   async addPerson(url, webId, canWrite) {
-    if (!webId || !/^https?:\/\//.test(webId)) { this.toast('Paste a full WebID URL (https://…#me).'); return; }
+    if (!webId || !/^https?:\/\/[^\s<>"]+$/.test(webId)) { this.toast('Paste a full WebID URL (https://…#me).'); return; }
     try { await this.cl.setAgentAccess(url, webId, { read: true, append: canWrite, write: canWrite, control: false }); await this.refreshAccess(url); this.maybeLoadWac(url); this.setState({ addWebId: '' }); this.toast(canWrite ? 'They can now read and edit this.' : 'They can now read this.'); }
     catch (e) { this.toast('Could not grant access: ' + e.message); }
   }
@@ -837,6 +971,80 @@ class Component extends DCLogic {
     catch (e) { this.toast('Could not revoke: ' + e.message); }
   }
   async maybeLoadWac(url) { if (this.state.wacOpen && this.cl) { try { const t = await this.cl.turtleAcl(url); this.setState({ wacText: t }); } catch (e) {} } }
+
+  // ---------- apps & credentials (Story 7.4) ----------
+  // If the account API is already unlocked (demo, or a prior sign-in this session),
+  // load the list; otherwise the People screen shows the unlock prompt.
+  maybeInitCreds() {
+    if (!this.cl || !this.cl.hasAccountSession) return;
+    if (this.cl.hasAccountSession()) {
+      if (!this.state.credsUnlocked) this.setState({ credsUnlocked: true });
+      this.loadCreds();
+    }
+  }
+  async unlockCreds() {
+    if (this._unlocking) return; // guard against double-click firing two concurrent logins
+    const email = (this.state.credEmail || '').trim();
+    const password = this.state.credPassword || '';
+    if (!email || !password) { this.toast('Enter the email and password you use for this pod.'); return; }
+    this._unlocking = true;
+    try {
+      await this.cl.accountLogin(email, password);
+      // Clear the password from state the instant it's no longer needed — never keep it around.
+      this.setState({ credsUnlocked: true, credPassword: '' });
+      this.loadCreds();
+    } catch (e) { this.setState({ credPassword: '' }); this.toast('Could not unlock app management: ' + e.message); }
+    finally { this._unlocking = false; }
+  }
+  lockCreds() {
+    if (this.cl && this.cl.accountLogout) this.cl.accountLogout();
+    this.setState({ credsUnlocked: false, credsList: [], credEmail: '', credPassword: '', mintOpen: false, mintedSecret: null, secretRevealed: false, credConfirmRevoke: null });
+  }
+  async loadCreds() {
+    if (!this.cl || !this.cl.listClientCredentials) return;
+    this.setState({ credsLoading: true });
+    try {
+      const list = await this.cl.listClientCredentials();
+      this.setState({ credsList: list, credsLoading: false });
+    } catch (e) {
+      this.setState({ credsLoading: false });
+      if (e.message === 'SESSION_EXPIRED') { this.setState({ credsUnlocked: false, credsList: [] }); this.toast('Your app-management session expired — unlock again to continue.'); }
+      else this.toast('Could not load credentials: ' + e.message);
+    }
+  }
+  async doMint() {
+    if (this._minting) return; // guard against double-click minting two credentials
+    const name = (this.state.mintName || '').trim();
+    if (!name) { this.toast('Give the app a name so you can recognise it later.'); return; }
+    const webId = (this.state.mintWebId || '').trim() || this.state.webId || (this.cl && this.cl.webId);
+    this._minting = true;
+    try {
+      const r = await this.cl.createClientCredential(name, webId);
+      // Secret lives ONLY here, in transient state, for one-time display. Never localStorage,
+      // never logged, cleared the moment the reveal is closed.
+      this.setState({ mintedSecret: { ...r, name, webId }, secretRevealed: false, mintOpen: false, mintName: '', mintWebId: '' });
+      this.loadCreds();
+    } catch (e) {
+      if (e.message === 'SESSION_EXPIRED') { this.setState({ credsUnlocked: false }); this.toast('Session expired — unlock again to create a credential.'); }
+      else this.toast('Could not create credential: ' + e.message);
+    } finally { this._minting = false; }
+  }
+  closeMintedSecret() { this.setState({ mintedSecret: null, secretRevealed: false }); }
+  async doRevokeCred(resource, name) {
+    try {
+      await this.cl.revokeClientCredential(resource);
+      this.setState({ credConfirmRevoke: null });
+      this.toast(`Revoked "${name}" — it can no longer act on your pod.`);
+      this.loadCreds();
+    } catch (e) {
+      if (e.message === 'SESSION_EXPIRED') { this.setState({ credsUnlocked: false, credConfirmRevoke: null }); this.toast('Session expired — unlock again to revoke.'); }
+      else this.toast('Could not revoke: ' + e.message);
+    }
+  }
+  async copyText(text, label) {
+    try { await navigator.clipboard.writeText(text); this.toast((label || 'Copied') + ' — paste it somewhere safe now.'); }
+    catch (e) { this.toast('Copy failed — select the text and copy it manually.'); }
+  }
 
   // ---------- onboarding provisioning ----------
   async obCreatePod() {
@@ -1060,7 +1268,14 @@ class Component extends DCLogic {
     const obBack = () => this.setState(st => ({ chapter: Math.max(st.chapter - 1, 0) }));
 
     // ============ APP shell ============
-    const nav = (view) => () => { this.setState({ view, editing: null, path: view === 'files' ? [] : S.path }); if (view === 'files') this.loadFolder([]); };
+    const nav = (view) => () => {
+      // Leaving People & apps: clear any one-time secret still on screen/in state —
+      // it must not linger visible (or in memory) once the user has navigated away.
+      const leavingPeopleWithSecret = S.view === 'people' && view !== 'people' && S.mintedSecret;
+      this.setState({ view, editing: null, path: view === 'files' ? [] : S.path, ...(leavingPeopleWithSecret ? { mintedSecret: null, secretRevealed: false, mintOpen: false } : {}) });
+      if (view === 'files') this.loadFolder([]);
+      if (view === 'people') this.maybeInitCreds();
+    };
     const pendingReqs = S.requests.filter(r => !r.done);
     const navDefs = [
       { key:'home', icon:'⌂', label:'Home' },
@@ -1095,10 +1310,12 @@ class Component extends DCLogic {
         meta: it.isContainer ? 'folder' : it.kind,
         open: it.isContainer ? () => { const np = [...S.path, it.name.replace(/\/$/,'')]; this.setState({ path: np }); this.loadFolder(np); } : () => this.openFile(it.url, it.name, it.kind),
         share: (e) => { e && e.stopPropagation && e.stopPropagation(); this.setState({ shareFor: it.url, wacOpen: false, addWebId: '' }); this.refreshAccess(it.url); },
-        arm: (e) => { e && e.stopPropagation && e.stopPropagation(); this.armDelete(it.url); },
+        arm: (e) => { e && e.stopPropagation && e.stopPropagation(); this.armDelete(it.url, it.isContainer); },
         del: (e) => { e && e.stopPropagation && e.stopPropagation(); this.deleteThing(it.url, it.name, it.isContainer); },
         armed: S.confirmDelete === it.url, notArmed: S.confirmDelete !== it.url,
-        delLabel: 'Delete ' + it.name, confirmLabel: 'Confirm delete ' + it.name,
+        delLabel: 'Delete ' + it.name,
+        confirmCountSuffix: (it.isContainer && S.confirmDelete === it.url && Number.isInteger(S.confirmDeleteCount) && S.confirmDeleteCount > 0) ? ` (+${S.confirmDeleteCount} inside)` : '',
+        confirmLabel: 'Confirm delete ' + it.name + (it.isContainer && S.confirmDelete === it.url && Number.isInteger(S.confirmDeleteCount) && S.confirmDeleteCount > 0 ? ` (also deletes ${S.confirmDeleteCount} thing${S.confirmDeleteCount === 1 ? '' : 's'} inside)` : ''),
         rename: (e) => { e && e.stopPropagation && e.stopPropagation(); this.startRename(it.url, it.name, it.isContainer); },
         renameSave: (e) => { e && e.stopPropagation && e.stopPropagation(); this.doRename(); },
         renameCancel: (e) => { e && e.stopPropagation && e.stopPropagation(); this.setState({ renameUrl: null }); },
@@ -1153,6 +1370,28 @@ class Component extends DCLogic {
       open: S.openPerson === p.webId, chev: S.openPerson === p.webId ? '▲' : '▼',
       grants: p.grants.map(gr => ({ icon: '📄', name: decodeURIComponent(gr.url.replace(/\/$/,'').split('/').pop()), modes: 'can ' + this.modeSummary(gr.modes), revoke: () => this.revoke(gr.url, p.webId) }))
     }));
+
+    // apps & credentials (Story 7.4) — outbound machine access, distinct from the
+    // inbound `peopleList` above. Only meaningful once the account API is unlocked.
+    const selfWebId = S.webId || (this.cl && this.cl.webId) || '';
+    const credItems = (S.credsList || []).map(c => ({
+      name: c.name, id: c.id, resource: c.resource,
+      armed: S.credConfirmRevoke === c.resource, notArmed: S.credConfirmRevoke !== c.resource,
+      arm: () => { clearTimeout(this._credRevTimer); this.setState({ credConfirmRevoke: c.resource }); this._credRevTimer = setTimeout(() => this.setState({ credConfirmRevoke: null }), 4000); },
+      confirmRevoke: () => { clearTimeout(this._credRevTimer); this.doRevokeCred(c.resource, c.name); },
+      revokeLabel: 'Revoke ' + c.name, confirmLabel: 'Confirm revoke ' + c.name
+    }));
+    const ms = S.mintedSecret;
+    const recipe = ms ? [
+      'Token endpoint : ' + (this.api ? this.api.TOKEN_ENDPOINT : 'https://pod.nicolasdb.eu/.oidc/token'),
+      'Grant type     : client_credentials',
+      'Scope          : webid',
+      'Client ID      : ' + ms.id,
+      'Acts as (WebID): ' + ms.webId,
+      'Auth           : HTTP Basic  <id>:<secret>  (url-encode both)',
+      'DPoP           : REQUIRED — send a DPoP proof on the token request AND on every',
+      '                 request after (Authorization: DPoP <token>). Plain Bearer is rejected.'
+    ].join('\n') : '';
 
     // requests
     const requestCards = pendingReqs.map(r => ({
@@ -1236,6 +1475,32 @@ class Component extends DCLogic {
         : 'font-family:inherit;font-size:12.5px;padding:7px 14px;border-radius:99px;border:1px solid var(--line,#e7e2d6);background:none;color:var(--tx2,#8a8474);cursor:pointer',
 
       isPeople: S.view==='people', peopleList, noPeople: peopleList.length===0,
+
+      // apps & credentials (Story 7.4)
+      credsUnlocked: S.credsUnlocked, credsLocked: !S.credsUnlocked, secretHidden: !S.secretRevealed,
+      credEmail: S.credEmail, onCredEmail: (e)=>this.setState({credEmail:e.target.value}),
+      credPassword: S.credPassword, onCredPassword: (e)=>this.setState({credPassword:e.target.value}),
+      unlockCreds: () => this.unlockCreds(), lockCreds: () => this.lockCreds(),
+      credsLoading: S.credsLoading,
+      credItems, noCreds: S.credsUnlocked && !S.credsLoading && credItems.length===0,
+      startMint: () => this.setState({ mintOpen:true, mintName:'', mintWebId:'' }),
+      mintOpen: S.mintOpen,
+      mintName: S.mintName, onMintName: (e)=>this.setState({mintName:e.target.value}),
+      mintWebId: S.mintWebId, onMintWebId: (e)=>this.setState({mintWebId:e.target.value}),
+      mintWebIdPlaceholder: selfWebId || 'https://…/profile/card#me',
+      confirmMint: () => this.doMint(), cancelMint: () => this.setState({ mintOpen:false }),
+      escCancelMint: (e) => { if (e.key === 'Escape') this.setState({ mintOpen:false }); },
+      mintedOpen: !!ms, mintedName: ms?ms.name:'', mintedId: ms?ms.id:'',
+      mintedSecret: (ms && S.secretRevealed) ? ms.secret : '',
+      secretRevealed: S.secretRevealed,
+      revealSecret: () => this.setState({ secretRevealed: true }),
+      copySecret: () => { if (ms) this.copyText(ms.secret, 'Secret copied'); },
+      copyId: () => { if (ms) this.copyText(ms.id, 'Client ID copied'); },
+      copyRecipe: () => this.copyText(recipe, 'Connection details copied'),
+      recipeText: recipe,
+      closeMinted: () => this.closeMintedSecret(),
+      escCloseMinted: (e) => { if (e.key === 'Escape') this.closeMintedSecret(); },
+
       isRequests: S.view==='requests', requestCards, noRequests: pendingReqs.length===0,
 
       // share drawer

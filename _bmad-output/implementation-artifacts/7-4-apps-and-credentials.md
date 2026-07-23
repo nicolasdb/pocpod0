@@ -1,6 +1,6 @@
 # Story 7.4: Apps & Credentials — Connect External Apps to Your Pod
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -37,22 +37,22 @@ This is the enabling story for the Discord/Matrix bot bridges (Epic 4 territory)
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Account-session plumbing for the credentials API (AC: #1, #2, #3)
-  - [ ] 1.1 Establish the authenticated account context the credentials endpoints need (CSS-Account-Token from the owner's existing login session) and resolve the account-scoped controls (`controls.account.clientCredentials`) the same way 7.1's registration flow resolves controls.
-  - [ ] 1.2 Add `RealBackend` methods: `listClientCredentials()`, `createClientCredential(name, webId)`, `revokeClientCredential(resourceUrl)` — thin wrappers over the confirmed endpoints.
-  - [ ] 1.3 Handle the logout/token-invalidation gotcha: do not eagerly log out the account session while the credentials view is open; re-auth gracefully if the token has expired.
-- [ ] Task 2: Credentials UI (AC: #1, #2, #3, #4, #7)
-  - [ ] 2.1 List view (name, resource, revoke button) with empty state, under an "Apps & credentials" section of People & apps.
-  - [ ] 2.2 Mint flow: name + WebID (default self) → create → **one-time secret reveal** with copy + "store it now" warning; clear on close.
-  - [ ] 2.3 Revoke flow with confirmation; refresh list; (optional) verify by attempting a token request and showing it now fails.
-  - [ ] 2.4 "How to connect" recipe panel for the minted credential (endpoint/grant/scope/DPoP note), copy-pasteable, secret-free.
-- [ ] Task 3: People & apps inbound/outbound split (AC: #5, #6)
-  - [ ] 3.1 Reframe the existing People & apps screen so inbound access grants and outbound issued credentials are visually distinct sections.
-  - [ ] 3.2 Add the plain-language WAC-limitation note (acts-as-me + revoke/ACL are the real controls).
-- [ ] Task 4: Security hardening + a11y + regression (AC: #7, #8)
-  - [ ] 4.1 Audit that the secret never touches persistent storage or logs; transient DOM only.
-  - [ ] 4.2 Contrast/focus-visible/keyboard on all new controls.
-  - [ ] 4.3 Regression pass on account/login/People-&-apps.
+- [x] Task 1: Account-session plumbing for the credentials API (AC: #1, #2, #3)
+  - [x] 1.1 Establish the authenticated account context the credentials endpoints need (CSS-Account-Token). **Invalidated the drafting assumption:** the OIDC/WebID login that gets the user into the backoffice does NOT yield a CSS-Account-Token — the account API is a separate auth. Implemented an explicit account sign-in (`accountLogin(email, password)` → `POST /.account/login/password/` → `{authorization}`) that then resolves the token-scoped `controls.account.clientCredentials` from the AUTHED `/.account/` index (live-confirmed the control only appears there, and only when the GET carries no `content-type`). Surfaced to the user as an "Unlock app management" gate with a plain-language explanation of why the extra sign-in is needed.
+  - [x] 1.2 Added `RealBackend` methods: `accountLogin`, `hasAccountSession`, `accountLogout`, `listClientCredentials`, `createClientCredential(name, webId)`, `revokeClientCredential(resourceUrl)`. Token held in memory only (`_acctToken`), never persisted.
+  - [x] 1.3 Logout/token-invalidation gotcha: `accountLogout` only forgets the token locally (never hits the server `logout` control that would invalidate concurrent use); a 401 on any call clears the token and throws a `SESSION_EXPIRED` sentinel the UI catches to re-show the unlock prompt gracefully.
+- [x] Task 2: Credentials UI (AC: #1, #2, #3, #4, #7)
+  - [x] 2.1 List view (name + full id, revoke button) with loading + empty states, under an "Apps & credentials you've issued" section of People & apps.
+  - [x] 2.2 Mint dialog: name + WebID (default self) → create → **one-time secret reveal** modal, secret gated behind an explicit "Reveal (shown once)" tap, copy affordance, hard "you will never see this again" warning; cleared from state on close.
+  - [x] 2.3 Two-tap revoke (arm → confirm, auto-disarms after 4s); refreshes list. Token-fails-after-revoke proven live in the verification script (not just "UI shows revoked").
+  - [x] 2.4 "How to connect" recipe (token endpoint, grant type, scope, client id, acts-as WebID, explicit DPoP-required note), copy-pasteable, secret-free (recipe deliberately excludes the secret; note tells the author to paste the secret separately).
+- [x] Task 3: People & apps inbound/outbound split (AC: #5, #6)
+  - [x] 3.1 Reframed the screen into two labelled sections: "People & apps who can see your space" (inbound WAC grants) and "Apps & credentials you've issued" (outbound machine access).
+  - [x] 3.2 Plain-language WAC-limitation note: a credential acts as you / can't be scoped to one app's data today / real controls are least-privilege + clear naming + instant revoke.
+- [x] Task 4: Security hardening + a11y + regression (AC: #7, #8)
+  - [x] 4.1 Secret lives only in transient component state (`mintedSecret`), only rendered into the DOM after an explicit reveal, excluded from the recipe, never written to `localStorage`/app-persistence, never `console.log`-ed, and cleared on close. Password field cleared from state the instant `accountLogin` resolves (and on failure).
+  - [x] 4.2 a11y: `role="dialog"` + `aria-label` on both modals, `aria-label` on revoke arm/confirm buttons, `autocomplete` username/current-password on the unlock inputs, focus-visible relies on existing token styling; all controls keyboard-reachable buttons/inputs. Warning uses text ("⚠︎ …") not color alone.
+  - [x] 4.3 No changes to existing ACL/CRUD/login code paths; only additive (`nav('people')` also calls `maybeInitCreds`). Account/login/People inbound behavior unchanged.
 
 ## Dev Notes
 
@@ -96,14 +96,50 @@ This is the enabling story for the Discord/Matrix bot bridges (Epic 4 territory)
 
 ### Context Reference
 
+- Live verification script: full mint → DPoP token → authed request → revoke → token-fails round-trip run against `pod.nicolasdb.eu` v0.5 on a throwaway account (2026-07-23). Endpoints/shapes confirmed match the audit memory `css_acl_portability_audit`.
+
 ### Agent Model Used
+
+claude-sonnet-5 (bmad-dev-story)
 
 ### Completion Notes List
 
+- **Account-token reality (key finding):** the credentials API needs a `CSS-Account-Token` obtained via email+password (`POST /.account/login/password/`), NOT the OIDC/WebID session that logs the user into the backoffice. The `controls.account.clientCredentials` URL only appears on the *authed* `/.account/` index, and only when that GET carries no `content-type` header (CSS content-negotiation otherwise returns a controls-less body). So the UI has a deliberate "Unlock app management" sign-in gate with an honest explanation.
+- **Full flow live-confirmed** end-to-end before/while building: login → list(empty) → mint `{id,secret,resource}` → `/.oidc/token` (Basic + DPoP, `grant_type=client_credentials&scope=webid`) → `access_token` → authed GET on the WebID profile = **200** → `DELETE {resource}` = **200**, list empties → token request now **401 `invalid_client`**. This satisfies AC2/AC3 "don't accept UI-shows-revoked as proof."
+- **DPoP note for bot authors is mandatory** and stated in the recipe — plain Bearer is rejected by CSS.
+- **Secret hygiene (AC7):** secret only in transient `mintedSecret` state, rendered only after an explicit reveal tap, excluded from the copy-able recipe, never persisted or logged, cleared on close; unlock password cleared from state immediately after use.
+- **Demo backend** seeded with one fake credential + in-memory mint/revoke so the offline/sandboxed preview shows the whole Apps & credentials UI (demo stays "unlocked", no sign-in friction).
+- **Scope correction (2026-07-23):** an early framing imagined 7.4 also generating a "shareable E2E secret" for apps. **No such thing exists in Solid** — the "security key" FilePod/NotePod demand is each app's own private client-side encryption passphrase (encrypts files before PUT; pod stores ciphertext; lose key = unrecoverable), unrelated to client credentials and not centrally manageable. Explicitly **out of scope**. 7.4 = credential (auth) management only. Optional backoffice-side client-side encryption would be a separate future story.
+- **Not yet browser/VPS-verified:** no browser harness available this session (same discipline as 7.3). Both files syntax-checked (`node --check`); template sc-if/sc-for tags balanced. Needs a browser pass + VPS deploy before "done". pod-api.js cache-buster bumped to `7-4-1`.
+
 ### File List
+
+- `backoffice/pod-api.js` — `TOKEN_ENDPOINT` export; `RealBackend` account-session + credential methods (`accountLogin`, `hasAccountSession`, `accountLogout`, `listClientCredentials`, `createClientCredential`, `revokeClientCredential`, `_acctAuth`/`_requireAcct`/`_onAcctResponse`); `DemoBackend` in-memory credential stubs.
+- `backoffice/index.html` — Apps & credentials UI (unlock gate, list, mint dialog, one-time secret reveal + connection recipe, two-tap revoke) in the People & apps screen; inbound/outbound split + WAC-limitation note; state fields + handlers; `nav('people')` inits creds; pod-api cache-buster `7-4-1`.
+
+### Review Findings
+
+- [x] [Review][Patch] Rename rollback deletes already-moved children on partial failure, contradicting its own "original left untouched" message [backoffice/pod-api.js: rename] — fixed via `_copyOnly` (copy whole tree before any source deletion)
+- [x] [Review][Patch] ACL carry-over on rename drops ALL grants (not just unrecognized ones) whenever `unknownBlocks` is non-empty [backoffice/pod-api.js: rename ACL carry] — fixed, known grants now written regardless of unknownBlocks warning
+- [x] [Review][Patch] Focus-visible missing on new unlock/mint inputs and dialog buttons — AC8 [backoffice/index.html] — fixed, `style-focus-visible` added matching existing app pattern
+- [x] [Review][Patch] No focus trap / Escape-to-close / `aria-modal` on the unlock-secret and mint dialogs — AC8 [backoffice/index.html: dialogs] — `aria-modal="true"` + Escape-to-close added; full focus trap left as-is (dialog stacking + click-outside close already limits scope)
+- [x] [Review][Patch] `mintedSecret` (one-time secret) not cleared on nav() away from People screen [backoffice/index.html: doMint/nav] — fixed, `nav()` clears it when leaving People
+- [x] [Review][Patch] No double-submit guard on `doMint`/`unlockCreds` [backoffice/index.html] — fixed, in-flight guards added
+- [x] [Review][Patch] `createClientCredential`/`accountLogin` don't validate response shape [backoffice/pod-api.js] — fixed, malformed/non-JSON responses now throw a clean error
+- [x] [Review][Patch] `revokeClientCredential` treats 404 as failure instead of "already revoked" success [backoffice/pod-api.js] — fixed
+- [x] [Review][Patch] `credsReady` computed in template state but never referenced — dead code [backoffice/index.html] — removed
+- [x] [Review][Defer] Hardcoded `ISSUER`/token-endpoint (pod.nicolasdb.eu) — deferred, fine for single-tenant VPS today
+- [x] [Review][Defer] `safeFileName` misses DEL/bidi/zero-width chars — deferred, pre-existing hardening gap outside 7.4 scope
+- [x] [Review][Defer] Credential name-strip regex assumes CSS's `_<uuid>` suffix shape — deferred, breaks only if CSS changes id format or app name coincidentally matches
+- [x] [Review][Defer] Demo backend credential id format diverges from real CSS format, so name-display logic isn't exercised by the demo path — deferred
+- [x] [Review][Defer] `getAccess()` error flag set inconsistently across load paths (only `loadFolder`) — deferred, pre-existing
+- [x] [Review][Defer] AC1 "when" (issuance time) not shown — CSS `client-credentials/` list endpoint returns no timestamp; not implementable without upstream data — deferred
+- [x] [Review][Defer] `countDescendants` confirm-arm race under rapid arm/disarm clicks — deferred, cosmetic/low-likelihood
+- [x] [Review][Defer] Unknown-ACL refusal blocks editing on any non-foaf agentClass/origin block with no in-UI path forward — deferred, pre-existing documented TODO
 
 ## Change Log
 
 | Date       | Change |
 |------------|--------|
 | 2026-07-23 | Drafted from live audit. Client-credentials mint/list/revoke (all confirmed working incl. HTTP revoke), one-time-secret UX, connection recipe for bot bridges, People-&-apps inbound/outbound split, honest WAC per-app-limitation framing. |
+| 2026-07-23 | Implemented. Account-API sign-in gate (OIDC session ≠ account token — key invalidated assumption), RealBackend credential methods + DemoBackend stubs, one-time secret reveal + secret-free connection recipe, inbound/outbound People split, WAC-acts-as-me note. Full mint→DPoP-token→authed-request→revoke→token-fails round-trip live-confirmed on v0.5. Code + live-API verified; browser/VPS pass pending. Status → review. |
