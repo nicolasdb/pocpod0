@@ -8,6 +8,10 @@ services:
       - css-data:/data
       - ./infra/css/config.json:/config.json:ro${VOLUME_FLAGS:-}
       - ./backoffice:/backoffice:ro${VOLUME_FLAGS:-}
+      # Story 7.2: restyle CSS's own identity pages (login/register/consent) to the
+      # backoffice design system by overriding the shared stylesheet + page chrome.
+      - ./infra/css/main.css:/community-server/templates/styles/main.css:ro${VOLUME_FLAGS:-}
+      - ./infra/css/main.html.ejs:/community-server/templates/main.html.ejs:ro${VOLUME_FLAGS:-}
     command:
       - "-p"
       - "3000"

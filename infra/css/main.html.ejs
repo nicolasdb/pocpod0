@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title><%= extractTitle(htmlBody) %></title>
+  <!--
+    Story 7.2: pod-backoffice chrome for the CSS-served identity pages.
+    Bind-mounted over /community-server/templates/main.html.ejs. ALL EJS logic below
+    (baseUrl, htmlBody, extractTitle) is preserved exactly as the stock template — only
+    the visible header/footer branding changed, so page behavior is unchanged (AC4).
+    Fonts are preconnected here (same Google Fonts as the backoffice); the stylesheet
+    @imports them too, this just speeds first paint.
+  -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <!-- Shared design tokens (single source of truth) MUST load before main.css so its
+       vars are defined. Version query is bumped on every CSS change to defeat the
+       browser cache (stock CSS uses ?v=7; anything sharing that key is never re-fetched). -->
+  <link rel="stylesheet" href="<%= baseUrl -%>tokens.css?v=7-pod2" type="text/css">
+  <link rel="stylesheet" href="<%= baseUrl -%>.well-known/css/styles/main.css?v=7-pod2" type="text/css">
+  <script type="text/javascript" src="<%= baseUrl -%>.well-known/css/scripts/util.js?v=7"></script>
+</head>
+<body>
+  <header>
+    <a href="<%= baseUrl %>" aria-label="Back to your pod home">
+      <span class="brand-mark" role="img" aria-label="Pod">🗄️</span>
+    </a>
+    <div>
+      <h1>Your pod</h1>
+      <div class="brand-sub">pod.nicolasdb.eu</div>
+    </div>
+  </header>
+  <main>
+    <%- htmlBody %>
+  </main>
+  <footer>
+    <p>Your space on the web — you hold the key.</p>
+  </footer>
+</body>
+</html>
+
+<%
+function extractTitle(body) {
+  const match = /^<h1[^>]*>([^<]*)<\/h1>/u.exec(body);
+  return match ? match[1] : 'Solid';
+}
+%>

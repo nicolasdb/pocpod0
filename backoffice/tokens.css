@@ -1,0 +1,34 @@
+/*
+ * Single source of truth for the pod design system's DAYLIGHT palette (Story 7.2).
+ *
+ * Consumed by BOTH surfaces so they can never drift apart:
+ *   - the backoffice SPA (backoffice/index.html links this; its JS theme engine only
+ *     *overrides* these for the alternate "paper"/"ink" themes, and clears its overrides
+ *     to fall back to these values when switching back to daylight)
+ *   - the CSS-served identity pages (infra/css/main.css consumes these vars; the wrapper
+ *     infra/css/main.html.ejs links this file before main.css)
+ *
+ * Served at /tokens.css via a StaticAssetEntry in infra/css/config.json.
+ * Values are the canonical daylight theme — do not fork; edit here only.
+ */
+:root {
+  --bg: #f6f4ef;
+  --panel: #fbfaf7;
+  --tx: #26241f;
+  --tx2: #8a8474;   /* backoffice muted — fine for larger/secondary text */
+  --tx3: #b3ac9a;
+  --line: #e7e2d6;
+  --hov: #efece3;
+  --acc: #3d6b52;   /* sage */
+  --accLite: #8fc0a5;
+  --accSoft: #eef3ef;
+  --accSoftLine: #b8ccbf;
+  --warn: #b5722a;
+  --warnBg: #faf3e6;
+  --warnLine: #e3c9a3;
+  --codebg: #f0ede4;
+
+  /* Darkened muted for SMALL body/help text that must clear WCAG AA 4.5:1 on the
+     panel (the CSS identity pages use this; --tx2 above is too light at small sizes). */
+  --tx2-strong: #6d6757;
+}

@@ -117,7 +117,7 @@ development_status:
   # Deploy target: https://pod.nicolasdb.eu/ root (replaces CSS default welcome page), not a separate hostname.
   epic-7: in-progress
   story-7-1-backoffice-deploy-real-account-registration: done
-  story-7-2-css-registration-pages-restyle: ready-for-dev
+  story-7-2-css-registration-pages-restyle: review
   epic-7-retrospective: optional
 
 # Sprint Metadata

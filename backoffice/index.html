@@ -10,6 +10,10 @@
 <helmet>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<!-- Shared design tokens (single source of truth). Defines the daylight palette on :root;
+     the theme engine below only overrides these for the paper/ink themes. Same file the
+     CSS identity pages consume, so the two surfaces can't drift. -->
+<link rel="stylesheet" href="/tokens.css?v=7-pod2">
 <style>
   body{margin:0}
   *{scrollbar-width:thin}
@@ -141,17 +145,22 @@
           <div style="animation:fadeUp .35s ease both">
             <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.09em;color:var(--warn,#b5722a);margin-bottom:14px">Now let's do it · 1 of 4</div>
             <div style="font-size:44px;margin-bottom:16px">📦</div>
-            <h1 style="font-size:26px;font-weight:600;margin:0 0 12px;line-height:1.25">Let's make your box.</h1>
+            <h1 style="font-size:26px;font-weight:600;margin:0 0 12px;line-height:1.25">Let's make your locker.</h1>
             <p style="font-size:16px;color:var(--tx2,#8a8474);margin:0 0 22px;line-height:1.6;text-wrap:pretty">This creates your pod on <strong style="color:var(--tx,#26241f)">pod.nicolasdb.eu</strong> and gives you a WebID — your address on the web. Nothing is public. It's an empty room waiting for you.</p>
             <div style="display:flex;flex-direction:column;gap:16px;margin-bottom:20px">
               <label style="display:block">
-                <span style="display:block;font-size:12.5px;font-weight:600;color:var(--tx,#26241f);margin-bottom:6px">Choose a name for your space</span>
+                <span style="display:block;font-size:12.5px;font-weight:600;color:var(--tx,#26241f);margin-bottom:6px">Choose a name for your pod</span>
                 <input value="{{ acctName }}" onChange="{{ onAcctName }}" placeholder="e.g. ayoub, sam-b, la-famille" style="width:100%;box-sizing:border-box;font-family:'JetBrains Mono',monospace;font-size:14px;padding:12px 14px;border-radius:11px;border:1.5px solid var(--line,#e7e2d6);background:var(--panel,#fbfaf7);color:var(--tx,#26241f);outline:none" style-focus="border-color:var(--acc,#3d6b52)">
               </label>
               <label style="display:block">
-                <span style="display:block;font-size:12.5px;font-weight:600;color:var(--tx,#26241f);margin-bottom:6px">A passphrase to lock it <span style="font-weight:400;color:var(--tx3,#b3ac9a)">— optional, but a good idea</span></span>
+                <span style="display:block;font-size:12.5px;font-weight:600;color:var(--tx,#26241f);margin-bottom:6px">Your email</span>
+                <input value="{{ email }}" onChange="{{ onEmail }}" type="email" autocomplete="email" placeholder="you@example.com" style="width:100%;box-sizing:border-box;font-family:'JetBrains Mono',monospace;font-size:14px;padding:12px 14px;border-radius:11px;border:1.5px solid var(--line,#e7e2d6);background:var(--panel,#fbfaf7);color:var(--tx,#26241f);outline:none" style-focus="border-color:var(--acc,#3d6b52)">
+                <span style="display:block;font-size:12px;color:var(--tx2,#8a8474);margin-top:7px;line-height:1.5">This is how you'll sign back in to your pod later. We don't email you or share it.</span>
+              </label>
+              <label style="display:block">
+                <span style="display:block;font-size:12.5px;font-weight:600;color:var(--tx,#26241f);margin-bottom:6px">Set a passphrase <span style="font-weight:400;color:var(--tx3,#b3ac9a)">— a regular password still works</span></span>
                 <input value="{{ passphrase }}" onChange="{{ onPassphrase }}" type="text" placeholder="four random words you'll remember" style="width:100%;box-sizing:border-box;font-family:'JetBrains Mono',monospace;font-size:14px;padding:12px 14px;border-radius:11px;border:1.5px solid var(--line,#e7e2d6);background:var(--panel,#fbfaf7);color:var(--tx,#26241f);outline:none" style-focus="border-color:var(--acc,#3d6b52)">
-                <span style="display:block;font-size:12px;color:var(--tx2,#8a8474);margin-top:7px;line-height:1.5">💡 A <strong>passphrase</strong> — like <span style="font-family:'JetBrains Mono',monospace;color:var(--acc,#3d6b52)">copper-otter-lantern-drift</span> — is easier to remember and far harder to guess than a short password. Length beats symbols. {{ passStrength }}</span>
+                <span style="display:block;font-size:12px;color:var(--tx2,#8a8474);margin-top:7px;line-height:1.5">💡 A <strong>passphrase</strong> — like <span style="font-family:'JetBrains Mono',monospace;color:var(--acc,#3d6b52)">correct-horse-battery-staple</span> — is easier to remember and far harder to guess than a short password. Length beats symbols. {{ passStrength }}</span>
               </label>
             </div>
             <div style="border:1px solid var(--line,#e7e2d6);border-radius:14px;background:var(--panel,#fbfaf7);padding:18px 20px;margin-bottom:22px">
@@ -517,15 +526,6 @@
 </div>
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1200,&quot;height&quot;:860},&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;daylight&quot;,&quot;options&quot;:[&quot;daylight&quot;,&quot;paper&quot;,&quot;ink&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Look &amp; feel&quot;},&quot;readableFont&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Look &amp; feel&quot;}}">
-// Cryptographically-strong fallback password for users who leave the passphrase
-// blank (Math.random is not suitable for anything credential-shaped).
-function _randomPassword() {
-  const bytes = new Uint8Array(24);
-  crypto.getRandomValues(bytes);
-  const b64 = btoa(String.fromCharCode(...bytes)).replace(/[+/=]/g, '');
-  return b64 + 'Aa1!'; // guarantee the mixed-class requirement regardless of encoding
-}
-
 class Component extends DCLogic {
   constructor(props) {
     super(props);
@@ -538,7 +538,7 @@ class Component extends DCLogic {
       chapter: 0,
       checkChoice: null,
       podCreated: false,
-      acctName: '', passphrase: '',
+      acctName: '', email: '', passphrase: '',
       pickedFolders: { Notes: true, School: false, Photos: false, Shared: false },
       firstFileName: 'hello.md',
       firstFileBody: '',
@@ -603,6 +603,15 @@ class Component extends DCLogic {
 
   setVars() {
     const t = this.props.theme ?? 'daylight';
+    // Daylight is the single source of truth in /tokens.css (:root). Only the ALTERNATE
+    // themes are defined here and override :root on <html>; switching back to daylight
+    // clears those overrides so the tokens.css values show through again.
+    // MUST mirror backoffice/tokens.css (:root daylight values) exactly — tokens.css is
+    // the canonical, documented source (and is what the CSS-server pages consume directly).
+    // JS still sets daylight explicitly here too, on purpose: many inline styles in this
+    // file use bare var(--acc) etc with NO CSS fallback, so they'd render unstyled for any
+    // instant the external tokens.css stylesheet hasn't loaded/applied yet. Setting the
+    // vars directly removes that dependency on load timing/order.
     const themes = {
       daylight: { bg:'#f6f4ef', panel:'#fbfaf7', tx:'#26241f', tx2:'#8a8474', tx3:'#b3ac9a', line:'#e7e2d6', hov:'#efece3', acc:'#3d6b52', accLite:'#8fc0a5', accSoft:'#eef3ef', accSoftLine:'#b8ccbf', warn:'#b5722a', warnBg:'#faf3e6', warnLine:'#e3c9a3', codebg:'#f0ede4' },
       paper:    { bg:'#f3ead9', panel:'#fbf5e9', tx:'#3a2c15', tx2:'#8a744f', tx3:'#b8a480', line:'#e4d5b8', hov:'#efe4cd', acc:'#a8621f', accLite:'#d29a63', accSoft:'#f6ecd9', accSoftLine:'#e0c294', warn:'#9c5410', warnBg:'#f7ecd6', warnLine:'#dcc08c', codebg:'#efe2c8' },
@@ -734,10 +743,22 @@ class Component extends DCLogic {
       this.toast('Please enter a name with at least one letter or number.');
       return;
     }
+    const email = (this.state.email || '').trim();
+    if (this.api && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      // Real email is required so the owner can log back in later (Story 7.2).
+      this.toast('Please enter a valid email — it’s how you sign back in later.');
+      return;
+    }
+    const password = (this.state.passphrase || '').trim();
+    if (this.api && password.length < 8) {
+      // A secret the OWNER knows is mandatory — without it they can never sign back in
+      // (email login needs this password). No silent random-password fallback (Story 7.2).
+      this.toast('Please set a password of at least 8 characters — it’s how you unlock your pod.');
+      return;
+    }
     if (this.api && slug) {
       try {
-        const password = this.state.passphrase || _randomPassword();
-        const { webId } = await this.api.Solid.registerAccount(slug, password);
+        const { webId } = await this.api.Solid.registerAccount(slug, password, email);
         this.setState({ podCreated: true, webId, mode: 'live' });
         this.toast(this.state.passphrase ? 'Pod created and locked with your passphrase.' : 'Your pod is ready.');
         // Hands off to the real OIDC login so the new account lands authenticated (AC3).
@@ -803,13 +824,13 @@ class Component extends DCLogic {
         aside: null
       },
       box: {
-        kicker: 'Idea 1 of 3 · What it is', icon: '📦',
-        title: 'A pod is a box on the web that belongs to you.',
-        lead: 'Think of a room only you have the key to. Your notes, files and photos live inside — on a server, but under your control, not a company\u2019s.',
+        kicker: 'Idea 1 of 3 · What it is', icon: '🗄️',
+        title: 'A pod is a locker on the web that belongs to you.',
+        lead: 'Think of a locker only you have the key to. Your notes, files and photos live inside — on a server, but under your control, not a company\u2019s.',
         chunks: [
           { icon: '🔒', title: 'Private by default', body: 'Everything you put in starts visible to you alone.' },
-          { icon: '📤', title: 'You can hand out copies of the key', body: 'Sharing means letting someone look in — never giving the box away.' },
-          { icon: '🚚', title: 'It moves with you', body: 'Switch apps freely; your things stay in the same box.' }
+          { icon: '📤', title: 'You can hand out copies of the key', body: 'Sharing means letting someone look in — never giving the locker away.' },
+          { icon: '🚚', title: 'It moves with you', body: 'Switch apps freely; your things stay in the same locker.' }
         ],
         aside: null
       },
@@ -846,7 +867,7 @@ class Component extends DCLogic {
 
     const checkOptions = [
       { key: 'a', label: 'A company stores my stuff and lets me peek at it.' },
-      { key: 'b', label: 'It\u2019s my own box; I decide who else can look inside.' },
+      { key: 'b', label: 'It\u2019s my own locker; I decide who else can look inside.' },
       { key: 'c', label: 'Everything I save is public unless I hide it.' }
     ].map(o => ({
       label: o.label,
@@ -856,11 +877,17 @@ class Component extends DCLogic {
     }));
     const checkFeedback = S.checkChoice == null ? false
       : S.checkChoice === 'b' ? "Exactly right. It's yours; sharing is a choice you make."
-      : S.checkChoice === 'a' ? "Close — but there's no company in the middle deciding. It's your box, and you hold the key. Try again if you like."
+      : S.checkChoice === 'a' ? "Close — but there's no company in the middle deciding. It's your locker, and you hold the key. Try again if you like."
       : "Almost the opposite, in fact — everything starts private. You open doors on purpose, one at a time.";
 
     const acctSlug = (S.acctName || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
     const newWebId = 'https://pod.nicolasdb.eu/' + (acctSlug || 'your-name') + '/profile/card#me';
+    // Story 7.2: a real email is required — it's how the owner logs back in later
+    // (CSS keys the password login on it). Deliberately loose validation: just
+    // "looks like an email", no over-strict regex that rejects valid addresses.
+    const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((S.email || '').trim());
+    // A secret is required (>=8 chars); passphrase-vs-password is the only optional part.
+    const passOk = (S.passphrase || '').trim().length >= 8;
     const pw = S.passphrase || '';
     const wordCount = pw.trim() ? pw.trim().split(/[\s-]+/).length : 0;
     const passStrength = !pw ? '' : wordCount >= 4 ? '✓ Strong and memorable.' : wordCount >= 2 ? 'Good — one or two more words makes it much stronger.' : 'A single word is weak — try stringing a few together.';
@@ -898,7 +925,7 @@ class Component extends DCLogic {
       : '# Only the <#owner> rule remains — nobody else is listed.\n<#owner>\n    acl:agent <you>;\n    acl:mode acl:Read, acl:Write, acl:Control.';
 
     const recapItems = [
-      { icon:'📦', title:'The pod', body:'your own box on the web' },
+      { icon:'🗄️', title:'The pod', body:'your own locker on the web' },
       { icon:'🪪', title:'Your WebID', body:'your name, recognised everywhere' },
       { icon:'🗝', title:'Access rules', body:'you choose who reads or edits' },
       { icon:'↩️', title:'Always reversible', body:'every door closes again' }
@@ -915,7 +942,7 @@ class Component extends DCLogic {
 
     let nextLabel = 'Continue', nextDisabled = false;
     if (chap === 'checkpoint') { nextLabel = S.checkChoice === 'b' ? 'Continue' : 'Continue anyway'; }
-    if (chap === 'create') { nextLabel = S.podCreated ? 'Continue' : 'Create my pod'; nextDisabled = !S.podCreated && !acctSlug; }
+    if (chap === 'create') { nextLabel = S.podCreated ? 'Continue' : 'Create my pod'; nextDisabled = !S.podCreated && (!acctSlug || !emailValid || !passOk); }
     if (chap === 'folders') { nextLabel = 'Create ' + (folderPickCount || 'these') + (folderPickCount === 1 ? ' shelf' : ' shelves'); nextDisabled = folderPickCount === 0; }
     if (chap === 'file') { nextLabel = S.fileSaved ? 'Continue' : 'Save it'; }
     if (chap === 'share') { nextLabel = S.obWacOpen ? 'Continue' : 'Pick one to continue'; nextDisabled = !S.obWacOpen; }
@@ -1036,6 +1063,7 @@ class Component extends DCLogic {
       isCheckpoint, checkOptions, checkFeedback,
       isActCreate, newWebId, podCreated: S.podCreated,
       acctName: S.acctName, onAcctName: (e)=>this.setState({acctName:e.target.value}),
+      email: S.email, onEmail: (e)=>this.setState({email:e.target.value}),
       passphrase: S.passphrase, onPassphrase: (e)=>this.setState({passphrase:e.target.value}), passStrength,
       isActFolders, folderChoices, folderCountLine: folderPickCount ? folderPickCount + ' selected — a good, small start.' : 'Pick at least one to continue.',
       isActFile, firstFileName: S.firstFileName, onFirstName: (e)=>this.setState({firstFileName:e.target.value}), firstFileBody: S.firstFileBody, onFirstBody:(e)=>this.setState({firstFileBody:e.target.value, fileSaved:false}), fileSaved: S.fileSaved,

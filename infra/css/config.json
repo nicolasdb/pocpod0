@@ -111,6 +111,12 @@
           "@type": "StaticAssetEntry",
           "relativeUrl": "/support.js",
           "filePath": "/backoffice/support.js"
+        },
+        {
+          "@id": "urn:solid-server:pocpod0:DesignTokensAsset",
+          "@type": "StaticAssetEntry",
+          "relativeUrl": "/tokens.css",
+          "filePath": "/backoffice/tokens.css"
         }
       ]
     }

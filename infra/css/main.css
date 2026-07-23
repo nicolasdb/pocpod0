@@ -1,0 +1,358 @@
+/*
+ * Story 7.2: restyle of the Community Solid Server identity pages (login, register,
+ * forgot/reset password, login-method chooser, OIDC consent) to the pod-backoffice
+ * design system. Served at /.well-known/css/styles/main.css via a bind-mount over
+ * /community-server/templates/styles/main.css (see docker-compose.yml).
+ *
+ * Design tokens come from the shared /tokens.css (single source of truth, served from
+ * backoffice/tokens.css and linked before this file in main.html.ejs) — do NOT redeclare
+ * palette values here; edit tokens.css. Selectors mirror CSS v7's stock main.css so every
+ * stock page keeps working; only the visual layer changes (AC4: functionality unchanged).
+ *
+ * Accessibility: WCAG 2.1 AA — body/label text meets 4.5:1 on the panel; every
+ * interactive element has a visible :focus-visible ring (project standard).
+ */
+
+/* Same font sources as the backoffice (Google Fonts CDN) for visual continuity.
+   CSS identity pages have no strict CSP, so a remote @import is fine here. */
+@import url('https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+/* Design tokens come from the shared /tokens.css (single source of truth, linked
+   before this file in main.html.ejs). Only page-local values live here. */
+html {
+  --err: #a3341f;
+
+  height: 100%;
+  background: var(--bg);
+  overscroll-behavior: none;
+}
+
+body, input, button, textarea, select {
+  font: 15px/1.6 'Lexend', system-ui, sans-serif;
+  font-weight: 400;
+  color: var(--tx);
+}
+
+/* Airy, full-bleed column on the cream background — no floating card — to match the
+   backoffice onboarding look (calm, generous whitespace, content left-aligned). */
+body {
+  box-sizing: border-box;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 4.5em 2em 3em;
+  min-height: 100vh;
+  background: none;
+}
+@media (max-width: 620px) {
+  body { padding: 2.5em 1.25em 2em; }
+}
+
+/* ---------- header (rebranded chrome comes from main.html.ejs) ---------- */
+header {
+  margin: 0 0 1.75em;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-bottom: 1.25em;
+  border-bottom: 1px solid var(--line);
+}
+header a {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+header .brand-mark {
+  font-size: 30px;
+  line-height: 1;
+}
+header h1 {
+  margin: 0;
+  font-size: 1.25em;
+  font-weight: 600;
+  letter-spacing: -.01em;
+  color: var(--tx);
+}
+header .brand-sub {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--tx3);
+  margin-top: 2px;
+}
+
+/* ---------- headings / text ---------- */
+main h1 {
+  margin: .1em 0 .45em;
+  font-size: 1.85em;
+  font-weight: 600;
+  letter-spacing: -.015em;
+  line-height: 1.2;
+}
+main h2 {
+  margin: 1em 0 0;
+  font-size: 1.2em;
+  font-weight: 600;
+  color: var(--tx2);
+}
+main p {
+  margin: .75em 0;
+  color: var(--tx2);
+}
+main h1 + p,
+main h2 + p {
+  margin-top: .35em;
+}
+
+strong { font-weight: 600; color: var(--tx); }
+
+a {
+  color: var(--acc);
+  font-weight: 500;
+  text-underline-offset: 2px;
+}
+a:hover { text-decoration: underline; }
+
+code, pre {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 90%;
+  background: var(--codebg);
+  border-radius: 6px;
+}
+code { padding: .1em .35em; }
+pre { overflow-x: auto; padding: .75em 1em; }
+
+footer {
+  margin-top: 2.5em;
+  padding-top: 1.25em;
+  border-top: 1px solid var(--line);
+  text-align: center;
+  font-size: 12px;
+  color: var(--tx3);
+}
+footer a { color: var(--tx2); font-weight: inherit; }
+
+ul { margin: .75em 0; }
+li { margin: .5em 0; }
+li p { margin: 0; }
+ul > li { list-style-type: none; }
+
+/* ---------- client info block on the consent screen (AC6) ---------- */
+/* Stock consent.html.ejs wraps a (possibly absent) client logo + the name/ID dl in a
+   flex row. A collapsed <img> still reserves its 40px+padding-left(2em) box in flex
+   layout, pushing the dl right and leaving a phantom gap. Switching to block flow
+   removes the horizontal gap (a collapsed element reserves no width in block flow);
+   if a client logo is ever actually provided it stacks above the box instead of
+   beside it — acceptable, most OIDC clients here have no logo. */
+main div:has(> #client_logo) { display: block; }
+
+/* Grid, not the stock float-based dt/dd: float's shrink-to-fit width calc doesn't
+   grow to fit a long ID row, clipping/overlapping the value instead of widening the
+   box. Grid sizes the box to its widest cell (up to max-width) and wraps long values. */
+dl#client {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: 12px;
+  row-gap: 6px;
+  align-items: baseline;
+  width: fit-content;
+  max-width: 100%;
+  padding: 14px 16px;
+  margin: 1em 0;
+  background: var(--accSoft);
+  border: 1px solid var(--accSoftLine);
+  border-radius: 12px;
+  font-size: 14px;
+  /* stock template sets text-wrap:nowrap inline on this element; override it so a
+     long client ID wraps inside the box instead of overflowing it. */
+  text-wrap: wrap !important;
+}
+dl#client dt {
+  grid-column: 1;
+  margin: 0;
+  font-weight: 600;
+  color: var(--tx2);
+}
+dl#client dt:after { content: ": "; }
+dl#client dd {
+  grid-column: 2;
+  margin: 0;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- forms ---------- */
+fieldset {
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+fieldset > legend {
+  margin: 1em 0 .5em;
+  padding: 0;
+  font-size: 1.05em;
+  font-weight: 600;
+  color: var(--tx);
+}
+fieldset > legend + p { margin: 0 0 .5em; color: var(--tx2-strong); }
+fieldset > fieldset > legend { font-size: 1em; }
+.hidden legend { display: none; }
+
+fieldset ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+fieldset ol ol { margin: .5em 0 1em; }
+
+fieldset ol li:not(.checkbox, .radio) {
+  display: grid;
+  grid-template-columns: minmax(9em, 1fr) minmax(200px, 2fr);
+  grid-gap: 1em;
+  align-items: center;
+  margin: .6em 0;
+}
+fieldset ol ol li:not(.checkbox, .radio) { grid-template-columns: 7.5em auto; }
+fieldset li label { font-weight: 600; cursor: pointer; }
+fieldset li li label { font-weight: 500; }
+fieldset li.checkbox > label > input,
+fieldset li.radio > label > input { margin: 0 .5em 0 0; }
+fieldset li p { margin-top: .25em; color: var(--tx2-strong); font-size: 13.5px; }
+
+@media (max-width: 600px) {
+  fieldset ol li:not(.checkbox, .radio) {
+    grid-template-columns: 1fr;
+    grid-gap: .35em;
+  }
+  fieldset ol li:not(.checkbox, .radio) label { margin-bottom: .25em; }
+}
+
+input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 11px 13px;
+  border: 1.5px solid var(--line);
+  border-radius: 11px;
+  background: var(--panel);
+  color: var(--tx);
+  font-size: 14px;
+  outline: none;
+}
+input[type=checkbox], input[type=radio] { width: auto; }
+input::placeholder { color: var(--tx3); }
+input:hover { border-color: #d9d3c4; }
+
+/* ---------- buttons: pill, sage primary ---------- */
+button {
+  cursor: pointer;
+  padding: .6em 1.6em;
+  border: 1.5px solid transparent;
+  border-radius: 99px;
+  background-color: var(--acc);
+  color: #fff;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  transition: filter .15s, background-color .15s;
+}
+button:hover { filter: brightness(1.06); }
+button:disabled {
+  background-color: var(--line);
+  color: var(--tx3);
+  cursor: not-allowed;
+  filter: none;
+}
+button[type=submit] { font-weight: 600; }
+
+/* secondary / "Cancel" / "Back" style buttons */
+button#cancel,
+button#login-link,
+button#edit-account,
+button#switch-account,
+button.alternate {
+  background: none;
+  color: var(--acc);
+  border-color: var(--line);
+  font-weight: 500;
+}
+button#cancel:hover,
+button#login-link:hover,
+button#edit-account:hover,
+button#switch-account:hover,
+button.alternate:hover {
+  background: var(--hov);
+  filter: none;
+}
+/* the consent "alternate" links sit as their own block under the main actions */
+button.alternate {
+  display: block;
+  padding: .3em 0;
+  margin: .4em 0;
+  border: none;
+  color: var(--acc);
+}
+button.alternate:hover { background: none; text-decoration: underline; }
+
+/* ---------- visible focus ring on every interactive element (WCAG AA) ---------- */
+a:focus-visible,
+input:focus-visible,
+button:focus-visible,
+label:focus-within {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+}
+input:focus-visible { border-color: var(--acc); outline-offset: 1px; }
+
+/* ---------- errors ---------- */
+p.error {
+  color: var(--err);
+  font-weight: 600;
+  background: var(--warnBg);
+  border: 1px solid #e7cfa6;
+  border-radius: 10px;
+  padding: .6em .8em;
+  margin: .75em 0;
+}
+p.error:empty { display: none; }
+
+/* ---------- action rows ---------- */
+p.actions {
+  display: flex;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: .6em;
+  margin: 1.5em 0 1em;
+}
+ul.actions {
+  display: flex;
+  gap: 1.5em;
+  flex-wrap: wrap;
+  padding: 0;
+  margin: 0 0 1em;
+}
+ul.actions > li { list-style-type: none; display: inline; margin: 0; }
+ul.actions > li a { font-size: 14px; }
+
+/* ---------- CSS structural helpers (preserved from stock) ---------- */
+.hidden { display: none; }
+form.loaded * { max-height: 1000px; transition: max-height .2s; }
+form .hidden:not(button) { display: block; max-height: 0; overflow: hidden; }
+
+ul.container > li { margin: .25em 0; list-style-type: none; }
+ul.container > li.container > a { font-weight: 700; }
+
+ol.breadcrumbs {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0 .25em;
+  font-size: 90%;
+}
+ol.breadcrumbs > li { display: inline; }
+ol.breadcrumbs > li > a { color: var(--tx2); font-weight: 400; white-space: nowrap; }
+ol.breadcrumbs > li > a:hover { color: var(--acc); }
+ol.breadcrumbs > li:not(:last-child):after {
+  padding: 0 .25em;
+  content: ' › ';
+  font-weight: 400;
+  color: var(--tx3);
+}
+ol.breadcrumbs > li:last-child { font-weight: 500; color: var(--acc); }
+ol.breadcrumbs > li:only-child { display: none; }

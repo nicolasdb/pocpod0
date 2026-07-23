@@ -325,7 +325,7 @@ export const Solid = {
   // password.create. To stay idempotent, the in-progress account token + which
   // steps already succeeded are stashed per podName; a retry resumes from the
   // failed step on the SAME account instead of creating another one.
-  async registerAccount(podName, password) {
+  async registerAccount(podName, password, email) {
     // Defense in depth: CSS's controls.account.pod treats a missing/empty `name`
     // as "claim the pod root" instead of rejecting it (confirmed live 2026-07-22,
     // undocumented) — reject here so this can never reach the network, even if
@@ -333,7 +333,10 @@ export const Solid = {
     if (!podName) throw new Error("Pod name is required.");
 
     let pending = _pendingRegistrations[podName];
-    const email = `${podName}@pod.nicolasdb.eu.local`;
+    // Story 7.2: use the owner's REAL email so they can actually log back in later.
+    // Fall back to the old synthetic placeholder only if a caller somehow omits it,
+    // so an empty email can never silently reach CSS as a duplicate-prone value.
+    email = (email || "").trim() || `${podName}@pod.nicolasdb.eu.local`;
 
     // Step 0+1: create the account (only if we don't already hold a token for it).
     if (!pending) {
