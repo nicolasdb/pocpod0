@@ -89,7 +89,10 @@ class RealBackend {
     return this;
   }
   async list(url) {
-    const ds = await this.sc.getSolidDataset(url, { fetch: this.fetch });
+    // A container listing must never be served stale from the browser's HTTP cache —
+    // otherwise a just-created/deleted item doesn't show up until a hard page reload.
+    const noStoreFetch = (u, opts = {}) => this.fetch(u, { ...opts, cache: "no-store" });
+    const ds = await this.sc.getSolidDataset(url, { fetch: noStoreFetch });
     const urls = this.sc.getContainedResourceUrlAll(ds);
     return urls.map((u) => {
       const isContainer = u.endsWith("/");
@@ -108,40 +111,199 @@ class RealBackend {
     });
     return true;
   }
+  // Upload a real File/Blob (image, PDF, …) preserving its actual content-type —
+  // same overwriteFile primitive as writeText, just fed a File instead of a text Blob.
+  async uploadFile(url, file) {
+    await this.sc.overwriteFile(url, file, {
+      contentType: file.type || "application/octet-stream",
+      fetch: this.fetch,
+    });
+    return true;
+  }
   async makeFolder(url) {
     await this.sc.createContainerAt(url, { fetch: this.fetch });
     return true;
   }
-  async remove(url) {
-    if (url.endsWith("/")) await this.sc.deleteContainer(url, { fetch: this.fetch });
-    else await this.sc.deleteFile(url, { fetch: this.fetch });
+  // Rename = copy to the new URL then delete the old (Solid/WAC has no native move).
+  // Preserves raw bytes + content-type for files; recurses for containers. Any own
+  // `.acl` on the source is re-applied to the destination so a shared thing stays
+  // shared after rename (inherited-only resources need nothing copied).
+  async rename(oldUrl, newUrl) {
+    const isContainer = oldUrl.endsWith("/");
+    if (isContainer) {
+      if (!newUrl.endsWith("/")) newUrl += "/";
+      await this.sc.createContainerAt(newUrl, { fetch: this.fetch });
+      let children = [];
+      try { children = await this.list(oldUrl); } catch (e) {}
+      for (const child of children) {
+        const childNew = newUrl + child.name + (child.isContainer ? "/" : "");
+        await this.rename(child.url, childNew);
+      }
+    } else {
+      const file = await this.sc.getFile(oldUrl, { fetch: this.fetch });
+      await this.sc.overwriteFile(newUrl, file, {
+        contentType: file.type || "application/octet-stream",
+        fetch: this.fetch,
+      });
+    }
+    // Carry over an explicit (non-inherited) access grant.
+    try {
+      const access = await this.getAccess(oldUrl);
+      if (!access.inherited && (access.agents.length || Object.values(access.public).some(Boolean))) {
+        await this._writeAcl(newUrl, { agents: access.agents, public: access.public });
+      }
+    } catch (e) { /* best-effort ACL carry-over */ }
+    await this.remove(oldUrl);
     return true;
   }
+  async remove(url) {
+    if (url.endsWith("/")) {
+      // CSS refuses to delete a non-empty container (HTTP 409). Empty it first,
+      // depth-first (subfolders recurse), then delete the now-empty container.
+      let children = [];
+      try { children = await this.list(url); } catch (e) { /* unreadable/already gone */ }
+      for (const child of children) await this.remove(child.url);
+      await this.sc.deleteContainer(url, { fetch: this.fetch });
+    } else {
+      await this.sc.deleteFile(url, { fetch: this.fetch });
+    }
+    return true;
+  }
+  // How many descendants a container holds — for a delete confirmation that can
+  // honestly say "this also deletes N things inside".
+  async countDescendants(url) {
+    if (!url.endsWith("/")) return 0;
+    let children = [];
+    try { children = await this.list(url); } catch (e) { return 0; }
+    let n = children.length;
+    for (const c of children) if (c.isContainer) n += await this.countDescendants(c.url);
+    return n;
+  }
+  // ---- ACL: read/write the raw .acl document ourselves ----
+  // Story 7.3 fix: `universalAccess.setAgentAccess/setPublicAccess` was found (live audit,
+  // 2026-07-23) to write container grants without `acl:default`, so a "shared" folder let
+  // another agent read/write the *container* but never its children — CSS itself honors
+  // public/agent Read+Write fine (confirmed: anon PUT -> 205 against a hand-written .acl).
+  // So we write the .acl Turtle directly: deterministic, and includes `acl:default` on
+  // containers so grants actually inherit to children (matching the pod-root pattern).
+  _aclUrlFor(url) {
+    return (url.endsWith("/") ? url : url) + ".acl";
+  }
   async getAccess(url) {
-    const ua = this.sc.universalAccess;
-    const agents = await ua.getAgentAccessAll(url, { fetch: this.fetch });
-    const pub = await ua.getPublicAccess(url, { fetch: this.fetch });
-    return {
-      agents: Object.entries(agents || {}).map(([webId, m]) => ({ webId, modes: m })),
-      public: pub || emptyModes(),
-    };
+    const isContainer = url.endsWith("/");
+    const text = await this.turtleAcl(url, { raw: true });
+    if (text == null) {
+      // No standalone .acl — access is inherited from a parent container, not "no access".
+      return { agents: [], public: emptyModes(), inherited: true };
+    }
+    const agents = [];
+    let pub = emptyModes();
+    // Split the Turtle into statements at top-level `.` terminators — NOT on blank lines.
+    // A foreign .acl (written by another app or a CSS default) may pack several
+    // authorizations onto adjacent lines with no blank separator; a blank-line split
+    // then merges them into one block and OR-s their modes together, so a public
+    // Read-only grant reads back as Read+Write+Control. We track `<...>` depth so a
+    // `.` inside a URI is never treated as a statement terminator.
+    for (const stmt of this._turtleStatements(text)) {
+      if (!/\ba\s+acl:Authorization\b/.test(stmt) && !/\bacl:mode\b/.test(stmt)) continue;
+      if (!/acl:agent(Class)?\b/.test(stmt)) continue;
+      const modes = emptyModes();
+      MODES.forEach((m) => {
+        if (new RegExp("acl:" + m[0].toUpperCase() + m.slice(1) + "\\b").test(stmt)) modes[m] = true;
+      });
+      if (/acl:agentClass\s+foaf:Agent\b/.test(stmt)) {
+        MODES.forEach((m) => { if (modes[m]) pub[m] = true; });
+      } else {
+        const m = /acl:agent\s+<([^>]+)>/.exec(stmt);
+        if (m && m[1] !== this.webId) {
+          const existing = agents.find((a) => a.webId === m[1]);
+          if (existing) MODES.forEach((mm) => { if (modes[mm]) existing.modes[mm] = true; });
+          else agents.push({ webId: m[1], modes });
+        }
+      }
+    }
+    return { agents, public: pub, inherited: false };
+  }
+  // Split Turtle into top-level statements on `.` terminators, ignoring `.` inside
+  // <URIs>, "strings", and after @prefix directives. Good enough for WAC .acl docs.
+  _turtleStatements(text) {
+    const out = [];
+    let buf = "", inUri = false, inStr = false;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (inStr) { buf += ch; if (ch === '"') inStr = false; continue; }
+      if (inUri) { buf += ch; if (ch === ">") inUri = false; continue; }
+      if (ch === "<") { inUri = true; buf += ch; continue; }
+      if (ch === '"') { inStr = true; buf += ch; continue; }
+      if (ch === ".") { out.push(buf); buf = ""; continue; }
+      buf += ch;
+    }
+    if (buf.trim()) out.push(buf);
+    // Drop @prefix / @base directives — they're not authorization statements.
+    return out.map((s) => s.trim()).filter((s) => s && !/^@(prefix|base)\b/i.test(s));
+  }
+  async _writeAcl(url, { agents, public: pub }) {
+    const isContainer = url.endsWith("/");
+    // `accessTo` must point at the target resource itself. For a container that's
+    // `./` (the .acl's own base). For a plain file, `./` from `<file>.acl`'s base
+    // resolves to the *parent container* — wrong target entirely, and would have
+    // silently granted access to the whole folder instead of just the one file.
+    const target = isContainer ? "./" : "./" + baseName(url);
+    const lines = [
+      "@prefix acl: <http://www.w3.org/ns/auth/acl#>.",
+      "@prefix foaf: <http://xmlns.com/foaf/0.1/>.",
+      "",
+      "<#owner>",
+      "    a acl:Authorization;",
+      `    acl:agent <${this.webId}>;`,
+      `    acl:accessTo <${target}>;`,
+    ];
+    if (isContainer) lines.push("    acl:default <./>;");
+    lines.push("    acl:mode acl:Read, acl:Write, acl:Control.");
+    (agents || []).forEach((a, i) => {
+      const modes = MODES.filter((m) => a.modes[m]).map((m) => "acl:" + m[0].toUpperCase() + m.slice(1));
+      if (!modes.length) return;
+      lines.push("", `<#grant${i}>`, "    a acl:Authorization;", `    acl:agent <${a.webId}>;`, `    acl:accessTo <${target}>;`);
+      if (isContainer) lines.push("    acl:default <./>;");
+      lines.push(`    acl:mode ${modes.join(", ")}.`);
+    });
+    const pubModes = MODES.filter((m) => pub && pub[m]).map((m) => "acl:" + m[0].toUpperCase() + m.slice(1));
+    if (pubModes.length) {
+      lines.push("", "<#public>", "    a acl:Authorization;", "    acl:agentClass foaf:Agent;", `    acl:accessTo <${target}>;`);
+      if (isContainer) lines.push("    acl:default <./>;");
+      lines.push(`    acl:mode ${pubModes.join(", ")}.`);
+    }
+    const aclUrl = this._aclUrlFor(url);
+    const res = await this.fetch(aclUrl, {
+      method: "PUT",
+      headers: { "content-type": "text/turtle" },
+      body: lines.join("\n") + "\n",
+    });
+    if (!res.ok) throw new Error(`Could not write access rules (HTTP ${res.status}).`);
+    return true;
   }
   async setAgentAccess(url, webId, modes) {
-    await this.sc.universalAccess.setAgentAccess(url, webId, modes, { fetch: this.fetch });
+    const current = await this.getAccess(url);
+    const agents = (current.agents || []).filter((a) => a.webId !== webId);
+    const any = Object.values(modes).some(Boolean);
+    if (any) agents.push({ webId, modes });
+    await this._writeAcl(url, { agents, public: current.public });
     return true;
   }
   async setPublicAccess(url, modes) {
-    await this.sc.universalAccess.setPublicAccess(url, modes, { fetch: this.fetch });
+    const current = await this.getAccess(url);
+    await this._writeAcl(url, { agents: current.agents, public: modes });
     return true;
   }
-  async turtleAcl(url) {
-    // Best-effort fetch of the raw .acl document for the "advanced" view.
+  async turtleAcl(url, { raw = false } = {}) {
+    // Best-effort fetch of the raw .acl document. `raw` (internal) returns null on a
+    // missing .acl instead of a friendly placeholder string, for getAccess() to detect
+    // "inherits from parent" distinctly from "explicit empty grant".
     try {
-      const aclUrl = url.endsWith("/") ? url + ".acl" : url + ".acl";
-      const res = await this.fetch(aclUrl);
+      const res = await this.fetch(this._aclUrlFor(url));
       if (res.ok) return await res.text();
     } catch (e) {}
-    return "# No standalone .acl document — access is inherited from a parent container.";
+    return raw ? null : "# No standalone .acl document — access is inherited from a parent container.";
   }
 }
 
@@ -213,6 +375,15 @@ class DemoBackend {
     this.t[k].body = text; this.t[k].type = type; this.t[k].isContainer = false;
     return true;
   }
+  // Demo stub: store the File itself (kept in memory only) so upload/list/download
+  // round-trips in the offline preview without a real content-type-preserving PUT.
+  async uploadFile(url, file) {
+    url = this._norm(url);
+    let k = Object.keys(this.t).find((x) => this.t[x].url === url);
+    if (!k) { k = url.replace(DEMO_ROOT, ""); this.t[k] = { url, isContainer: false, acl: { agents: [], public: emptyModes() } }; }
+    this.t[k].file = file; this.t[k].type = file.type || "application/octet-stream"; this.t[k].isContainer = false;
+    return true;
+  }
   async makeFolder(url) {
     url = this._norm(url); if (!url.endsWith("/")) url += "/";
     const k = url.replace(DEMO_ROOT, "");
@@ -224,16 +395,30 @@ class DemoBackend {
     for (const k of Object.keys(this.t)) if (this.t[k].url === url || this.t[k].url.startsWith(url)) delete this.t[k];
     return true;
   }
+  async rename(oldUrl, newUrl) {
+    oldUrl = this._norm(oldUrl); newUrl = this._norm(newUrl);
+    // Re-key every node under oldUrl (self + descendants) to the new prefix.
+    for (const k of Object.keys(this.t)) {
+      const full = this.t[k].url;
+      if (full !== oldUrl && !full.startsWith(oldUrl)) continue;
+      const movedUrl = newUrl + full.slice(oldUrl.length);
+      const node = { ...this.t[k], url: movedUrl };
+      delete this.t[k];
+      this.t[movedUrl.replace(DEMO_ROOT, "")] = node;
+    }
+    return true;
+  }
   _node(url) {
     url = this._norm(url);
     return this.t[Object.keys(this.t).find((x) => this.t[x].url === url)];
   }
   async getAccess(url) {
     const n = this._node(url);
-    if (!n) return { agents: [], public: emptyModes() };
+    if (!n) return { agents: [], public: emptyModes(), inherited: true };
     return {
       agents: n.acl.agents.map((a) => ({ webId: a.webId, modes: { ...a.modes }, name: this.agentName(a.webId) })),
       public: { ...n.acl.public },
+      inherited: false,
     };
   }
   async setAgentAccess(url, webId, modes) {

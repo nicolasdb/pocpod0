@@ -346,7 +346,14 @@
           <h1 style="font-size:20px;font-weight:600;margin:0;flex:1">{{ folderTitle }}</h1>
           <button onClick="{{ startNewFile }}" style="font-family:inherit;font-size:13.5px;font-weight:600;padding:9px 18px;border-radius:99px;border:none;background:var(--acc,#3d6b52);color:#fff;cursor:pointer" style-hover="filter:brightness(1.08)">+ New file</button>
           <button onClick="{{ startNewFolder }}" style="font-family:inherit;font-size:13.5px;padding:9px 18px;border-radius:99px;border:1px solid var(--line,#e7e2d6);background:none;color:var(--tx,#26241f);cursor:pointer" style-hover="border-color:var(--acc,#3d6b52)">+ Folder</button>
+          <label style="font-family:inherit;font-size:13.5px;padding:9px 18px;border-radius:99px;border:1px solid var(--line,#e7e2d6);background:none;color:var(--tx,#26241f);cursor:pointer" style-hover="border-color:var(--acc,#3d6b52)" style-focus-within="outline:2px solid var(--acc,#3d6b52);outline-offset:2px">
+            ⬆ Upload
+            <input type="file" multiple onChange="{{ onUploadFiles }}" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)" aria-label="Upload files into this folder">
+          </label>
         </div>
+        <sc-if value="{{ uploadStatus }}" hint-placeholder-val="{{ false }}">
+          <p role="status" style="font-size:12.5px;color:var(--tx2,#8a8474);margin:0 0 14px">{{ uploadStatus }}</p>
+        </sc-if>
         <sc-if value="{{ newThingOpen }}" hint-placeholder-val="{{ false }}">
           <div style="display:flex;gap:10px;align-items:center;padding:14px;border-radius:12px;border:1.5px dashed var(--accSoftLine,#b8ccbf);background:var(--accSoft,#eef3ef);margin-bottom:14px">
             <span style="font-size:16px">{{ newThingIcon }}</span>
@@ -363,11 +370,25 @@
             <sc-for list="{{ items }}" as="it" hint-placeholder-count="4">
               <div style="display:flex;align-items:center;gap:14px;padding:13px 18px;border-bottom:1px solid var(--line,#e7e2d6);cursor:pointer" style-hover="background:var(--hov,#efece3)">
                 <span onClick="{{ it.open }}" style="font-size:19px;width:26px;text-align:center">{{ it.icon }}</span>
-                <span onClick="{{ it.open }}" style="flex:1;min-width:0">
-                  <span style="display:block;font-size:14.5px;font-weight:500">{{ it.name }}</span>
-                  <span style="display:block;font-size:12px;color:var(--tx3,#b3ac9a)">{{ it.meta }}</span>
-                </span>
-                <button onClick="{{ it.share }}" style="{{ it.badgeStyle }}" style-hover="filter:brightness(.96)">{{ it.badgeIcon }} {{ it.badgeLabel }}</button>
+                <sc-if value="{{ it.renaming }}" hint-placeholder-val="{{ false }}">
+                  <input value="{{ renameVal }}" onChange="{{ onRenameVal }}" aria-label="New name" style="flex:1;font-family:'JetBrains Mono',monospace;font-size:13.5px;padding:7px 11px;border-radius:8px;border:1.5px solid var(--acc,#3d6b52);background:var(--panel,#fbfaf7);color:var(--tx,#26241f);outline:none">
+                  <button onClick="{{ it.renameSave }}" style="font-family:inherit;font-size:12px;font-weight:600;padding:6px 12px;border-radius:8px;border:none;background:var(--acc,#3d6b52);color:#fff;cursor:pointer;flex-shrink:0">Save</button>
+                  <button onClick="{{ it.renameCancel }}" style="font-family:inherit;font-size:12px;padding:6px 10px;border-radius:8px;border:none;background:none;color:var(--tx2,#8a8474);cursor:pointer;flex-shrink:0">Cancel</button>
+                </sc-if>
+                <sc-if value="{{ it.notRenaming }}" hint-placeholder-val="{{ true }}">
+                  <span onClick="{{ it.open }}" style="flex:1;min-width:0">
+                    <span style="display:block;font-size:14.5px;font-weight:500">{{ it.name }}</span>
+                    <span style="display:block;font-size:12px;color:var(--tx3,#b3ac9a)">{{ it.meta }}</span>
+                  </span>
+                  <button onClick="{{ it.share }}" style="{{ it.badgeStyle }}" style-hover="filter:brightness(.96)">{{ it.badgeIcon }} {{ it.badgeLabel }}</button>
+                  <button onClick="{{ it.rename }}" aria-label="{{ it.renameLabel }}" style="border:none;background:none;color:var(--tx3,#b3ac9a);cursor:pointer;font-size:14px;padding:6px" style-hover="color:var(--acc,#3d6b52)" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">✏️</button>
+                  <sc-if value="{{ it.armed }}" hint-placeholder-val="{{ false }}">
+                    <button onClick="{{ it.del }}" aria-label="{{ it.confirmLabel }}" style="border:1px solid #a33;background:#a33;color:#fff;cursor:pointer;font-size:12px;font-weight:600;padding:6px 12px;border-radius:8px;flex-shrink:0" style-hover="filter:brightness(1.08)" style-focus-visible="outline:2px solid #a33;outline-offset:2px">Confirm delete</button>
+                  </sc-if>
+                  <sc-if value="{{ it.notArmed }}" hint-placeholder-val="{{ true }}">
+                    <button onClick="{{ it.arm }}" aria-label="{{ it.delLabel }}" style="border:none;background:none;color:var(--tx3,#b3ac9a);cursor:pointer;font-size:15px;padding:6px" style-hover="color:#a33" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">🗑</button>
+                  </sc-if>
+                </sc-if>
               </div>
             </sc-for>
             <sc-if value="{{ emptyFolder }}" hint-placeholder-val="{{ false }}">
@@ -389,6 +410,8 @@
             <button onClick="{{ togglePreview }}" style="font-family:inherit;font-size:12.5px;padding:7px 14px;border-radius:99px;border:1px solid var(--line,#e7e2d6);background:none;color:var(--tx2,#8a8474);cursor:pointer" style-hover="border-color:var(--acc,#3d6b52)">{{ previewLabel }}</button>
           </sc-if>
           <button onClick="{{ openShareCurrent }}" style="{{ editorBadgeStyle }}" style-hover="filter:brightness(.96)">{{ editorBadgeIcon }} {{ editorBadgeLabel }}</button>
+          <button onClick="{{ renameCurrent }}" style="font-family:inherit;font-size:12.5px;padding:7px 14px;border-radius:99px;border:1px solid var(--line,#e7e2d6);background:none;color:var(--tx2,#8a8474);cursor:pointer" style-hover="border-color:var(--acc,#3d6b52);color:var(--acc,#3d6b52)">Rename</button>
+          <button onClick="{{ deleteCurrent }}" style="{{ deleteCurrentStyle }}" style-hover="filter:brightness(1.05)">{{ deleteCurrentLabel }}</button>
           <button onClick="{{ saveFile }}" style="{{ saveBtnStyle }}" style-hover="filter:brightness(1.08)">{{ saveLabel }}</button>
         </div>
         <sc-if value="{{ formatHint }}" hint-placeholder-val="{{ false }}"><div style="{{ formatHintStyle }}">{{ formatHint }}</div></sc-if>
@@ -472,6 +495,9 @@
           <button onClick="{{ closeShare }}" style="border:none;background:none;font-size:18px;color:var(--tx2,#8a8474);cursor:pointer;padding:4px">✕</button>
         </div>
         <p style="font-size:13px;color:var(--tx2,#8a8474);margin:0 0 20px">Who can see this?</p>
+        <sc-if value="{{ shareInherited }}" hint-placeholder-val="{{ false }}">
+          <p style="font-size:12.5px;color:var(--tx2,#8a8474);background:var(--bg,#f6f4ef);border:1px solid var(--line,#e7e2d6);border-radius:10px;padding:11px 13px;margin:0 0 16px">ℹ︎ This has no rules of its own yet — it follows the folder it's in. Choosing below sets a rule just for this.</p>
+        </sc-if>
         <sc-for list="{{ shareChoices }}" as="sh" hint-placeholder-count="3">
           <button onClick="{{ sh.pick }}" style="{{ sh.style }}" style-hover="border-color:var(--acc,#3d6b52)">
             <span style="font-size:18px">{{ sh.icon }}</span>
@@ -551,7 +577,8 @@ class Component extends DCLogic {
       view: 'home', path: [], editing: null, editUrl: null,
       editorText: '', editorLoaded: false, dirty: false, showPreview: true,
       items: [], filesLoading: false, aclCache: {},
-      newThingOpen: false, newThingKind: 'file', newThingName: '',
+      newThingOpen: false, newThingKind: 'file', newThingName: '', uploadStatus: false, confirmDelete: null,
+      renameUrl: null, renameVal: '',
       shareFor: null, wacOpen: false, wacText: '', addWebId: '',
       openPerson: null,
       requests: [
@@ -566,7 +593,7 @@ class Component extends DCLogic {
   async componentDidMount() {
     this.setVars();
     try {
-      this.api = await import('./pod-api.js');
+      this.api = await import('./pod-api.js?v=7-3-7');
     } catch (e) {
       this.api = null;
     }
@@ -642,9 +669,13 @@ class Component extends DCLogic {
     try {
       const items = await this.cl.list(this.urlFor(path));
       const aclCache = { ...this.state.aclCache };
-      for (const it of items) {
-        if (!aclCache[it.url]) { try { aclCache[it.url] = await this.cl.getAccess(it.url); } catch (e) { aclCache[it.url] = { agents: [], public: this.api.emptyModes() }; } }
-      }
+      // Fetch each item's ACL in parallel, not one-at-a-time — a folder with many
+      // items was making N sequential round trips (visibly slow on real pods).
+      const toFetch = items.filter(it => !aclCache[it.url]);
+      const fetched = await Promise.all(toFetch.map(it =>
+        this.cl.getAccess(it.url).catch(() => ({ agents: [], public: this.api.emptyModes() }))
+      ));
+      toFetch.forEach((it, i) => { aclCache[it.url] = fetched[i]; });
       this.setState({ items, aclCache, filesLoading: false });
     } catch (e) { this.setState({ items: [], filesLoading: false }); this.toast('Could not read that folder: ' + e.message); }
   }
@@ -681,15 +712,84 @@ class Component extends DCLogic {
     if (!name) { this.toast('Give it a name first.'); return; }
     if (isFolder) {
       name = name.replace(/[^\w\-]+/g, '-');
+      // Creating a folder over an existing name is a no-op/merge, not data loss, but
+      // still surprising — refuse and point the user at the existing one.
+      if ((this.state.items || []).some(it => it.isContainer && it.name.replace(/\/$/,'') === name)) { this.toast(`A folder named "${name}" already exists here.`); return; }
       try { await this.cl.makeFolder(this.urlFor(this.state.path) + name + '/'); this.setState({ newThingOpen: false, newThingName: '' }); this.loadFolder(this.state.path); this.toast('Folder created — private.'); }
       catch (e) { this.toast('Could not create folder: ' + e.message); }
     } else {
       if (!/\.\w+$/.test(name)) name += '.md';
+      // A same-named new file would overwrite the existing one and destroy its content —
+      // refuse outright (this is "New file", not "replace"; use the editor to edit it).
+      if ((this.state.items || []).some(it => !it.isContainer && it.name === name)) { this.toast(`"${name}" already exists — open it to edit, or pick another name.`); return; }
       const url = this.urlFor(this.state.path) + name;
       const body = /\.json$/i.test(name) ? '{\n  \n}\n' : /\.toml$/i.test(name) ? '# ' + name + '\ntitle = ""\n' : '# ' + name.replace(/\.\w+$/, '') + '\n\n';
       try { await this.cl.writeText(url, body, this.mimeFor(name)); this.setState({ newThingOpen: false, newThingName: '' }); this.openFile(url, name, this.extKind(name, false)); this.toast('Created ' + name + ' — private, like everything new.'); }
       catch (e) { this.toast('Could not create file: ' + e.message); }
     }
+  }
+
+  async uploadFiles(fileList) {
+    const files = Array.from(fileList || []);
+    if (!files.length || !this.cl) return;
+    // Same-named upload silently clobbers the existing file — treat overwrite as a
+    // destructive action and confirm it, matching the delete-confirmation bar.
+    const existing = new Set((this.state.items || []).map(it => it.name));
+    for (const file of files) {
+      if (existing.has(file.name) && !confirm(`"${file.name}" already exists here. Replace it?`)) continue;
+      this.setState({ uploadStatus: `Uploading ${file.name}…` });
+      try {
+        const url = this.urlFor(this.state.path) + file.name;
+        await this.cl.uploadFile(url, file);
+        this.setState({ uploadStatus: `✓ ${file.name} uploaded.` });
+      } catch (e) {
+        // One file failing must not silently drop the rest — keep going and report per-file.
+        this.toast(`Could not upload ${file.name}: ${e.message}`);
+      }
+    }
+    this.setState({ uploadStatus: false });
+    this.loadFolder(this.state.path);
+  }
+
+  // Two-tap delete: first tap arms (reveals a "Confirm" button), second tap within
+  // the window deletes. Auto-disarms after a timeout so nothing stays primed.
+  armDelete(url) {
+    clearTimeout(this._delTimer);
+    this.setState({ confirmDelete: url });
+    this._delTimer = setTimeout(() => this.setState({ confirmDelete: null }), 4000);
+  }
+  async deleteThing(url, name, isContainer) {
+    clearTimeout(this._delTimer);
+    this.setState({ confirmDelete: null });
+    try {
+      await this.cl.remove(url);
+      this.toast(`Deleted ${name}.`);
+      if (this.state.view === 'editor' && this.state.editUrl === url) this.setState({ view: 'files' });
+      this.loadFolder(this.state.path);
+    } catch (e) { this.toast('Could not delete: ' + e.message); }
+  }
+
+  startRename(url, name, isContainer) {
+    this.setState({ renameUrl: url, renameVal: (name || '').replace(/\/$/, ''), confirmDelete: null });
+  }
+  async doRename() {
+    const oldUrl = this.state.renameUrl;
+    const isContainer = oldUrl.endsWith('/');
+    let name = (this.state.renameVal || '').trim();
+    if (isContainer) name = name.replace(/[^\w\-]+/g, '-'); else name = name.replace(/\//g, '-');
+    if (!name) { this.toast('Give it a name.'); return; }
+    const parent = oldUrl.replace(/\/$/, '').replace(/[^/]+$/, '');
+    const newUrl = parent + name + (isContainer ? '/' : '');
+    if (newUrl === oldUrl) { this.setState({ renameUrl: null }); return; }
+    // Renaming onto an existing sibling would silently overwrite it — confirm first.
+    const collides = (this.state.items || []).some(it => it.url === newUrl);
+    if (collides && !confirm(`"${name}" already exists here. Replace it?`)) return;
+    try {
+      await this.cl.rename(oldUrl, newUrl);
+      this.toast(`Renamed to ${name}.`);
+      this.setState(s => { const c = { ...s.aclCache }; delete c[oldUrl]; return { renameUrl: null, aclCache: c, view: (s.view === 'editor' && s.editUrl === oldUrl) ? 'files' : s.view }; });
+      this.loadFolder(this.state.path);
+    } catch (e) { this.toast('Could not rename: ' + e.message); }
   }
 
   async refreshAccess(url) {
@@ -701,11 +801,13 @@ class Component extends DCLogic {
     if (!a) return 'private';
     if (a.public && (a.public.read || a.public.write)) return 'public';
     if (a.agents && a.agents.some(g => this.api.MODES.some(m => g.modes[m]))) return 'shared';
+    if (a.inherited) return 'inherited';
     return 'private';
   }
   visInfo(v) {
     return v === 'public' ? { icon:'🌍', label:'Public', color:'var(--warn,#b5722a)' }
       : v === 'shared' ? { icon:'👥', label:'Shared', color:'var(--acc,#3d6b52)' }
+      : v === 'inherited' ? { icon:'↳', label:'Inherits from parent', color:'var(--tx2,#8a8474)' }
       : { icon:'🔒', label:'Only you', color:'var(--tx2,#8a8474)' };
   }
   modeSummary(m) { return this.api.MODES.filter(x => m[x]).map(x => ({read:'read',append:'append',write:'edit',control:'control'})[x]).join(' · ') || 'no access'; }
@@ -993,6 +1095,15 @@ class Component extends DCLogic {
         meta: it.isContainer ? 'folder' : it.kind,
         open: it.isContainer ? () => { const np = [...S.path, it.name.replace(/\/$/,'')]; this.setState({ path: np }); this.loadFolder(np); } : () => this.openFile(it.url, it.name, it.kind),
         share: (e) => { e && e.stopPropagation && e.stopPropagation(); this.setState({ shareFor: it.url, wacOpen: false, addWebId: '' }); this.refreshAccess(it.url); },
+        arm: (e) => { e && e.stopPropagation && e.stopPropagation(); this.armDelete(it.url); },
+        del: (e) => { e && e.stopPropagation && e.stopPropagation(); this.deleteThing(it.url, it.name, it.isContainer); },
+        armed: S.confirmDelete === it.url, notArmed: S.confirmDelete !== it.url,
+        delLabel: 'Delete ' + it.name, confirmLabel: 'Confirm delete ' + it.name,
+        rename: (e) => { e && e.stopPropagation && e.stopPropagation(); this.startRename(it.url, it.name, it.isContainer); },
+        renameSave: (e) => { e && e.stopPropagation && e.stopPropagation(); this.doRename(); },
+        renameCancel: (e) => { e && e.stopPropagation && e.stopPropagation(); this.setState({ renameUrl: null }); },
+        renaming: S.renameUrl === it.url, notRenaming: S.renameUrl !== it.url,
+        renameLabel: 'Rename ' + it.name,
         badgeIcon: vi.icon, badgeLabel: vi.label,
         badgeStyle: 'display:flex;align-items:center;gap:6px;font-family:inherit;font-size:12px;font-weight:600;padding:6px 12px;border-radius:99px;border:1px solid var(--line,#e7e2d6);background:var(--bg,#f6f4ef);cursor:pointer;flex-shrink:0;color:' + vi.color
       };
@@ -1100,6 +1211,9 @@ class Component extends DCLogic {
       newThingPlaceholder: S.newThingKind==='folder'?'folder-name':'name.md · name.json · name.toml · name.txt',
       newThingName: S.newThingName, onNewThingName:(e)=>this.setState({newThingName:e.target.value}),
       confirmNewThing: () => this.createThing(), cancelNewThing: () => this.setState({newThingOpen:false}),
+      onUploadFiles: (e) => { this.uploadFiles(e.target.files); e.target.value = ''; },
+      uploadStatus: S.uploadStatus,
+      renameVal: S.renameVal, onRenameVal: (e) => this.setState({ renameVal: e.target.value }),
 
       inEditor: S.view==='editor',
       editorIcon: this.iconFor(eKind), editorName: eName,
@@ -1114,13 +1228,19 @@ class Component extends DCLogic {
       editorBadgeIcon: eVi.icon, editorBadgeLabel: eVi.label,
       editorBadgeStyle: 'display:flex;align-items:center;gap:6px;font-family:inherit;font-size:12px;font-weight:600;padding:7px 13px;border-radius:99px;border:1px solid var(--line,#e7e2d6);background:var(--bg,#f6f4ef);cursor:pointer;color:'+eVi.color,
       openShareCurrent: () => { this.setState({ shareFor: eUrl, wacOpen:false, addWebId:'' }); this.refreshAccess(eUrl); },
+      renameCurrent: () => { if (S.dirty && !confirm('You have unsaved changes that will be lost. Rename anyway?')) return; this.setState({ view: 'files', dirty: false }); this.loadFolder(S.path); this.startRename(eUrl, eName, false); },
+      deleteCurrent: () => (S.confirmDelete === eUrl ? this.deleteThing(eUrl, eName, false) : this.armDelete(eUrl)),
+      deleteCurrentLabel: S.confirmDelete === eUrl ? 'Confirm delete' : 'Delete',
+      deleteCurrentStyle: S.confirmDelete === eUrl
+        ? 'font-family:inherit;font-size:12.5px;padding:7px 14px;border-radius:99px;border:1px solid #a33;background:#a33;color:#fff;cursor:pointer;font-weight:600'
+        : 'font-family:inherit;font-size:12.5px;padding:7px 14px;border-radius:99px;border:1px solid var(--line,#e7e2d6);background:none;color:var(--tx2,#8a8474);cursor:pointer',
 
       isPeople: S.view==='people', peopleList, noPeople: peopleList.length===0,
       isRequests: S.view==='requests', requestCards, noRequests: pendingReqs.length===0,
 
       // share drawer
       shareOpen: !!sfUrl, closeShare: () => this.setState({ shareFor:null, wacOpen:false }),
-      shareIcon: '📄', shareName: sfName, shareChoices,
+      shareIcon: '📄', shareName: sfName, shareChoices, shareInherited: !!(sfAcc && sfAcc.inherited),
       shareGrants, shareGrantsAny: shareGrants.length>0,
       addWebId: S.addWebId, onAddWebId:(e)=>this.setState({addWebId:e.target.value}),
       addPersonRead: () => this.addPerson(sfUrl, S.addWebId.trim(), false),
