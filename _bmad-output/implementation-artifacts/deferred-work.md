@@ -1,5 +1,16 @@
 # Deferred Work
 
+## File-manager hardening — deferred from Story 7.3 to new Story 7.6 (2026-07-23)
+
+Story 7.3 live-testing on a real messy pod (`hyperscope_ndb`, partly populated by the third-party `focus.noeldemartin.com` todo app) surfaced robustness gaps beyond 7.3's CRUD/ACL/upload scope. Captured as **Story 7.6 (drafted, ready-for-dev)** rather than scope-creeping 7.3:
+
+- **Cross-folder move** — 7.3 `rename` is same-parent only; moving between folders (copy-verify-delete ordering so a partial move never loses data) is 7.6.
+- **Bulk multi-select** delete/move with count-aware confirm + per-item graceful failure.
+- **Transfer progress** for many/large files; large-folder listing responsiveness (batch/throttle the already-parallel ACL fetch).
+- **Decision (with Nicolas):** do NOT adopt `solid-contrib/solid-file-manager` wholesale — it lacks our ACL/permissions UI, inline edit, and two-tap delete (our differentiators) and is a standalone app, not a library. Use it + `solid-file-client` as a **reference** to re-implement move/copy/bulk/progress patterns in our idiom. Audit "adopted/rejected/why" is a 7.6 deliverable so this isn't re-litigated.
+
+7.3 itself shipped through `pod-api.js?v=7-3-7` with all data-loss paths guarded (new-file/new-folder/rename/upload collisions all refuse or confirm; editor-rename warns on unsaved changes).
+
 ## Deferred from: code review of 6-1-troll-comprehensive-run-and-report (2026-03-31)
 
 - Bare imports in `run_comprehensive.py:27-31` are fragile if the module is ever imported from outside the attacks/ directory. Works correctly as a script. Consider adding `sys.path` guard if module reuse is needed.
@@ -57,6 +68,19 @@
 - Google Fonts `@import` on auth/consent pages (privacy leak — Google sees every login-page load; also a single point of failure) [infra/css/main.css] — mirrors existing backoffice pattern from Story 7.1, not new to this story.
 - `main div:has(> #client_logo) { display: block; }` (the consent client-logo gap fix) has no fallback for browsers without `:has()` support (Safari <15.4, Firefox <121) — degrades to the original cosmetic phantom-gap bug, not a functional break [infra/css/main.css].
 - AC6 "Pod Backoffice" clientName display claimed verified in Completion Notes, but no direct screenshot/evidence of that specific string rendering was captured — only the surrounding layout fix (grid vs float) was screenshot-verified. Low-risk; spot-check manually before pilot.
+
+## Live CSS ACL/portability audit (2026-07-23, throwaway-audit-0723 pod)
+
+Spun up a throwaway pod on live VPS CSS (v0.5 account API) to kill stale assumptions before writing Epic 7 stories. Findings:
+
+- **Default pod ACL template (confirmed live):** root `.acl` grants `<#public>` only `acl:Read` on `<./>` with **`accessTo` only (no `acl:default`)** — so public-read applies to the root container listing *itself*, not inherited by children. Owner `<#owner>` gets `Read/Write/Control` with **both `accessTo` and `acl:default`** → inherited by every child.
+- **Inheritance model (confirmed):** fresh child containers (`profile/`) have **no own `.acl`** (GET → 404); they inherit root's owner grant via `acl:default`. So the pod-root `.acl` is the single anchor. Self-revoking Write on a *child* writes a child `.acl` override and is recoverable as long as **root Control is intact**. (Did NOT live-test stripping root Control — treat as potentially irreversible.)
+- **Public RW works at CSS layer (confirmed):** created `/manual`, wrote a `.acl` granting `foaf:Agent` Read+Write → anon GET 200, anon PUT **205 (success)**, re-read showed anon-edited content. → Nicolas's "manual of me: public RW but couldn't edit" is **NOT a CSS limitation**; it points to a **backoffice bug** — likely `universalAccess.setPublicAccess` not writing the grant as expected (wrong modes, or `accessTo` without `acl:default`, or app not persisting). Story 7.3 ACL work = client-side bug, not server feature.
+- **Client-credentials flow (confirmed working, v0.5):** `POST /.account/account/{id}/client-credentials/` `{name, webId}` → `{id, secret}`; token via `POST /.oidc/token` grant_type=client_credentials + DPoP. Credentials **ARE deletable over HTTP** (`DELETE .../client-credentials/{id}/` → 200/205). This is the 7.4 bot-connect + revoke backend.
+- **Account/pod deletion still NOT exposed over HTTP (re-verified, unchanged from 7.1):** `DELETE /.account/account/{id}/` → 404, `DELETE .../pod/{id}/` → 400. Only credentials are HTTP-deletable. Confirms orphan-cleanup still needs in-container Node/`AccountStore` approach.
+- **Gotcha:** account `logout` invalidates the CSS-Account-Token immediately; revoke credentials BEFORE logout, or re-login with password to continue.
+
+**Cleanup state of throwaway-audit-0723:** `/manual`+`.acl` deleted, all client-credentials revoked (`clientCredentials: {}`), no live exposure. The account + empty pod (default `profile/`+README, public-read root) **remain as orphan #19** — cannot be HTTP-deleted, same as the others below. Sweep with them.
 
 ## Orphan CSS account cleanup — VPS (from code review of story-7.1, 2026-07-22)
 

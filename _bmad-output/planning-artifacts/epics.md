@@ -223,6 +223,38 @@ As a new user landing on the CSS-served registration/login/consent pages, I expe
 - Keep flows functional: account create, pod provisioning, OIDC consent (client name "Pod Backoffice")
 - WCAG 2.1 AA (4.5:1 contrast, focus-visible)
 
+### Story 7.3: My Things — File Upload, CRUD & ACL Fix
+As a pod owner, I can create, upload (real files, any type), read, overwrite and delete my files/folders, and set sharing permissions that actually take effect against my live pod.
+- Fix the client-side ACL write bug: live audit proved CSS honors public Read+Write (anon PUT → 205), so the backoffice is writing an ineffective `.acl` — container grants must include `acl:default` (inheritance), not just `accessTo`
+- Add file-upload UI (`overwriteFile` already accepts any Blob/content-type — only the picker is missing)
+- CRUD completeness + reversibility (confirm on delete); ACL read must distinguish explicit grant vs inherited-from-parent
+- Root-`Control` self-lockout guard (root `.acl` is the single inheritance anchor; its loss is a potential irreversible lockout)
+- WCAG 2.1 AA
+
+### Story 7.4: Apps & Credentials — Connect External Apps to Your Pod
+As a pod owner, I can see who has access, and mint/name/revoke machine credentials (client-credentials) so a Discord/Matrix bot or script can act on my pod and be cut off at will.
+- Mint (`POST .../client-credentials/ {name, webId}`), list (`GET`), revoke (`DELETE {resourceUrl}` → 200, live-confirmed) client-credentials; one-time secret reveal (never stored/logged)
+- Connection recipe for bot authors (token endpoint + grant + scope + DPoP required)
+- Split People & apps into inbound access grants vs outbound issued credentials
+- Honest WAC framing: a credential acts with the owner's identity (per-app scoping needs ACP, not CSS default) — least-privilege ACLs + revocation are the real controls
+- Enables Epic 4 Discord/Matrix bridges; WCAG 2.1 AA
+
+### Story 7.5: Export & Backup — Download Your Pod
+As a pod owner, I can download my pod as an archive and understand how portability really works.
+- Owner-facing export via authenticated LDP crawl (`ldp:contains`) → client-side `.zip` preserving tree, bytes, content-types; binaries as Blob
+- Per-resource access-metadata sidecars (`.acl` or inherits-note) + success/failure manifest; graceful partial-crawl
+- Honest portability explainer: no standard pod archive / no CSS export endpoint; cross-provider move breaks `.acl` agent URIs (WebID changes) — needs re-applying permissions
+- Distinct from operator-level `make vps-backup` (whole-server volume tar). Cross-provider import/restore (WebID/ACL rebinding) deferred to a follow-on
+- WCAG 2.1 AA
+
+### Story 7.6: My Things — File-Manager Hardening
+As a pod owner with a real, growing pod, file operations are as robust as a dedicated Solid file manager — without losing our ACL UI, inline edit, or reversibility.
+- Cross-folder **move** (generalize 7.3 `rename`: copy bytes+content-type+explicit-ACL, recurse, collision-confirm, copy-verify-delete ordering so a partial move never loses data)
+- **Bulk** multi-select delete/move with count-aware confirm + per-item graceful failure
+- **Transfer progress** for many/large files; large-folder listing stays responsive (batch/throttle parallel ACL fetch)
+- **Reference, not dependency:** learn move/copy/bulk/progress patterns from `solid-contrib/solid-file-manager` + `solid-file-client`; deliberately NOT adopted (it lacks ACL UI + inline edit + two-tap delete — our differentiators). Audit "adopted/rejected/why" captured
+- Hardening on top of 7.3; keep pinned Inrupt libs; WCAG 2.1 AA + no regression
+
 ## Epic 1: Pod Sovereignty & Access Control
 
 Learners own their data in Solid Pods with enforceable, auditable access control — the fundamental sovereignty primitive is proven and adversarially validated.
