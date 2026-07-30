@@ -1,0 +1,22 @@
+{
+  "name": "solid-pod-agent",
+  "version": "0.1.0",
+  "description": "Toolkit for an AI agent to authenticate, read/write, and manage WAC permissions on a Solid Pod.",
+  "main": "src/podClient.js",
+  "scripts": {
+    "mcp": "node src/mcp-server.js",
+    "onboard": "node src/onboarding.js",
+    "onboard:apply": "node src/onboarding.js --apply",
+    "whoami": "node src/whoami.js",
+    "example": "node src/example-usage.js"
+  },
+  "dependencies": {
+    "@inrupt/solid-client": "^2.0.0",
+    "@inrupt/solid-client-authn-node": "^2.0.0",
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "dotenv": "^16.4.0",
+    "zod": "^3.23.0"
+  },
+  "license": "UNLICENSED",
+  "private": true
+}

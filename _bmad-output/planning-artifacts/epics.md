@@ -207,6 +207,13 @@ Real users can create an account and pod on our CSS instance and manage their po
 **Relationship:** Prerequisite-sibling of Story 4.3 (Nicolas onboarding proof). ACL dashboard (6.2) = observer view; backoffice sharing = owner view — both kept.
 **Dashboard backlog:** none (this IS a user surface)
 
+### Epic 8: Solid MCP Connector _(ADDED 2026-07-30 — Quest B handoff, MISSION_BRIEF_solid-mcp-connector.md)_
+A self-hosted MCP server lets Claude.ai (or any MCP client) read/write pod resources and inspect WAC permissions on `pod.nicolasdb.eu`, scoped per-person to each team member's own AGENT WebID — HyperScope using its own pod tooling internally before offering it to Singelijn/partners.
+**Origin:** Claude-chat planning handoff, `solid-pod-agent.zip` toolkit (validated offline, never run against a real pod).
+**Relationship:** Independent of Epic 7 (pod-owner backoffice UI) and Epic 4 (parked pilot capstone) — different codebase (Node MCP server), same CSS instance and WAC model. Story 8.1 live-verifies `wacManager.js`'s WAC-specific Inrupt calls against the exact bug patterns Story 7.3 found, falling back to 7.3's hand-rolled ACL Turtle only if they reproduce.
+**Non-negotiables:** two-token model (OWNER never deployed, AGENT is runtime identity, agent never self-grants), one CSS account per person, grants always container-scoped with `scope: 'both'`, permission-writing tools require explicit human approval.
+**Dashboard backlog:** none (server-side connector, no UI of its own)
+
 ### Story 7.1: Backoffice Deploy & Real Account Registration
 As a new user, I can reach the pod backoffice at `https://pod.nicolasdb.eu/` (replacing the CSS default welcome page), create a real CSS account + pod from the onboarding flow, and manage my files and sharing against my live pod.
 - Import mockup bundle into repo (new `backoffice/` dir); serve at `https://pod.nicolasdb.eu/` root via CSS `StaticAssetHandler` config (`/` → index.html, `/pod-api.js`, `/support.js`), replacing the default CSS welcome page. Same-origin: no CORS, `redirectUrl: window.location.href` works unchanged.
