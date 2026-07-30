@@ -55,6 +55,13 @@ const GRANTS = [
 const APPLY = process.argv.includes("--apply");
 
 async function main() {
+  if (!process.env.OWNER_CLIENT_ID || !process.env.OWNER_CLIENT_SECRET) {
+    throw new Error(
+      "OWNER_CLIENT_ID / OWNER_CLIENT_SECRET not set. This script must run as " +
+        "the pod OWNER's WebID, not the agent's. See .env.example."
+    );
+  }
+
   // NOTE: this authenticates with the OWNER credentials, not the agent's.
   const session = await getAgentSession({
     clientId: process.env.OWNER_CLIENT_ID,
@@ -62,13 +69,6 @@ async function main() {
     oidcIssuer: process.env.SOLID_OIDC_ISSUER,
     keepAlive: false,
   });
-
-  if (!process.env.OWNER_CLIENT_ID) {
-    throw new Error(
-      "OWNER_CLIENT_ID / OWNER_CLIENT_SECRET not set. This script must run as " +
-        "the pod OWNER's WebID, not the agent's. See .env.example."
-    );
-  }
 
   console.log(`\nActing as owner: ${session.info.webId}`);
   console.log(`Granting to agent: ${AGENT_WEBID}`);

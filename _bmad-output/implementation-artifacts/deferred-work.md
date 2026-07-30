@@ -1,5 +1,10 @@
 # Deferred Work
 
+## Deferred from: code review of story-8-1-wac-hardening-verification (2026-07-30)
+
+- `wacManager.js` `getAgentAccess` returns `null` with no distinct signal for "no ACL found" vs "no access" [wacManager.js:736] — `onboarding.js`/`whoami.js` just stringify `null`; cosmetic, not blocking.
+- `podClient.js` `deleteResource` silently no-ops on containers, no API-level guard [podClient.js:515] — already flagged in Story 8.1's own Dev Notes as a concern for a future container-delete story (cf. Story 7.3).
+
 ## Deferred from: code review of story-7.4 (2026-07-23)
 
 - Hardcoded `ISSUER`/token-endpoint (`pod.nicolasdb.eu`) in `pod-api.js` — fine for single-tenant VPS today, revisit if backoffice ever targets multiple pod deployments.

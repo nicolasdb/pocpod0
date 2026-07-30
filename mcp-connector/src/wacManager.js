@@ -60,11 +60,17 @@ async function _getEditableAcl(resourceUrl, session) {
     }
     if (!hasFallbackAcl(datasetWithAcl)) {
       // No resource ACL and no readable fallback: initialise a fresh one.
-      // WARNING: saving an ACL with nobody holding control:true permanently
-      // orphans this resource — nobody, including the pod owner, could ever
-      // change its permissions again. Always include the owner with
-      // control:true in the same batch that creates a new ACL.
-      resourceAcl = createAcl(datasetWithAcl);
+      // Saving an ACL with nobody holding control:true permanently orphans
+      // this resource — nobody, including the pod owner, could ever change
+      // its permissions again. Always include the acting session's own
+      // WebID with control:true in the same batch that creates a new ACL,
+      // regardless of what the caller's own modes requested.
+      resourceAcl = setAgentResourceAccess(createAcl(datasetWithAcl), session.info.webId, {
+        read: true,
+        write: true,
+        append: true,
+        control: true,
+      });
     } else {
       resourceAcl = createAclFromFallbackAcl(datasetWithAcl);
     }
@@ -85,6 +91,9 @@ async function _getEditableAcl(resourceUrl, session) {
  */
 async function grantAccess(resourceUrl, agentWebId, modes, session, options = {}) {
   const scope = options.scope || "resource";
+  if (!["resource", "default", "both"].includes(scope)) {
+    throw new Error(`Invalid scope "${scope}" — expected 'resource', 'default', or 'both'.`);
+  }
   const { datasetWithAcl, resourceAcl } = await _getEditableAcl(resourceUrl, session);
 
   let updatedAcl = resourceAcl;
@@ -112,7 +121,14 @@ async function _saveAclOrThrowControlError(resourceUrl, datasetWithAcl, updatedA
   try {
     return await saveAclFor(datasetWithAcl, updatedAcl, { fetch: session.fetch });
   } catch (e) {
-    if (String(e.message).includes("403")) {
+    // Inrupt's FetchError doesn't reliably expose a `statusCode`/`status`
+    // property here, so fall back to matching the bracketed status code in
+    // its message (e.g. "Storing the Resource at [...] failed: [403] ...")
+    // rather than a bare `.includes("403")`, which would false-match any
+    // unrelated error whose text happens to contain that substring.
+    const status = e.statusCode || e.status || e.response?.status;
+    const messageStatus = String(e.message).match(/\[(\d{3})\]/)?.[1];
+    if (status === 403 || messageStatus === "403") {
       throw new Error(
         `${session.info.webId} does not have Control access to ${resourceUrl}, ` +
           "so it cannot change permissions here. This grant must be made by " +
@@ -137,6 +153,9 @@ async function revokeAccess(resourceUrl, agentWebId, session, options = {}) {
 /** Set (or remove) public access — anyone, logged in or not. Use sparingly. */
 async function setPublicAccess(resourceUrl, modes, session, options = {}) {
   const scope = options.scope || "resource";
+  if (!["resource", "default", "both"].includes(scope)) {
+    throw new Error(`Invalid scope "${scope}" — expected 'resource', 'default', or 'both'.`);
+  }
   const { datasetWithAcl, resourceAcl } = await _getEditableAcl(resourceUrl, session);
 
   let updatedAcl = resourceAcl;

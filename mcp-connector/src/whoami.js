@@ -45,7 +45,7 @@ async function main() {
         const access = await wacManager.getAgentAccess(url, session.info.webId, session);
         console.log(`    ACL   : ${access ? JSON.stringify(access) : "not visible"}`);
       } catch (err) {
-        console.log(`    ACL   : not readable (${err.statusCode || err.message})`);
+        console.log(`    ACL   : not readable (${err?.statusCode || err?.message || String(err)})`);
       }
       console.log("");
     }

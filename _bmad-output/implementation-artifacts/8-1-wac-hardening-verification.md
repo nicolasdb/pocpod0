@@ -1,6 +1,6 @@
 # Story 8.1: WAC Manager — Live Verification & Hardening
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -113,3 +113,16 @@ OWNER credentials (a token bound to the `hyperscope_ndb` WebID) are not requeste
 - `mcp-connector/src/podClient.js` — modified (`writeFile`: coerce string content to Buffer)
 - `mcp-connector/src/wacManager.js` — modified (`grantAccess`, `setPublicAccess`: normalize a Control-less 403 to the documented error via new `_saveAclOrThrowControlError` helper)
 - `mcp-connector/.env` — created (gitignored; AGENT `nicolas_claude` client-credentials only, no OWNER fields)
+- `mcp-connector/src/mcp-server.js`, `onboarding.js`, `whoami.js`, `auth.js`, `example-usage.js` — new (toolkit unpack + pre-verification static fixes per Change Log; omitted from the list above — see [Review][Patch] P5)
+
+## Review Findings
+
+- [x] [Review][Decision] revokeAccess defaults to scope 'both' — Nicolas: keep 'both' as default (maximally thorough revoke by design). No code change.
+- [x] [Review][Patch] `_getEditableAcl`'s fresh-ACL branch had no owner-control safeguard [wacManager.js:614-620] — fixed: fresh-ACL path now always grants the acting session's own WebID `control:true` (plus read/write/append) regardless of caller's requested modes, per Nicolas's decision.
+- [x] [Review][Patch] 403 detection via message substring match was fragile [wacManager.js:668] — fixed: checks `statusCode`/`status`/`response.status` first, falls back to a bracketed `[403]` regex match instead of a bare substring check.
+- [x] [Review][Patch] onboarding.js's OWNER_CLIENT_ID guard ran after login was already attempted [onboarding.js:378-392] — fixed: guard now runs before `getAgentSession` is called.
+- [x] [Review][Patch] grantAccess/setPublicAccess silently no-op'd yet still saved on an unrecognized `scope` value [wacManager.js:644-649, 696-701] — fixed: both now throw on an invalid `scope`.
+- [x] [Review][Patch] whoami.js's ACL error branch assumed the thrown value has `.message` [whoami.js:801] — fixed: falls back to `String(err)` when neither `statusCode` nor `message` is present.
+- [x] [Review][Patch] File List omitted 5 new files [story File List, above] — fixed: File List updated above.
+- [x] [Review][Defer] `getAgentAccess` returns `null` with no distinct signal for "no ACL found" vs "no access" [wacManager.js:736] — onboarding.js/whoami.js just `JSON.stringify(null)` it; cosmetic, not blocking — deferred, pre-existing
+- [x] [Review][Defer] `podClient.deleteResource` silently no-ops on containers, no API-level guard [podClient.js:515] — already noted in this story's own Dev Notes (AC7) as a concern for a future container-delete story (cf. Story 7.3) — deferred, pre-existing
