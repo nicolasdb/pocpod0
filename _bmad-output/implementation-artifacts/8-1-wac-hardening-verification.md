@@ -28,11 +28,16 @@ This story is the gate before any of 8.2-8.6: verify first, harden only where ve
 
 ## Prerequisite (Nicolas, outside this story/session)
 
-Before Task 2/3 can run, Nicolas grants AGENT (`nicolas_claude` WebID) read+write on **at least one real data-pod container** via WAC himself (backoffice sharing UI or direct `.acl` edit), using `scope:'both'` semantics (or the backoffice's equivalent). He then shares:
-- the AGENT client-credentials token (`.env`, gitignored, never committed), and
-- the URL(s) of the container(s) granted, so the story's read/write checks have a real target.
+Confirmed 2026-07-30 (account screenshots): single CSS account on `pod.nicolasdb.eu` with three pods —
+- **OWNER/data pod:** `https://pod.nicolasdb.eu/hyperscope_ndb/` — WebID `https://pod.nicolasdb.eu/hyperscope_ndb/profile/card#me` — this story's target, real test data already lives here, Nicolas confirms it's safe to use.
+- **AGENT/workspace pod:** `https://pod.nicolasdb.eu/nicolas_claude/` — WebID `https://pod.nicolasdb.eu/nicolas_claude/profile/card#me` — used for Task 3's grant/revoke/orphan-ACL checks (AGENT holds Control here by construction).
+- `https://pod.nicolasdb.eu/nicolas/` — unrelated to this story.
 
-OWNER credentials are not requested, not needed, and must not be entered into this environment at any point in this story.
+Before Task 2/3 can run, Nicolas grants AGENT (`nicolas_claude`) read+write on **at least one container inside `hyperscope_ndb/`** via WAC himself (backoffice sharing UI or direct `.acl` edit), using `scope:'both'` semantics. He then shares:
+- an AGENT client-credentials token, minted for the `nicolas_claude` WebID (`.env`, gitignored, never committed) — the account screen (`/.account/account/.../client-credentials/`) lets him pick which of his three WebIDs a token is bound to; pick `nicolas_claude`, not `hyperscope_ndb`, and
+- the URL of the container granted inside `hyperscope_ndb/`, so the story's read/write checks have a real target.
+
+OWNER credentials (a token bound to the `hyperscope_ndb` WebID) are not requested, not needed, and must not be entered into this environment at any point in this story.
 
 ## Acceptance Criteria
 
@@ -47,13 +52,13 @@ OWNER credentials are not requested, not needed, and must not be entered into th
 ## Tasks / Subtasks
 
 - [ ] Task 1: Set up live credentials (AC: prerequisite)
-  - [ ] 1.1 Receive AGENT (`nicolas_claude`) client-credentials token from Nicolas, and the URL(s) of the data-pod container(s) he's pre-granted via WAC. **Do not request or accept an OWNER token in this environment.**
+  - [ ] 1.1 Receive AGENT (`nicolas_claude`, WebID `https://pod.nicolasdb.eu/nicolas_claude/profile/card#me`) client-credentials token from Nicolas, and the URL(s) of the container(s) he's pre-granted inside `https://pod.nicolasdb.eu/hyperscope_ndb/` via WAC. **Do not request or accept a token bound to the `hyperscope_ndb` WebID (OWNER) in this environment.**
   - [ ] 1.2 Confirm `src/auth.js` login works against real `pod.nicolasdb.eu` for the AGENT identity (this is also first-ever network use of `auth.js` — if it fails, that's this story's finding too, not just `wacManager.js`'s).
 - [ ] Task 2: Content + WAC-read verification on the Nicolas-granted container (AC: #1, #2)
   - [ ] 2.1 Read an existing resource, write a new/updated one, re-`GET` to confirm.
   - [ ] 2.2 Verify `listAgentsWithAccess`/`getAgentAccess` report AGENT's true granted access, including inherited access on a child resource with no ACL of its own if one exists.
 - [ ] Task 3: Grant/revoke/orphan-ACL verification on AGENT's own workspace pod (AC: #3, #5)
-  - [ ] 3.1 In `nicolas_claude/` (or a throwaway subcontainer), grant a second test identity `{read:true,write:true}` with `scope:'both'`; independently confirm (out-of-app request) it can `PUT` a child resource, not just list the container.
+  - [ ] 3.1 In `https://pod.nicolasdb.eu/nicolas_claude/` (or a throwaway subcontainer), grant a second test identity `{read:true,write:true}` with `scope:'both'`; independently confirm (out-of-app request) it can `PUT` a child resource, not just list the container.
   - [ ] 3.2 Revoke; re-confirm the same request now fails.
   - [ ] 3.3 Trigger fresh-ACL-creation (`createAcl`) on a resource in the workspace pod with no existing ACL/fallback; re-`GET` the raw `.acl` and confirm AGENT's own `control:true` is present (no self-orphaning).
 - [ ] Task 4: Negative-permission verification on the data-pod container (AC: #4)
