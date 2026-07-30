@@ -128,9 +128,9 @@ development_status:
   # Independent of Epic 7/4 — new mcp-connector/ Node service, not a backoffice/pipeline change.
   # Story 8.1 must land before 8.5 (live verification) — ports Story 7.3's ACL Turtle fix into
   # wacManager.js instead of trusting the toolkit's untested Inrupt universal-access calls.
-  epic-8: backlog
+  epic-8: in-progress
   story-8-1-wac-hardening-verification: done
-  story-8-2-http-transport: backlog
+  story-8-2-http-transport: ready-for-dev  # 2026-07-30: drafted. stdio->StreamableHTTPServerTransport (SDK 1.30.0, stay on 1.x). Verified API surface against installed SDK: server/streamableHttp.js exports StreamableHTTPServerTransport, server/express.js exports createMcpExpressApp (DNS-rebinding protection, auto-on for loopback only). express@5.2.1 is only a TRANSITIVE dep of the SDK — must be declared. Key traps pinned in story: shared-transport+stateless is the wrong combo (per-request transport, but Solid session stays a boot-time singleton); auth.js bare dotenv.config() resolves .env from cwd and silently fails under `npm run mcp`; listAgentsWithAccess/getAgentAccess return null (not throw) without Control and 501 on non-RDF files, so solid_get_permissions needs both mapped. Transport-only: wacManager.js/podClient.js are live-verified as of 8.1 and out of bounds. Audit journal/rate limiting/TLS deferred to 8.4, per-person routing to 8.3.
   story-8-3-per-person-endpoints: backlog
   story-8-4-vps-deploy-hardening: backlog
   story-8-5-live-verification: backlog
