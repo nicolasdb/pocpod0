@@ -49,7 +49,13 @@ async function readFile(url, session) {
  * @param {string} contentType e.g. 'text/markdown', 'application/pdf'
  */
 async function writeFile(url, content, contentType, session) {
-  return overwriteFile(url, content, { contentType, fetch: session.fetch });
+  // @inrupt/solid-client's Node polyfill for File/Blob does `'name' in input`
+  // to detect a File-like object; a raw string satisfies neither branch and
+  // throws "Cannot use 'in' operator to search for 'name' in <string>" before
+  // any network call. Story 8.1 AC1 (live verification) hit this on first
+  // real write — coerce plain strings to Buffer, which the polyfill accepts.
+  const body = typeof content === "string" ? Buffer.from(content, "utf-8") : content;
+  return overwriteFile(url, body, { contentType, fetch: session.fetch });
 }
 
 /** Delete any resource (file or RDF document). Does not recursively delete containers. */

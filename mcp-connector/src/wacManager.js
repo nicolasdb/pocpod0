@@ -95,7 +95,32 @@ async function grantAccess(resourceUrl, agentWebId, modes, session, options = {}
     updatedAcl = setAgentDefaultAccess(updatedAcl, agentWebId, modes);
   }
 
-  return saveAclFor(datasetWithAcl, updatedAcl, { fetch: session.fetch });
+  return _saveAclOrThrowControlError(resourceUrl, datasetWithAcl, updatedAcl, session);
+}
+
+/**
+ * `_getEditableAcl`'s hasAccessibleAcl/hasFallbackAcl checks are a heuristic
+ * based on whether the ACL resource is discoverable, NOT whether this agent
+ * actually has acl:Control there — CSS only tells the truth on the real PUT.
+ * Story 8.1 AC4 (live verification) found that an agent with read/write but
+ * no Control on a data-pod container passes those checks, builds a fresh ACL
+ * Turtle client-side, and only 403s on saveAclFor — surfacing a raw Inrupt
+ * "Storing the Resource ... failed: [403]" stack instead of the documented
+ * "does not have Control access" message. Normalize that here.
+ */
+async function _saveAclOrThrowControlError(resourceUrl, datasetWithAcl, updatedAcl, session) {
+  try {
+    return await saveAclFor(datasetWithAcl, updatedAcl, { fetch: session.fetch });
+  } catch (e) {
+    if (String(e.message).includes("403")) {
+      throw new Error(
+        `${session.info.webId} does not have Control access to ${resourceUrl}, ` +
+          "so it cannot change permissions here. This grant must be made by " +
+          "the pod owner's WebID (see src/onboarding.js)."
+      );
+    }
+    throw e;
+  }
 }
 
 /** Revoke all access for an agent (sets every mode false, resource + default). */
@@ -122,7 +147,7 @@ async function setPublicAccess(resourceUrl, modes, session, options = {}) {
     updatedAcl = setPublicDefaultAccess(updatedAcl, modes);
   }
 
-  return saveAclFor(datasetWithAcl, updatedAcl, { fetch: session.fetch });
+  return _saveAclOrThrowControlError(resourceUrl, datasetWithAcl, updatedAcl, session);
 }
 
 /**
