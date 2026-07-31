@@ -78,7 +78,7 @@ services:
     environment:
       - PORT=3939
       - HOST=0.0.0.0
-      - ALLOWED_HOSTS=${MCP_ALLOWED_HOSTS:-mcp.nicolasdb.eu}
+      - ALLOWED_HOSTS=${MCP_ALLOWED_HOSTS:-solid-mcp.nicolasdb.eu}
     volumes:
       # Secrets stay VPS-side, read-only, never baked into the image layer
       # (Task 1.5). rsync --delete-after has no exclusion for these paths by
