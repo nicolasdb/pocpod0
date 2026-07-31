@@ -22,6 +22,17 @@ if (!slugA || !slugB || !privateUrl) {
   process.exit(1);
 }
 
+// Same slug twice means both halves of the test run as one identity: A would
+// "correctly" read what B wrote and the script would report ALL CHECKS PASSED
+// having proven nothing. The whole point is that these are two identities.
+if (slugA === slugB) {
+  console.error(
+    "[verify-isolation] slugA and slugB are identical — this proves nothing. " +
+      "Pass two distinct identities' slugs."
+  );
+  process.exit(1);
+}
+
 const BASE = process.env.MCP_BASE_URL || "http://127.0.0.1:3939";
 
 async function connect(slug) {

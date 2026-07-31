@@ -17,10 +17,11 @@ const path = require("path");
 
 const DEFAULT_PATH = path.join(__dirname, "..", "identities.json");
 
-// Generated slugs are >=22 chars (AC6). This floor is deliberately lower so
-// a hand-migrated or shortened slug from an older scheme doesn't hard-fail,
-// but still rejects anything trivially guessable.
-const MIN_SLUG_LENGTH = 16;
+// AC6's floor: slugs are secrets, so they must carry >=22 chars of URL-safe
+// entropy. This matches exactly what "npm run slug" (gen-slug.js) emits —
+// validation and generation agree, so a hand-entered slug can never be
+// weaker than a generated one.
+const MIN_SLUG_LENGTH = 22;
 const SLUG_SAFE_RE = /^[A-Za-z0-9_-]+$/;
 const REQUIRED_FIELDS = ["clientId", "clientSecret", "webId", "label"];
 
@@ -108,10 +109,30 @@ function loadIdentities(filePath = DEFAULT_PATH) {
     throw new Error(`identities.json is not valid JSON: ${err.message}`);
   }
 
+  // The documented shape is a plain object mapping slug -> entry. Anything
+  // else (array, string, null) would also defeat findDuplicateTopLevelKeys'
+  // brace-depth tracking, so reject it here rather than half-validating it.
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(
+      `identities.json must be a JSON object mapping slug -> identity entry ` +
+        `(see identities.example.json), not ${Array.isArray(parsed) ? "an array" : typeof parsed}.`
+    );
+  }
+
   const identities = new Map();
 
   for (const [slug, entry] of Object.entries(parsed)) {
-    if (slug === "_comment") continue; // allowed in the .example template
+    // The .example template carries a "_comment" key. Skipping it silently
+    // would reintroduce exactly the silent-identity-drop that
+    // findDuplicateTopLevelKeys exists to prevent, so say so out loud.
+    if (slug === "_comment") {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[solid-pod-agent] ignoring "_comment" key in ${path.basename(filePath)} ` +
+          `(template placeholder). If that was meant to be a real identity, give it a generated slug.`
+      );
+      continue;
+    }
 
     const label = entry && typeof entry.label === "string" ? entry.label : "(unlabeled)";
 

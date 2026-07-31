@@ -313,6 +313,15 @@ async function bootIdentities() {
       process.exit(1);
     }
 
+    // auth.js already logs "authenticated as <webId>" per login. That alone
+    // can't be correlated to a person when N identities boot, so name the
+    // label here too — label and WebID are both safe to log (AC7); the slug,
+    // client id and secret are not.
+    // eslint-disable-next-line no-console
+    console.log(
+      `[solid-pod-agent mcp-server] identity "${id.label}" ready as ${session.info.webId}`
+    );
+
     identities.set(slug, { session, label: id.label, webId: session.info.webId });
   }
 
@@ -330,21 +339,25 @@ async function main() {
   // incorrectly — see Dev Notes "Concurrency trap". The cost (re-registering
   // 7 tool definitions per call) is trivial. Story 8.3: the slug in the path
   // picks which identity's already-authenticated session backs this request.
+  // AC4: reveal nothing about whether a slug exists, how many identities are
+  // configured, or any WebID. Do not log the attempted slug — it may be a
+  // near-miss of a real secret URL, and logging it would copy that secret
+  // into the log file.
+  const notFound = (req, res) => {
+    // eslint-disable-next-line no-console
+    console.warn("[solid-pod-agent mcp-server] rejected request to unknown MCP slug");
+    res.status(404).json({
+      jsonrpc: "2.0",
+      error: { code: -32601, message: "Not found." },
+      id: null,
+    });
+  };
+
   app.post("/mcp/:slug", async (req, res) => {
     const identity = identities.get(req.params.slug);
 
     if (!identity) {
-      // AC4: reveal nothing about whether the slug exists, how many
-      // identities are configured, or any WebID. Do not log the attempted
-      // slug — it may be a near-miss of a real secret URL, and logging it
-      // would copy the secret into the log file.
-      // eslint-disable-next-line no-console
-      console.warn("[solid-pod-agent mcp-server] rejected request to unknown MCP slug");
-      res.status(404).json({
-        jsonrpc: "2.0",
-        error: { code: -32601, message: "Not found." },
-        id: null,
-      });
+      notFound(req, res);
       return;
     }
 
@@ -383,6 +396,14 @@ async function main() {
   };
   app.get("/mcp/:slug", notSupported);
   app.delete("/mcp/:slug", notSupported);
+
+  // A request to bare /mcp (8.2's removed endpoint) or /mcp/ with an empty
+  // slug segment matches no :slug route, so without this it would fall
+  // through to Express's default HTML 404 — a different response shape than
+  // the unknown-slug path, which is itself a signal. AC4 says every miss on
+  // this surface reveals nothing, so give them all the same generic body.
+  app.all("/mcp", notFound);
+  app.all("/mcp/", notFound);
 
   // Unauthenticated health check for 8.4's systemd/nginx checks. Deliberately
   // does not include the WebID or identity count — this endpoint goes public

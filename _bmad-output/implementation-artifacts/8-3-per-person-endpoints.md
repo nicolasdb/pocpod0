@@ -1,6 +1,6 @@
 # Story 8.3: Per-Person MCP Endpoints
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -176,6 +176,175 @@ Claude Sonnet 5 (claude-sonnet-5)
 - `_bmad-output/implementation-artifacts/epic-8-progress-report.md` (modified) — Story 8.3 section
 - `https://pod.nicolasdb.eu/nicolas_claude/epic-8-action-log.md` (live pod resource, appended) — Story 8.3 dated entry
 
+## Review Findings (code review 2026-07-31, 3-layer)
+
+Three parallel layers: Blind Hunter (diff only, no context), Edge Case Hunter
+(diff + project read access), Acceptance Auditor (diff + spec + context docs).
+2 decisions resolved with Nicolas, 6 patches applied, 8 deferred, 3 dismissed.
+
+### False positive worth recording
+
+The Acceptance Auditor reported **AC3 violated — no per-identity WebID boot
+log exists**, on the evidence that `bootIdentities()` only calls
+`console.error` on failure paths. This is **wrong**: `auth.js:65` logs
+`[solid-pod-agent] authenticated as <webId>` on every `getAgentSession()`
+call, so booting N identities already emits N WebID lines. The auditor read
+`mcp-server.js` without reading the layer below it. AC3, the README claim,
+and the Dev Agent Record's "confirmed authenticated-WebID log line" were all
+accurate as shipped. (Same class as `feedback_verify_before_framing_defect` —
+verified against the actual file before accepting the finding.)
+
+### Decisions resolved
+
+1. **Slug length floor raised 16 → 22** (`identityRegistry.js`). AC6 specifies
+   ≥22 URL-safe chars and `gen-slug.js` emits exactly 22, but validation
+   accepted 16 — justified by an in-code comment about "a hand-migrated or
+   shortened slug from an older scheme." There is no older scheme; 8.3 is the
+   first story to introduce slugs at all, so the rationale was invented after
+   the fact. Both Blind Hunter and the Auditor flagged it independently.
+   Practical exploitability was never the issue (95 bits vs 131 bits are both
+   far past brute-forceable over HTTP) — spec fidelity and an honest comment
+   were. Validation and generation now agree exactly, so a hand-entered slug
+   can never be weaker than a generated one. Nothing configured breaks: real
+   slugs came from `npm run slug`.
+2. **Boot log now names the label** (`mcp-server.js`). `auth.js`'s WebID line
+   carries no label, so N identities produced N lines distinguishable only by
+   eyeballing WebIDs. `bootIdentities()` now logs
+   `identity "<label>" ready as <webId>` per identity. Label and WebID are
+   both safe to log per AC7; slug/clientId/secret still never are.
+
+### Patches applied
+
+3. **Bare `/mcp` and `/mcp/` now return the documented generic 404**
+   (`mcp-server.js`). Neither matches `/mcp/:slug`, so both fell through to
+   Express's default HTML 404 — a *different response shape* from the
+   unknown-slug path, which is itself a signal and contradicts AC4's "reveals
+   nothing." The 404 body was factored into a shared `notFound` handler and
+   mounted on `/mcp` and `/mcp/` too, so every miss on this surface is
+   byte-identical.
+4. **`_comment` skip no longer silent** (`identityRegistry.js`). An identity
+   literally keyed `_comment` was dropped with zero diagnostic — reintroducing
+   precisely the silent-identity-drop that `findDuplicateTopLevelKeys` exists
+   to prevent. Now warns on skip.
+5. **Non-object top-level JSON rejected** (`identityRegistry.js`).
+   `findDuplicateTopLevelKeys` tracks `{`/`}` depth but not `[`/`]`, so an
+   array-shaped file corrupted duplicate detection (false positives across
+   array elements, or silently skipped detection). Rather than rewrite the
+   tokenizer, the loader now rejects any top-level value that isn't a plain
+   object — the only documented shape — which closes the gap at its source.
+6. **`verify-isolation.js` rejects `slugA === slugB`**. Passing the same slug
+   twice ran both halves of the test as one identity: A trivially "correctly"
+   read what B wrote and the script printed `ALL CHECKS PASSED` having proven
+   nothing. The story's central claim is an isolation proof; a mode where it
+   passes vacuously is the one failure that matters most.
+
+### Verification of the patches
+
+Per this package's established pattern (no test framework, and none added):
+`node --check` clean on all 4 touched files, plus a direct unit-check of
+`loadIdentities()` — **13/13 passing**, covering the new 22-char floor
+(22 accepted, 21 and 16 rejected), non-URL-safe slugs, missing fields,
+duplicate top-level keys, array/string/null top-level values, `_comment`
+skip-with-warning alongside a real identity, `_comment`-only, and invalid
+JSON. `gen-slug.js` re-checked: emits exactly 22 URL-safe chars, sitting
+exactly at the new floor with no drift.
+
+### Live re-verification (2026-07-31, post-patch)
+
+Booted `mcp-server.js` locally against `pod.nicolasdb.eu` with one real
+identity (a fresh 22-char slug over the existing AGENT credential), exercised
+every patched path, then tore the state down (process killed, `identities.json`
+deleted — no untracked files left).
+
+- Boot log: `[solid-pod-agent] authenticated as …nicolas_claude…#me` **plus**
+  the new `identity "Nicolas (agent, review re-verify)" ready as <webId>` line
+  — this is direct evidence the auditor's AC3 false-positive claim was wrong;
+  the per-identity WebID line was never missing.
+- `verify-http.js` against `/mcp/<slug>`: ALL CHECKS PASSED — 7 tools, live
+  `tools/call solid_list_container` returned 3 real resources.
+- AC4/patch 3: `POST /mcp/<unknown>`, `POST /mcp` (bare), `POST /mcp/` (empty
+  slug) — all three return the byte-identical 404 body
+  (`{"jsonrpc":"2.0","error":{"code":-32601,"message":"Not found."},"id":null}`).
+  Pre-patch, bare `/mcp` and `/mcp/` fell through to Express's default HTML 404.
+- AC8: `GET`/`DELETE` on a real slug → 405; `GET /healthz` → `{"ok":true}`, 200.
+- AC7: grepped the boot log for the real slug, an attempted/unknown slug, the
+  client id, and the client secret — all four absent; no `secret|bearer|
+  authorization|token` keyword hits anywhere in the log.
+- Patch 6 (`verify-isolation.js` distinctness guard): running it with
+  `slugA === slugB` now exits 1 with a refusal message; pre-patch this
+  silently printed `ALL CHECKS PASSED` having proven nothing.
+- VPS cross-check (`ssh hetzner` → `docker exec community-solid-server`): the
+  throwaway account `story83throwaway1785486779`'s account record shows
+  `"clientCredentials":{}` (revoked, confirmed empty) while the account/pod
+  shell persists — matches the story's own cleanup claim exactly. Account
+  record count read as 27 via direct file listing, vs. 29 noted elsewhere
+  from a different counting method — a reconciliation item, not a defect in
+  this story.
+
+**AC5 (isolation) accepted as-is, not re-run.** The provisioned throwaway's
+client credentials were revoked at the end of the original dev session
+(confirmed above) and its password was never recorded, so it can't be reused.
+Minting a *new* second throwaway to re-prove isolation would violate the
+story's own scope (Dev Notes: keep the throwaway footprint to exactly one
+account; no HTTP account delete exists until Story 7.7, so a second throwaway
+becomes permanent orphan #28). The alternative — a real colleague's pod — is
+explicitly ruled out by the same Dev Notes (technical access is not consent).
+None of the six patches applied here touch slug→session binding or the tool
+layer (they add a 404 shape, a boot log line, loader validation, and a CLI
+guard), so the original isolation proof is unaffected by them. Nicolas
+accepted this reasoning 2026-07-31; AC5 re-verification is deferred to 8.4,
+where a second identity will exist on the VPS anyway.
+
+### Deferred (logged to deferred-work.md)
+
+- Timing-unsafe slug `Map.get` lookup — slugs are bearer secrets, but this
+  matches 8.1/8.2's existing non-constant-time token handling; not newly
+  introduced by routing.
+- Fail-fast boot as a single point of failure for N people — this is AC3's
+  own stated design tradeoff, not a defect. Worth revisiting at real team size.
+- No cross-slug uniqueness check on `webId`/`clientId` — two slugs can point
+  at the same identity, quietly defeating the per-person guarantee.
+- No `chmod 600` enforcement on `identities.json` — advisory-only, matching
+  `.env`'s existing unenforced precedent. `ssh`-style refusal would be better.
+- Sequential identity boot with no per-login timeout — startup grows linearly
+  with team size; one hung OIDC call stalls the whole process's readiness.
+- Unrate-limited 404 log-write path (disk-fill vector) — rate limiting is
+  explicitly Story 8.4's scope.
+- Strict WebID string equality with no URI normalization — a lexically
+  different but equivalent WebID would fail boot for everyone.
+- `SOLID_OIDC_ISSUER` unvalidated before N logins — pre-existing from 8.2's
+  `auth.js`, not touched by this diff.
+
+### Dismissed
+
+- "Breaking removal of bare `/mcp` with no transition window" — an explicit,
+  documented AC1 decision (see Dev Notes), not an oversight.
+- "All live-verified claims are self-graded" — a process observation, not a
+  code defect; matches Epic 8's established evidence convention.
+- "Hand-rolled JSON tokenizer is unverified" — addressed narrowly via patch 5
+  rather than the demanded rewrite; it is now unit-checked.
+
 ## Change Log
 
+- 2026-07-31 — Code review (3-layer). One auditor finding rejected as a false
+  positive (AC3's per-identity WebID log does exist, in `auth.js:65`). 2
+  decisions resolved (slug floor 16→22 matching AC6 and the generator; boot log
+  now names the label), 6 patches applied (generic 404 on bare `/mcp` and
+  `/mcp/`, `_comment` skip warns instead of dropping silently, non-object
+  top-level JSON rejected, `verify-isolation.js` rejects identical slugs), 8
+  deferred, 3 dismissed. `node --check` clean; `loadIdentities()` unit-checks
+  13/13. Live re-run of `verify-http.js`/`verify-isolation.js` still outstanding.
+- 2026-07-31 — Post-patch live re-verification: booted server locally against
+  pod.nicolasdb.eu with a fresh single identity, confirmed all 6 patches hold
+  (byte-identical 404s on bare/empty/unknown slug paths, per-identity+label
+  boot log lines, clean AC7 log grep, verify-isolation.js's new distinctness
+  guard exits 1 on identical slugs), re-ran verify-http.js (ALL CHECKS
+  PASSED), and cross-checked the VPS directly (throwaway's client credentials
+  confirmed revoked, account shell confirmed persisting, matching the
+  original story record). AC5 (isolation) accepted from the original proof
+  without a live re-run — the throwaway identity used for it can't be
+  reconstituted (credentials revoked, password never recorded) and minting a
+  second one would breach the story's own single-throwaway scope; none of
+  the 6 patches touch the isolation-relevant code path. State cleaned up
+  after (process killed, identities.json deleted).
 - 2026-07-31 — Story 8.3 implemented and live-verified: per-person `/mcp/<slug>` routing, N-identity boot with fail-fast, gitignored identity config, CSPRNG slug generator, live isolation proof against a provisioned-and-cleaned-up throwaway identity, README updated, Epic 8 action log + progress report appended.
