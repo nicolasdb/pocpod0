@@ -111,25 +111,45 @@ cli-devices:
 # SSH alias: hetzner  |  Path: /home/nicolas/pocpod0
 # .env synced from local; VPS overrides auto-applied from infra/vps/.env.vps
 
+RSYNC_EXCLUDES = \
+	--exclude=".git" \
+	--exclude=".claude/" \
+	--exclude=".gemini/" \
+	--exclude="_bmad/" \
+	--exclude="_bmad-output/" \
+	--exclude="__pycache__/" \
+	--exclude="*.py[cod]" \
+	--exclude=".venv/" \
+	--exclude="venv/" \
+	--exclude="pipeline/.venv/" \
+	--exclude="pipeline/venv/" \
+	--exclude="design-artifacts/" \
+	--exclude=".pytest_cache/" \
+	--exclude=".coverage" \
+	--exclude="*.tmp" \
+	--exclude="*.bak" \
+	--exclude="mcp-connector/node_modules/" \
+	--exclude="mcp-connector/identities.json" \
+	--exclude="backups/"
+
+# `--delete-after` deletes anything present on the VPS but not in this local
+# checkout — including files that only ever existed VPS-side, like
+# identities.json before the exclude above was added (story 8.4 AC9: an
+# unguarded push deleted a secrets file on the exact pattern hetzner-gateway
+# hit first, see its Makefile). The dry-run refusal is the actual guard;
+# the exclude list is defense in depth, not a substitute for it.
 vps-push:
-	rsync -avz --delete-after \
-		--exclude=".git" \
-		--exclude=".claude/" \
-		--exclude=".gemini/" \
-		--exclude="_bmad/" \
-		--exclude="_bmad-output/" \
-		--exclude="__pycache__/" \
-		--exclude="*.py[cod]" \
-		--exclude=".venv/" \
-		--exclude="venv/" \
-		--exclude="pipeline/.venv/" \
-		--exclude="pipeline/venv/" \
-		--exclude="design-artifacts/" \
-		--exclude=".pytest_cache/" \
-		--exclude=".coverage" \
-		--exclude="*.tmp" \
-		--exclude="*.bak" \
-		./ $(VPS_REMOTE):$(VPS_PATH)/
+	@dels=$$(rsync -avzn --delete-after $(RSYNC_EXCLUDES) ./ $(VPS_REMOTE):$(VPS_PATH)/ \
+		| grep '^deleting' || true); \
+	if [ -n "$$dels" ] && [ -z "$(FORCE)" ]; then \
+		echo "REFUSING TO PUSH — this would delete files on the VPS:"; \
+		echo "$$dels" | sed 's/^/    /'; \
+		echo; \
+		echo "If they are genuinely retired, re-run: make vps-push FORCE=1"; \
+		echo "If they are server-authored (e.g. identities.json), exclude them or pull them into the repo first."; \
+		exit 1; \
+	fi; \
+	rsync -avz --delete-after $(RSYNC_EXCLUDES) ./ $(VPS_REMOTE):$(VPS_PATH)/
 	@echo "Applying VPS .env overrides..."
 	@ssh $(VPS_REMOTE) 'cd $(VPS_PATH) && \
 		grep -v "^#" infra/vps/.env.vps | grep "=" | while IFS="=" read -r key value; do \

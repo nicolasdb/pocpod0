@@ -66,6 +66,53 @@ services:
       retries: 12
       start_period: 10s
 
+  mcp-connector:
+    build:
+      context: ./mcp-connector
+    container_name: mcp-connector
+    restart: unless-stopped
+    # No `ports:` — nginx (hetzner-gateway repo) reaches this by container
+    # name over the external `gateway` network (story 8.4 AC1). Publishing a
+    # host port here would give the container a second, unauthenticated path
+    # in besides the nginx vhost's TLS/rate-limit/allowlist stack.
+    environment:
+      - PORT=3939
+      - HOST=0.0.0.0
+      - ALLOWED_HOSTS=${MCP_ALLOWED_HOSTS:-mcp.nicolasdb.eu}
+    volumes:
+      # Secrets stay VPS-side, read-only, never baked into the image layer
+      # (Task 1.5). rsync --delete-after has no exclusion for these paths by
+      # accident; the Makefile guard (Task 1.4) is the actual protection.
+      - ./mcp-connector/identities.json:/app/identities.json:ro${VOLUME_FLAGS:-}
+      - ./mcp-connector/.env:/app/.env:ro${VOLUME_FLAGS:-}
+      - mcp-audit:/app/audit
+    healthcheck:
+      # DNS-rebinding protection (auto-enabled by ALLOWED_HOSTS being set,
+      # story 8.4 AC10) rejects a request whose Host header doesn't match —
+      # `curl localhost` from inside the container would send `Host:
+      # localhost` and falsely report unhealthy. Send the real Host header
+      # explicitly instead of widening ALLOWED_HOSTS for the healthcheck.
+      test:
+        - "CMD-SHELL"
+        - >-
+          node -e "const h=require('http');
+          const host=(process.env.ALLOWED_HOSTS||'localhost').split(',')[0];
+          const r=h.request({host:'127.0.0.1',port:process.env.PORT||3939,path:'/healthz',headers:{Host:host}},
+          res=>process.exit(res.statusCode===200?0:1));
+          r.on('error',()=>process.exit(1));r.end();"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    # Measured 2026-07-31: 45 concurrent verify-http.js runs (3 rounds x 15)
+    # against a real identity peaked at 82MB RSS (podman stats, local build).
+    # 256m gives >3x margin. A cgroup limit protects the rest of the box from
+    # a leak; it does not relieve overall memory pressure (Task 1.3).
+    mem_limit: 256m
+    networks:
+      - default
+      - gateway
+
 networks:
   default: {}
   gateway:
@@ -77,4 +124,6 @@ volumes:
   oxigraph-data:
     driver: local
   qdrant-data:
+    driver: local
+  mcp-audit:
     driver: local
