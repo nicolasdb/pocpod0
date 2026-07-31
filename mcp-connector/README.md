@@ -162,9 +162,52 @@ into a credential store, so 8.4 needs deliberate log filtering.
 ## Deploying on a VPS
 
 - Keep `.env` out of git (`.gitignore` it) and restrict its permissions
-  (`chmod 600 .env`).
-- Production HTTP exposure (nginx/TLS, systemd unit, rate limiting, IP
-  allowlisting) is handled in a dedicated deploy story, not covered here.
+  (`chmod 600 .env`). Same for `identities.json`, which holds one set of
+  client credentials per person.
+- `identities.json` is **server-authored**: it is excluded from `make
+  vps-push`'s rsync, so it is written directly on the VPS and never
+  round-trips through the repo. It must be owned by uid 1000 (`chown
+  1000:1000`) — the container runs as the non-root `node` user and a
+  root-owned `600` file gives it `EACCES` on boot.
+- Public exposure lives in the `hetzner-gateway` repo
+  (`nginx/conf.d/11-solid-mcp.conf`): TLS on `solid-mcp.nicolasdb.eu`,
+  `access_log off` (the slug in the URL path is a bearer credential),
+  `limit_req`, and an IP allowlist restricted to Anthropic's outbound range
+  plus this host. Everything else gets a 403.
+
+### Connecting another client on the same host (Hermes, or any MCP client)
+
+On-host clients should **not** go through the public URL. Add the
+`gateway` network to the client's compose service and point it at the
+internal address:
+
+```yaml
+services:
+  hermes:
+    networks: [default, gateway]
+
+networks:
+  gateway:
+    external: true
+```
+
+```
+http://mcp-connector:3939/mcp/<slug>
+```
+
+This is preferred over `https://solid-mcp.nicolasdb.eu/mcp/<slug>` for
+anything running on this host, because it skips TLS termination and the
+nginx hop entirely, is not subject to the IP allowlist (which would
+otherwise have to grow an entry per client), and — most importantly —
+**puts no slug into any access log**, since nginx is never involved.
+
+One catch: the MCP SDK's DNS-rebinding protection validates the `Host`
+header, so the internal hostname has to be listed too. `MCP_ALLOWED_HOSTS`
+is therefore `solid-mcp.nicolasdb.eu,mcp-connector:3939,mcp-connector`.
+Keep the public hostname **first** — the compose healthcheck reads
+`ALLOWED_HOSTS.split(',')[0]`. Without the internal entries the handshake
+fails with `Invalid Host: mcp-connector`, not with a connection error,
+which is easy to misread as a routing problem.
 
 ## Installing as a Claude skill
 
