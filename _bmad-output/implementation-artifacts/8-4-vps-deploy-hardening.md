@@ -1,0 +1,306 @@
+# Story 8.4: VPS Deploy & Hardening
+
+Status: ready-for-dev
+
+<!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
+
+## Story
+
+As **the operator of the HyperScope pod infrastructure**,
+I want the MCP connector running on the VPS behind TLS on its own subdomain, restarted automatically, rate-limited, reachable only from Anthropic (plus me), and keeping an audit journal that never contains a secret,
+so that a team member can actually add the connector in Claude.ai against a real URL — and so that doing so does not hand the internet a credential-bearing access log, an unbounded write surface, or a service that dies on reboot.
+
+## Context / Why now
+
+Stories 8.1–8.3 built and live-verified the whole connector **locally**: WAC layer (8.1), Streamable HTTP transport (8.2), per-person slug routing with proven isolation (8.3). Every one of those stories ends with the same sentence — *"public exposure is 8.4, do not point this at the internet off the back of local verification alone."* This is that story.
+
+Nothing downstream can happen until it lands: **8.5 (live verification from claude.ai) has no URL to verify against, and 8.6 (team onboarding doc) has no URL to document.** 8.4 is the gate.
+
+The connector is currently unreachable from the outside in every sense — see "Verified VPS state" below. The gap is not "tighten a few settings"; it is *the entire deployment path does not exist yet.*
+
+Scope boundary against neighbouring stories:
+- **8.4 (this):** ship it to the VPS, expose it safely, harden the exposure. Deploy path, subdomain + TLS, container lifecycle, rate limiting, IP allowlist, log hygiene, audit journal, health semantics.
+- **8.5:** actually driving it from claude.ai as a real connector, end-to-end, including the negative test.
+- **8.6:** the human onboarding page.
+
+Do not write 8.6's onboarding prose here, and do not do 8.5's claude.ai-side verification here beyond proving the endpoint is correctly reachable and correctly refused.
+
+## Update 2026-07-31 (later same day): host state has changed materially
+
+`hetzner-gateway` did a full log-hygiene pass on the VPS *after* this story was
+drafted. Several facts in the table below are now stale, and one pattern from
+that work is directly reusable here. Full record:
+`hetzner-gateway/backlog/2026-07-31-vps-capacity-and-log-hygiene.md`.
+
+**Facts that changed — re-verify before trusting the table below:**
+
+| Fact in the table | Was | Now |
+|---|---|---|
+| Disk `/` | 73%, then 79% mid-story-draft | **45%**, 20 GB free |
+| Free RAM | 187 MB available | ~180 MB available (recreating 5 compose projects pushed usage back up — re-measure before Task 1.3) |
+| Swap | 2 GB | **4 GB**, as two swapfiles (`/swapfile` + `/swapfile2`) |
+| nginx log rotation | none | **done** — `hetzner-gateway/ops/logrotate/nginx-gateway`, daily, `maxsize 50M`, 7 archives. **Task 3.4 and the "still tracked" note under Task 1.2 are now closed** — do not re-do this, just confirm on arrival with `ssh hetzner 'grep -c nginx /var/lib/logrotate/status'`. New log files under `/var/log/nginx/*.log` (i.e. whatever `11-mcp-connector.conf` writes) are covered automatically — the pattern is a wildcard, no edit needed unless the vhost logs somewhere else. |
+| Docker container logs | uncapped | **capped** — `/etc/docker/daemon.json` → `max-size:10m max-file:3`, applied to all 13 existing containers 2026-07-31. A **new** `mcp-connector` container created after that point inherits the cap automatically — no per-service `logging:` block needed in `docker-compose.yml` unless you want something other than the host default. |
+| journald | uncapped (10% of disk) | capped at 300 MB |
+
+**A directly reusable fix for Task 1.4 / AC9.** `hetzner-gateway`'s own
+`make vps-push` had the identical `--delete-after`-with-no-guard problem this
+story flags for `identities.json` — a dry run there found it would delete five
+*server-authored* nginx configs. Fixed by making `vps-push` run
+`rsync -n` first and refuse (non-zero exit) if it would delete anything, printing
+the list, requiring `FORCE=1` to override. Verified by planting a file on the
+server and confirming the push refused and the file survived. **`pocpod0/Makefile`'s
+`vps-push` (line 114) has the exact same unguarded `rsync --delete-after` shape**
+— copy the guard rather than re-deriving it; see
+`hetzner-gateway/Makefile`'s `vps-push` target for the working version.
+
+**One availability gap surfaced that's adjacent to AC1.** During the log-hygiene
+work, `docker compose up -d --force-recreate` was run across all compose
+projects (needed for the log cap to bind). `community-solid-server`, `oxigraph`
+and `qdrant` — pocpod0's **existing** services — all have `RestartPolicy: no` in
+the current `docker-compose.yml`, and none of them came back on their own after
+`systemctl restart docker`; they had to be started manually. `pod.nicolasdb.eu`
+was down until that happened. AC1 already specifies `restart: unless-stopped`
+for the **new** `mcp-connector` service — worth also giving the three existing
+services the same policy while `docker-compose.yml` is open for this story, so a
+future host-level Docker restart (or reboot) doesn't take the pod itself offline
+the same way.
+
+---
+
+## Verified VPS state (probed live 2026-07-31 — do not re-derive, do not assume)
+
+This section is the reason the story is shaped the way it is. Every line was checked over `ssh hetzner` during story creation.
+
+| Fact | Value | Consequence for this story |
+|---|---|---|
+| `mcp-connector/` on VPS | **absent** — `/home/nicolas/pocpod0/mcp-connector` does not exist | Nothing is deployed. The VPS repo copy is stale (last rsync 2026-07-23, pre-Epic-8). |
+| nginx config location | **separate repo**: `~/github/hetzner-gateway` → `/home/nicolas/hetzner-gateway`, own `make vps-deploy` | **This story touches two repos.** The vhost does NOT go in `pocpod0/infra/`. |
+| nginx container | `nginx-gateway` (`nginx:latest`), on external Docker network `gateway`, owns `:80`/`:443` | New vhost is a file in `hetzner-gateway/nginx/conf.d/`, numbered after `10-portainer.conf`. |
+| TLS certificate | `/etc/letsencrypt/live/nicolasdb.eu/` — **multi-SAN, NOT wildcard**: `claw`, `n8n`, `nicolasdb.eu`, `pgadmin`, `pod`, `portainer`, `smartflow` | `mcp.nicolasdb.eu` is **not** covered. The cert must be **expanded**, not just referenced. |
+| Cert issuance method | certbot `authenticator = manual`, `pref_challs = dns-01`, hooks `scripts/cloudflare-dns-auth.sh` / `cloudflare-dns-cleanup.sh`, renewed by `certbot.timer` | Expansion is a DNS-01 run with the Cloudflare hooks, not a webroot/HTTP-01 run. `hetzner-gateway/scripts/renew-certs-cf.sh` exists — read it before inventing a command. |
+| DNS for `mcp.nicolasdb.eu` | **NXDOMAIN** | A Cloudflare A record → `128.140.72.105` must exist **before** cert expansion, or DNS-01 validation has nothing to attach to. |
+| UFW | allows **only** 22, 80, 443, 9443 | The Anthropic allowlist **cannot** be a UFW rule — 443 is shared with `pod.nicolasdb.eu` and 4 other sites. It must be per-`server`-block in nginx. |
+| Host `node`/`npm` | **not installed** | A systemd unit would require installing a Node toolchain on the host. Compose avoids it. |
+| Existing Dockerfile precedent | `infra/openclaw/Dockerfile` (only one in repo) | There is a build pattern to follow; `make vps-build` already runs `docker compose build`. |
+| Free RAM | **187 MB available** of 3819 MB total (3631 used) | **Genuinely tight.** Set a container memory limit and measure actual RSS. Do not assume headroom. |
+| Disk | `/` at 73% — 9.8 GB free of 38 GB | Combined with the log finding below, disk-fill is not theoretical. |
+| nginx log rotation | **none on the host** — `/etc/logrotate.d/nginx` is empty; `access.log` is 48 MB, `mapsofmaking_https_access.log` is 80 MB, both still growing | See "The log finding" below. This is the single most important hardening item in the story. |
+| `make vps-push` | `rsync --delete-after`, excludes `.git`, `.claude/`, `_bmad*`, venvs, `design-artifacts/` — **no exclusion for `node_modules/` or `identities.json`** | Two separate landmines. See Task 1. |
+| Running pocpod0 services | `community-solid-server` (healthy, 8d), `oxigraph`, `qdrant` | Adding a 4th service to this compose project is the natural shape. |
+| `hermes` container | on `hermes-deploy_default` only, `127.0.0.1:9119`, **same Docker host** | Hermes can reach the connector over the internal `gateway` network — it never needs the public URL. This is what makes a strict public allowlist compatible with bot reuse. |
+
+## The log finding (read this before writing any nginx config)
+
+Story 8.3 flagged it forward: **slugs live in the URL path**, so an ordinary nginx `access_log ... combined` line writes a bearer credential to disk on every single request. 8.3 could only flag it. This story must close it.
+
+What the live probe adds to 8.3's warning, and what makes it worse than it looked:
+
+1. **There is no logrotate for nginx on this host.** `/etc/logrotate.d/nginx` is empty — the nginx package isn't installed on the host, it runs in a container writing to a bind-mounted `/var/log/nginx`. Existing logs (48 MB, 80 MB) have never been rotated. So a slug written to that log is not "in a log for a week" — it is **in a file that grows forever and is never removed.**
+2. **8.3 left an unrate-limited log-write on the 404 path** (`console.warn` per rejected request, logged as deferred work). Against a growing, unrotated log store on a disk already at 73%, that stops being a theoretical disk-fill vector.
+
+Both halves must be handled: the nginx side (don't write the slug) and the app side (don't let an anonymous caller drive unbounded log volume).
+
+## Acceptance Criteria
+
+1. **The connector runs on the VPS as a compose service and survives a reboot.** `mcp-connector` is a service in `pocpod0`'s `docker-compose.yml`, built from a committed `mcp-connector/Dockerfile`, attached to **both** `default` and the external `gateway` network (same shape as `community-solid-server`), with `restart: unless-stopped`, a healthcheck, and an explicit memory limit. It does **not** publish a host port — nginx reaches it by container name over `gateway`. *Deviation from brief T4 ("service systemd"): decided with Nicolas 2026-07-31, recorded in Dev Notes with its reason. Do not silently implement systemd instead.*
+
+2. **`https://mcp.nicolasdb.eu/mcp/<slug>` serves MCP over TLS on a dedicated subdomain, distinct from the pod domain.** DNS record created, the `nicolasdb.eu` certificate **expanded** to include `mcp.nicolasdb.eu` via the existing Cloudflare DNS-01 hook path, and a new vhost added to the `hetzner-gateway` repo. `pod.nicolasdb.eu` must still serve correctly after the cert expansion and nginx reload — **verify this explicitly**; a botched expansion takes down five other sites that share the certificate.
+
+3. **No slug is ever written to an nginx log.** The MCP vhost must not log the request path in a form that contains the slug. Choose and document one approach (custom `log_format` that omits/masks `$request`/`$uri`, or `access_log off` for the MCP location with errors still logged) and state in the story record *why*. Then **prove it**: make a real request with a known slug through the public URL and grep every file under `/var/log/nginx/` for that slug — zero hits. Grep the error log too, not just the access log; nginx writes the URI into error entries on some failure paths.
+
+4. **Rate limiting exists on the MCP endpoint and is proven to trigger.** Use `express-rate-limit` — **already present in the lockfile at 8.6.1** as a transitive dep of the MCP SDK; promote it to an explicit `dependencies` entry rather than installing a new version. Behind nginx, `req.ip` is the proxy's address unless configured, so set Express's `trust proxy` to **1** (nginx is the only hop, and it sets `X-Forwarded-For $proxy_add_x_forwarded_for`); do **not** use `trust proxy: true`, which trusts a client-supplied header. The unknown-slug 404 path must be rate-limited **at least as tightly** as the valid path — that is the path an attacker drives, and per the log finding it is also the disk-fill path. Demonstrate a real `429` in the story record, not a config snippet.
+
+5. **The endpoint is IP-restricted to Anthropic plus the operator, and everything else is denied at nginx.** Allow `160.79.104.0/21` — Anthropic's **outbound** range, confirmed from Anthropic's own IP-addresses doc on 2026-07-31, IPv4-only, documented as "will not change without notice". Do **not** allowlist `160.79.104.0/23`; that is the *inbound* range and is the wrong direction for a connector Anthropic calls out to. Add Nicolas's admin IP so the endpoint stays verifiable from a laptop. Everything else gets a deny that reveals nothing more than the 404 already does. **On-host bots (Hermes) do not go through this path at all** — see AC6. Record the allowlist as a dated, re-checkable fact, since a silently-changed range would look exactly like a broken connector.
+
+6. **The internal reuse path is real and documented, not hypothetical.** The brief's reusability claim (§"Réutilisabilité au-delà de claude.ai") must be exercised at least once: from another container on the `gateway` network, reach `http://mcp-connector:3939/mcp/<slug>` directly and complete an MCP handshake — no TLS, no nginx, no allowlist, no slug in any access log. Document that an on-host bot (`hermes`, currently on `hermes-deploy_default`) joins by adding the `gateway` network to its own compose file, and that this is the *preferred* path for any client running on this host. State plainly what an **off-host** third-party MCP client would need: one added `allow` line in the vhost.
+
+7. **An audit journal records every tool invocation, with no secret in it.** Append-only JSONL written by the connector: timestamp, identity **label**, tool name, target resource URL, and outcome (ok / denied / error). **Never** the slug, client id, client secret, or bearer token — the same AC7 rule 8.3 established, now applied to a file whose whole purpose is to be kept. The journal lives on a named Docker volume so it survives `docker compose up -d --force-recreate` (a bind-mount under the repo path would be destroyed by `rsync --delete-after`; see Task 1). It must have a stated, implemented size/rotation bound — an unbounded audit file on a 73%-full disk is a new instance of the very problem AC3 exists to fix. Verify by running real tool calls and reading the resulting lines.
+
+8. **`/healthz` reflects reality, or its limits are stated.** 8.2 shipped a static `{ok:true}` and both 8.2 and 8.3's reviews deferred the semantics here: a compose healthcheck backed by it reports healthy even when every Solid session is dead. Either make it reflect session liveness (without leaking WebIDs, identity count, or slugs — it is unauthenticated and now public) **or** deliberately keep it static and make the compose healthcheck honest about what it does and does not catch. Decide explicitly and record the reasoning; do not leave the gap undocumented for a third story running.
+
+9. **The deploy path is repeatable and does not destroy the secrets file.** `make vps-push` runs `rsync --delete-after` with no exclusion for `identities.json`, so a secrets file created directly on the VPS is **deleted by the next push** — taking the whole team's access down at the exact moment someone is deploying something unrelated. Close this concretely (exclude it and keep it VPS-side, or route it through the existing `infra/vps/` override mechanism) and **prove it survives a second `make vps-push`**. Also decide what happens to `mcp-connector/node_modules/` under rsync — it is not excluded today, so it would be pushed over the wire and then be the wrong platform's tree inside a container that ran `npm ci` at build time.
+
+10. **Deployed state matches the repo, and it is verified through the public URL.** Run `scripts/verify-http.js` against `https://mcp.nicolasdb.eu/mcp/<slug>` (not just loopback) and have it pass all 7 tools plus a live `tools/call`. Confirm 8.2/8.3's guarantees survive the proxy: `GET`/`DELETE` → 405, unknown slug / bare `/mcp` / `/mcp/` → the byte-identical generic 404, `GET /healthz` → 200 with no WebID and no identity count. **`ALLOWED_HOSTS` must be set to `mcp.nicolasdb.eu`** — the container binds `0.0.0.0`, which silently disables the SDK's DNS-rebinding protection (8.2's review wired the env var for exactly this moment).
+
+11. **README + Epic 8 convention.** README gains a real deploy section: the two-repo layout, DNS + cert expansion, the vhost, the compose service, the env/secret handling, the allowlist with its dated source, the internal-reuse path, and the audit journal's location and format. Per the Epic 8 convention (binding since 8.2): **append** a dated section to `https://pod.nicolasdb.eu/nicolas_claude/epic-8-action-log.md` (read existing, write existing + new — never overwrite) and add a "Story 8.4" section with its proof table to `epic-8-progress-report.md`.
+
+## Tasks / Subtasks
+
+- [ ] Task 1: Deploy plumbing — make the code reach the VPS at all (AC: #1, #9)
+  - [ ] 1.1 Write `mcp-connector/Dockerfile`. Follow `infra/openclaw/Dockerfile` for house style. `npm ci` at build time from the committed lockfile; do **not** ship the local `node_modules/` tree. Run as a non-root user. Pin the Node base image tag.
+  - [x] 1.2 **Pre-flight: confirm the host can survive a new process before starting one. — DONE 2026-07-31, no dev action required; verify only.**
+    Why it was needed: the host had **188 MB available of 3819 MB and no swap at all**, with no memory limit on any of the 16 running containers (all `HostConfig.Memory: 0`). The kernel log confirms this already bit three times in the previous boot — all `constraint=CONSTRAINT_NONE ... global_oom`: `Apr 15 17:30` killed a `python` at 1,005,304 kB anon-rss in a root ssh session scope (**the pocpod0 provisioning pipeline**), `May 13 05:00` and `May 23 06:38` each killed `oxigraph` at ~1.47 GB anon-rss. Host rebooted 2026-05-27. It was RAM, not disk.
+    **Applied:** 2 GB swapfile at `/swapfile` (`fallocate`, ext4, `chmod 600`, `mkswap`, `swapon`), persisted via `/swapfile none swap sw 0 0` in `/etc/fstab` (backup at `/etc/fstab.bak-2026-07-31`), `vm.swappiness=10` in `/etc/sysctl.d/99-swappiness.conf`, `systemctl daemon-reload` → `swapfile.swap` unit loaded/active. Reboot-persistence proven without rebooting via `swapoff /swapfile && swapon -a`. Sized 2 GB rather than 4 because the disk was already at 73% with **unrotated nginx logs still growing** (see AC3 / Task 3.4) — 4 GB would have pushed it to ~84%. Result: available RAM **188 → 408 MB**, 75 MB paged out within a minute, disk 73% → 79%.
+    **Dev action:** just re-confirm `swapon --show` is non-empty and `free -m` shows Swap before the first `docker compose up -d`. If it is missing, stop — someone reverted it, and deploying onto 188 MB with no swap is how CSS gets OOM-killed.
+    **Still not fixed by this** (deliberately out of 8.4's scope, tracked in `hetzner-gateway/backlog/2026-07-31-vps-capacity-and-log-hygiene.md`): maps-oxigraph still sits at ~1456 MB, the exact level at which it was killed twice. Swap converts a kill into slowness; it does not remove the pressure.
+  - [ ] 1.3 Add the `mcp-connector` service to `docker-compose.yml`: `networks: [default, gateway]`, `restart: unless-stopped`, `container_name: mcp-connector`, **no** `ports:` mapping, healthcheck, and a memory limit. Measure the container's real RSS under load and record it rather than guessing a number. **Understand what the limit does and does not buy:** a cgroup limit on a process with an unbounded heap does not make it shrink — it makes the kernel kill it. The limit here protects *the rest of the box* from a connector leak; it is not a lever for reducing overall pressure. Set it above measured peak with margin, not at it.
+    - [x] 1.3a **Sub-item done ahead of the rest, 2026-07-31:** the three *existing* services (`community-solid-server`, `oxigraph`, `qdrant`) got `restart: unless-stopped` added to `docker-compose.yml` — closes the availability gap the Update note flagged (none of them came back on their own after `systemctl restart docker` during the log-hygiene work). The `mcp-connector` service itself (this task's main scope) is still not created — VPS confirmed absent: `ssh hetzner 'ls /home/nicolas/pocpod0/mcp-connector'` → no such file/dir, no such container in `docker ps`.
+  - [ ] 1.4 Fix the rsync landmines in the `Makefile`'s `vps-push` (AC9): exclude `mcp-connector/node_modules/`, and settle `identities.json` so `--delete-after` cannot remove it. **Verify by running `make vps-push` twice** and confirming the file is still there and the service still boots — this is the AC, not the config change.
+  - [ ] 1.5 Decide and document how `identities.json` and `.env` reach the container (bind-mount read-only vs. Docker secret vs. env). Whatever the choice: `chmod 600`, VPS-side only, never in the image layer, never in `docker inspect` output as a plaintext env var if avoidable.
+
+- [ ] Task 2: Subdomain, DNS and TLS (AC: #2)
+  - [ ] 2.1 Create the Cloudflare A record `mcp.nicolasdb.eu` → `128.140.72.105`. **Do this first** — DNS-01 validation needs the zone entry.
+  - [ ] 2.2 Read `hetzner-gateway/scripts/renew-certs-cf.sh` and the existing `/etc/letsencrypt/renewal/nicolasdb.eu.conf` **before** running anything. Expand the existing multi-SAN cert to add `mcp.nicolasdb.eu`, keeping all 7 current SANs and the existing `manual_auth_hook`/`manual_cleanup_hook` wiring intact so `certbot.timer` keeps renewing afterward.
+  - [ ] 2.3 **Immediately after the expansion**, verify `https://pod.nicolasdb.eu/` still serves and its certificate is valid, and spot-check one other SAN. Five unrelated sites share this certificate; a broken renewal config is a slow-fuse outage that will not show up today.
+  - [ ] 2.4 Add `hetzner-gateway/nginx/conf.d/11-mcp-connector.conf` (next free number). Model the HTTP→HTTPS redirect, ACME location, TLS block and security headers on `04-pocpod0.conf`. `proxy_pass http://mcp-connector:3939`; `proxy_set_header Host $host` (must match `ALLOWED_HOSTS`). Deploy with `make vps-deploy` from the `hetzner-gateway` repo — it runs `nginx -t` before restarting; do not skip that.
+  - [ ] 2.5 **Pre-flight before every `make vps-deploy` in `hetzner-gateway`: run `git status` there first.** That target runs `rsync -avz --delete-after`, so **any file deleted in the local checkout is deleted on the server** — as a silent side effect of whatever unrelated change you are actually deploying. One such divergence existed on 2026-07-31 (`nginx/conf.d/00-time-tracker.conf`, deleted locally, still serving on the VPS) and was **investigated and resolved before this story starts** (commit `98d79c7`): the apex `nicolasdb.eu` had already been migrated off this VPS to sub-domain routing, so the block was genuinely dead config, not a live route. **Do not treat that as meaning the checkout is now automatically safe** — check again. The general rule, which also drives AC9's `identities.json` fix: **`--delete-after` and server-side-managed files do not mix.** Tracked as item 6 in `hetzner-gateway/backlog/2026-07-31-vps-capacity-and-log-hygiene.md`.
+
+- [ ] Task 3: Close the log-credential hole (AC: #3)
+  - [ ] 3.1 In the MCP vhost, suppress or mask the request path in `access_log`. Write the reason inline in the conf as a comment — the next person reading it must understand the URL *is* a credential here, or they will "fix" the missing log.
+  - [ ] 3.2 Check the error log path too: nginx writes the URI into error entries in several situations (upstream failure, deny). Confirm a denied and a failed request do not leave the slug behind.
+  - [ ] 3.3 Prove it: request the public URL with a real slug, then `grep -r '<slug>' /var/log/nginx/`. Zero hits, on both access and error logs. Paste the (negative) result in the story record.
+  - [x] 3.4 **DONE in `hetzner-gateway`, not here — confirmed live 2026-07-31.** `hetzner-gateway/ops/logrotate/nginx-gateway`, daily, `maxsize 50M`, 7 archives, wildcard pattern covers whatever `11-mcp-connector.conf` writes automatically. Re-confirmed via `ssh hetzner 'grep -c nginx /var/lib/logrotate/status'` → `34` (non-zero, tracked). No action needed here.
+
+- [ ] Task 4: Rate limiting (AC: #4)
+  - [ ] 4.1 Promote `express-rate-limit` to an explicit dependency at the **already-locked 8.6.1**. Confirm no lockfile churn beyond the dependency-type change.
+  - [ ] 4.2 `app.set('trust proxy', 1)` on the app returned by `createMcpExpressApp()`. Not `true`. Confirm `req.ip` is a real client address and not the nginx container's — if it is the container's, every caller shares one bucket and the limiter is decorative.
+  - [ ] 4.3 Apply limits to the MCP surface, with the 404/unknown-slug path limited at least as tightly as the valid path. Consider whether nginx-level `limit_req` belongs alongside the app-level one (defence in depth, and it stops the request before it reaches Node at all).
+  - [ ] 4.4 Also close 8.2's other deferred DoS items while the file is open, or state why not: **no request body-size cap** (`solid_write_resource`'s `content` is an unbounded `z.string()`) and **no request timeout** (a hung request holds a transport+server pair open indefinitely).
+  - [ ] 4.5 Drive it until a real `429` comes back and record the evidence.
+
+- [ ] Task 5: IP allowlist + internal reuse path (AC: #5, #6)
+  - [ ] 5.1 In the vhost: `allow 160.79.104.0/21;` (Anthropic **outbound**), `allow <Nicolas's admin IP>;`, `deny all;`. Comment the source and the date it was confirmed. No IPv6 outbound range is published — do not invent one, and note that a v6-originated request would be denied.
+  - [ ] 5.2 Prove the deny works: request the public URL from a non-allowlisted address and confirm the refusal. Then confirm the allowlisted path still works (Task 10's verify run covers the positive case).
+  - [ ] 5.3 Prove the internal path: from a container on `gateway`, complete an MCP handshake against `http://mcp-connector:3939/mcp/<slug>`. Record it as evidence, not as an assertion.
+  - [ ] 5.4 Document in the README how `hermes` (or any on-host bot) joins: add `gateway` to its compose networks and use the internal URL. Note this is preferred over the public URL for on-host clients — no TLS overhead, no allowlist, and critically **no slug in any access log**.
+
+- [ ] Task 6: Audit journal (AC: #7)
+  - [ ] 6.1 Add append-only JSONL logging around tool invocation in `mcp-server.js`. Hook it where the identity is already resolved so the **label** is available — the slug must never reach it. One line per call: timestamp, label, tool, resource URL, outcome.
+  - [ ] 6.2 Named Docker volume for the journal, not a bind-mount under the repo path (`rsync --delete-after` would eat it — same root cause as AC9).
+  - [ ] 6.3 Implement a size or age bound and state it. An unbounded audit file is the same disk-fill class as the nginx logs.
+  - [ ] 6.4 Verify with real calls: a successful read, a denied write, and an error. Confirm the three outcomes are distinguishable and that grepping the journal for the slug/clientId/secret returns nothing.
+
+- [ ] Task 7: Health semantics decision (AC: #8)
+  - [ ] 7.1 Decide: session-aware `/healthz`, or deliberately-static with an honest compose healthcheck. Record the decision **and its reasoning** — this has now been deferred by two consecutive stories, so "deferred again" is not an acceptable outcome without an explicit reason.
+  - [ ] 7.2 Whatever the choice, `/healthz` stays free of WebID, identity count, and slug. It is unauthenticated and, as of this story, public.
+
+- [ ] Task 8: Verify the deployed thing, through the public URL (AC: #10)
+  - [ ] 8.1 Set `ALLOWED_HOSTS=mcp.nicolasdb.eu` and confirm it is actually in effect. The container binds `0.0.0.0`, which silently disables the SDK's DNS-rebinding protection — this is the story 8.2's review wired the env var for.
+  - [ ] 8.2 `node scripts/verify-http.js https://mcp.nicolasdb.eu/mcp/<slug>` — all 7 tools + a live `tools/call`, against the public URL.
+  - [ ] 8.3 Re-confirm the 8.2/8.3 guarantees survive the proxy hop: `GET`/`DELETE` → 405; unknown slug, bare `/mcp`, `/mcp/` → the byte-identical generic 404 body; `/healthz` → 200 and identity-free.
+  - [ ] 8.4 **Re-run `scripts/verify-isolation.js` with two identities.** 8.3's code review explicitly deferred live AC5 re-verification to this story ("8.4, where a second identity will exist on the VPS anyway"). See Dev Notes for the throwaway-vs-real-colleague constraint — it has not relaxed.
+
+- [ ] Task 9: Docs + Epic 8 convention (AC: #11)
+  - [ ] 9.1 README deploy section covering all of the above, including the two-repo split (people will look for the nginx config in `pocpod0/infra/` and not find it).
+  - [ ] 9.2 Append a dated section to `https://pod.nicolasdb.eu/nicolas_claude/epic-8-action-log.md` (read existing + append — never overwrite) and add a "Story 8.4" proof table to `epic-8-progress-report.md`.
+
+## Dev Notes
+
+### Invalidated Assumptions
+
+- **Assumption (brief §5 T4):** the connector runs under a **systemd** unit. → **Reality: decided against with Nicolas 2026-07-31 — it is a Docker compose service.** The VPS has **no host `node`/`npm`**, every other service on the box is a container, and nginx already routes to containers by name over the `gateway` network (`community-solid-server:3000`). systemd would mean installing and maintaining a host Node toolchain for one process. This is a deliberate, recorded deviation from the brief, not an oversight — state it as such in the story record.
+- **Assumption:** the nginx config for pod/MCP lives in the pocpod0 repo (`infra/`). → **Reality: false.** It lives in a **separate repo**, `~/github/hetzner-gateway` → `/home/nicolas/hetzner-gateway`, deployed by its *own* `make vps-deploy` (rsync + `nginx -t` + restart). This story spans two repos and two deploy commands. `pocpod0/infra/` has no nginx content at all.
+- **Assumption:** the TLS certificate is a wildcard, so a new subdomain is just an nginx config. → **Reality: false.** It is a **multi-SAN cert** listing exactly 7 names (`claw`, `n8n`, `nicolasdb.eu`, `pgadmin`, `pod`, `portainer`, `smartflow` `.nicolasdb.eu`). `mcp.nicolasdb.eu` requires a **cert expansion** via certbot `manual` + **DNS-01** with the Cloudflare hooks. Five other production sites share this cert — a broken renewal config is a delayed multi-site outage.
+- **Assumption:** the Anthropic IP allowlist is a firewall (UFW) rule. → **Reality: it cannot be.** UFW opens 443 for the whole host, shared by `pod.nicolasdb.eu` and four other vhosts. Restricting 443 at the firewall would take all of them down. The allowlist is **per-`server`-block in nginx**.
+- **Assumption:** allowlisting Anthropic blocks the brief's "other MCP clients / Hermes" reuse. → **Reality: it does not, on this host.** `hermes` is a container on the same Docker daemon. It joins the `gateway` network and reaches `http://mcp-connector:3939/mcp/<slug>` internally — bypassing nginx, TLS, the allowlist, and the access log entirely. Nicolas raised this concern directly during story creation; the internal path is the answer, and AC6 requires proving it rather than asserting it.
+- **Assumption:** Anthropic's IP range to allowlist is the one at the top of their IP page. → **Reality: there are two, and the obvious one is wrong.** `160.79.104.0/23` is **inbound** (where Anthropic *receives*). For a connector Anthropic *calls out to*, the correct range is the **outbound** `160.79.104.0/21` (IPv4 only; no IPv6 outbound range is published). Confirmed from Anthropic's IP-addresses doc on 2026-07-31; the doc states these "will not change without notice", and lists five `34.162.x.x/32` addresses as **phased out** — do not copy those from any older note.
+- **Assumption (carried forward from 8.3, re-confirmed today):** MCP SDK examples showing `@modelcontextprotocol/node` / `createMcpHandler` / `createMcpFastifyApp` apply here. → **Reality: still false, and current docs are now v2-shaped.** A Context7 lookup on 2026-07-31 returned v2 API surfaces as the default answer. This project is pinned to SDK **1.30.0** and uses `createMcpExpressApp` from `@modelcontextprotocol/sdk/server/express.js`. The `allowedHosts` semantics quoted below *do* carry over; the import paths do not.
+- **Assumption:** `express-rate-limit` needs installing and a version decision. → **Reality: it is already resolved at 8.6.1 in `package-lock.json`**, as a transitive dependency of `@modelcontextprotocol/sdk@1.30.0`. Promote it to an explicit `dependencies` entry; do not `npm install` a different version and churn the lockfile.
+- **Assumption (from Story 8.1 AC3, already corrected in 8.3, restated because Task 8.4 depends on it):** no second Solid WebID exists in this environment. → **Reality: false.** Real accounts `alex` and `chabivdb` exist. **But the constraint that matters is unchanged: do not test isolation against a colleague's real pod.** An isolation test's success condition is a *denial*, so its failure mode is unauthorised access to someone's real data. Technical access is not consent.
+- **Assumption:** the throwaway identity from 8.3 can be reused for AC5 re-verification. → **Reality: it cannot.** Its client credentials were revoked at the end of 8.3 and its password was never recorded. A **new** throwaway is needed for Task 8.4 — and CSS still has **no HTTP account/pod delete** (Story 7.7's job), so it becomes a permanent orphan account record. Budget exactly one, revoke its credentials afterwards, and record it honestly in the progress-report table.
+- **Assumption:** ~29 orphan CSS account records on the VPS. → **Reality: 8.3's review read 27 via direct file listing vs. 29 from a different counting method — an open reconciliation item, not a defect.** Relevant here only as the reason to keep this story's throwaway footprint to exactly one.
+
+### Traps this deployment will hit (each one looks like a different bug than it is)
+
+- **The compose healthcheck will fail against its own `ALLOWED_HOSTS`.** Once `ALLOWED_HOSTS=mcp.nicolasdb.eu` is set, a healthcheck that curls `http://localhost:3939/healthz` from inside the container sends `Host: localhost`, which the SDK's DNS-rebinding check rejects. The container then reports **unhealthy while being perfectly fine**, and compose may keep restarting it. Either add the loopback name to `ALLOWED_HOSTS`, or have the healthcheck send the real `Host` header explicitly. Decide deliberately — silently widening `ALLOWED_HOSTS` weakens the protection AC10 exists to keep.
+- **Do not blind-copy the WebSocket block from `04-pocpod0.conf`.** That vhost sets `Upgrade`/`Connection: upgrade` unconditionally because CSS uses WebSockets. This server is **stateless Streamable HTTP with no SSE stream** (8.2's documented session model) — sending `Connection: upgrade` on every plain POST is wrong here. Copy the TLS block, security headers and proxy header set; leave the WebSocket lines out.
+- **`proxy_read_timeout` / `proxy_send_timeout`.** A `tools/call` does real work against CSS; pod operations in this stack have been observed in the seconds range (architecture doc records SPARQL ~2s, hybrid ~10s against the renegotiated NFRs). nginx's 60s default is probably fine, but set it explicitly with a comment rather than inheriting it by accident — a truncated long call surfaces as an opaque MCP transport error.
+- **`client_max_body_size` on the MCP vhost is the outer half of AC4.4's body cap.** `04-pocpod0.conf` sets `100M` for pod uploads; that is not a sensible ceiling for a JSON-RPC endpoint whose largest legitimate payload is a `solid_write_resource` body. Set both layers (nginx and the app) and make them agree.
+- **CSS ACL state lives in the Docker volume, not in files** (architecture doc, Decisions INFRA-2 / the ACL-drift notes). Do not `docker compose down -v` on this project while debugging the new service — it is a factory reset of every pod on the box.
+
+### Verified API surface and environment facts
+
+- **`allowedHosts` semantics (SDK docs, confirmed 2026-07-31):** DNS-rebinding protection is auto-enabled **only** for `127.0.0.1` / `localhost` / `::1`. Binding `0.0.0.0` — which a container does — **silently disables it**. `allowedHosts` and `allowedOrigins` are **port-agnostic**, and **requests without an `Origin` header always pass**. So `ALLOWED_HOSTS=mcp.nicolasdb.eu` must match what nginx forwards (`proxy_set_header Host $host`).
+- **`express-rate-limit` behind a proxy (docs, confirmed 2026-07-31):** with `trust proxy` at its default `false`, `X-Forwarded-For` is ignored and the limiter applies **globally instead of per-client** — a silently useless limiter, and it emits `ERR_ERL_UNEXPECTED_X_FORWARDED_FOR`. `app.set('trust proxy', 1)` is the correct setting for exactly one proxy hop. `trust proxy: true` is permissive enough that the library ships a validator warning against it (`validate: { trustProxy: false }` exists only to silence that) — **do not use it**; a client could then spoof its own rate-limit key.
+- `mcp-server.js` post-8.3: `bootIdentities()` → `Map<slug, {session, label, webId}>`; `app.post("/mcp/:slug")`; shared `notFound` handler mounted on `/mcp/:slug` miss, `/mcp`, and `/mcp/`; `notSupported` 405 on GET/DELETE; `/healthz`. The audit journal (Task 6) hooks inside the route where `identity.label` is already in hand.
+- `auth.js` is untouched and stays untouched — `getAgentSession(opts)` already takes per-identity credentials. Do not restructure it.
+- **This dev sandbox's `node` does not inherit `process.cwd()` from Bash `cd`, and does not inherit shell-set environment variables.** Use absolute paths and `--env-file=<abs>/.env`. Test env-dependent logic by unit-checking the parsing function directly. (Re-confirmed during this story's creation: `require('./package-lock.json')` from a `cd`-ed shell fails.)
+- Locally, connect to `http://127.0.0.1:<port>/...` — **not** `localhost`, not a LAN IP. DNS-rebinding protection rejects a mismatched `Host` header and it looks like a protocol failure.
+- Live server state: `ssh hetzner` → `docker exec community-solid-server ...` (data at `/data`, accounts at `/data/.internal/accounts/data`).
+
+### Do not touch
+
+`wacManager.js` and `podClient.js` remain live-verified from 8.1 and untouched through 8.2 and 8.3. `auth.js` needs no change. This is a **deployment and hardening** story: Dockerfile, compose, nginx vhost, rate limiting, audit hook, health semantics. If a bug surfaces in the WAC or tool layer during verification, **note it — do not silently fix it inside a deploy story.**
+
+### Explicitly deferred — do not build here
+
+- **Driving the connector from claude.ai end-to-end**, including the negative "write to a container you weren't granted" test — **Story 8.5**. This story proves the endpoint is correctly reachable and correctly refused; it does not do 8.5's job.
+- **The non-technical team onboarding page** — **Story 8.6**.
+- **OAuth-based per-user auth (T2)** — depends on connector features Anthropic does not expose on this account (verified absent 2026-07-30). It would remove the secret-URL trade-off entirely; revisit only if the changelog adds the field.
+- **Deleting the throwaway account shell** — **Story 7.7**. CSS exposes no HTTP account/pod delete.
+- **A UI for managing identities** — config file + restart remains the MVP.
+- **Migrating WAC → ACP** — brief §7 and its annexe. Separate mission.
+
+### Carried-forward deferred items this story should consciously close or re-defer
+
+From `deferred-work.md`, tagged to 8.4 by earlier reviews. Each needs a decision here, not silence:
+
+- **8.2:** no request body-size cap; no request timeout → **AC4 / Task 4.4.**
+- **8.2:** `/healthz` static, doesn't reflect session liveness → **AC8 / Task 7.**
+- **8.2:** no re-authentication or expiry handling for the boot-time Solid session singleton — if `keepAlive` refresh silently fails hours into uptime, every request fails through the generic error path with nothing signalling that the whole server is degraded. Explicitly flagged as "revisit alongside 8.4's hardening". **This is the item most likely to bite a long-running deployed process**, and this story is the one that makes the process long-running. Handle it or re-defer it in writing.
+- **8.3:** unrate-limited 404 log-write path (disk-fill) → **AC4 / Task 4.3**, and see "The log finding".
+- **8.3:** fail-fast boot is a single point of failure for the whole team; no alerting → pairs with **AC8**'s health work. One person's stale credential now takes the *deployed* service down for everyone, which is a materially bigger deal than it was locally.
+- **8.3:** no `chmod 600` enforcement on `identities.json` → **Task 1.4**.
+- **8.3:** no cross-slug uniqueness check on `webId`/`clientId` → cheap operator-error guard; take it or re-defer it.
+- **8.3:** timing-unsafe `Map.get` on slug lookup; sequential boot with no per-login timeout; WebID strict-equality without URI normalization; `SOLID_OIDC_ISSUER` unvalidated → judgement calls. Re-defer explicitly if not taken.
+
+### Testing approach (there is no test framework here — do not add one)
+
+`mcp-connector/` has no test runner, linter or CI, and 8.1/8.2/8.3 each deliberately declined to add one. The established pattern is:
+1. `node --check` on every touched file (syntax gate),
+2. unit-check pure functions by requiring/evaluating them directly (shell env vars don't reach `node` in this sandbox),
+3. committed live-verification scripts driven by the SDK's own MCP client (`scripts/verify-http.js`, `scripts/verify-isolation.js`) as the real acceptance evidence.
+
+Extend that pattern. A new test framework would be scope creep and would be the only one in the package.
+
+**This story's acceptance is disproportionately *operational* rather than code-level** — a cert that renews, a log that stays clean, a limiter that fires, a container that comes back after `docker compose down`. Prefer evidence over assertion for every one of them: paste the command and its output into the story record. "Configured" is not "verified"; several of this story's ACs (3, 4, 5, 9) are specifically written so that a config snippet does not satisfy them.
+
+### Rollback / blast radius
+
+Unlike 8.1–8.3, this story changes **shared production infrastructure**. Before touching the cert or nginx:
+- The `nicolasdb.eu` certificate backs **7 SANs across 5 unrelated production sites**. Know how to restore the current renewal config before expanding it.
+- `nginx -t` before every reload — `hetzner-gateway`'s `make vps-deploy` already does this; don't hand-edit on the VPS and skip it.
+- `make vps-backup` exists and a nightly cron was installed after the Story 7.1 root-ACL incident (which happened with **no backup in existence**). Confirm a recent backup exists before the first `docker compose up -d` that touches the pocpod0 project.
+- **RAM: 187 MB available.** Watch the box during first boot. If the new container pushes CSS into swap or OOM, that is a live pod outage, not a dev annoyance.
+
+### Project Structure Notes
+
+- **Two repos.** `pocpod0/`: `mcp-connector/Dockerfile`, `docker-compose.yml`, `Makefile`, `mcp-connector/src/*`, `README.md`. `hetzner-gateway/`: `nginx/conf.d/11-mcp-connector.conf`. They deploy with **different** `make vps-deploy` commands. Say so in the README — the split is not discoverable from either repo alone.
+- CommonJS (`require`) throughout `mcp-connector/src/` — do not introduce ESM.
+- Keep `npm run mcp` as the container entrypoint so existing docs stay true.
+- `PORT` (validated via `parsePort`), `HOST`, `ALLOWED_HOSTS` already exist from 8.2 — reuse, don't reinvent.
+- **OWNER credentials must never enter this environment** (brief §4.1) — and now especially not, since this is the first story where the environment is publicly reachable.
+
+### References
+
+- [Source: _bmad-output/planning-artifacts/MISSION_BRIEF_solid-mcp-connector.md#5-tâches] — T4 (VPS deploy: reverse proxy + TLS on a dedicated subdomain, restart, logs without secrets, Anthropic IP allowlist, `keepAlive`), T5 (rate limiting, 401/403/404/409 as routine cases, `chmod 600`, audit journal)
+- [Source: _bmad-output/planning-artifacts/MISSION_BRIEF_solid-mcp-connector.md#réutilisabilité-au-delà-de-claudeai] — the connector is a standard MCP server; Hermes or any MCP client can point at it (basis for AC6)
+- [Source: _bmad-output/planning-artifacts/MISSION_BRIEF_solid-mcp-connector.md#4-contraintes-darchitecture] — §4.1 two-token model, §4.2 one account per person, §4.3 agent scope, §4.4 human confirmation on permission writes
+- [Source: _bmad-output/implementation-artifacts/8-3-per-person-endpoints.md] — slug routing, identity registry, AC7 log hygiene, the forward-flagged nginx-logs-capture-slugs risk, and the deferred AC5 live re-verification
+- [Source: _bmad-output/implementation-artifacts/8-2-http-transport.md] — stateless per-request transport, `buildMcpServer(session)`, `parsePort`/`ALLOWED_HOSTS`, `/healthz`, and the six findings deferred to this story
+- [Source: _bmad-output/implementation-artifacts/deferred-work.md#deferred-from-code-review-of-story-82-2026-07-31] and [#deferred-from-code-review-of-story-83-2026-07-31] — the carried-forward list above
+- [Source: _bmad-output/implementation-artifacts/epic-8-progress-report.md#convention-binding-for-82-onward] — append-only action log + per-story proof table
+- [Source: https://platform.claude.com/docs/en/api/ip-addresses] — inbound `160.79.104.0/23`; **outbound `160.79.104.0/21`** (the one to allowlist); five `34.162.x.x/32` addresses phased out; "will not change without notice". Read 2026-07-31.
+- [Source: /home/nicolas/hetzner-gateway/nginx/conf.d/04-pocpod0.conf] — the vhost to model `11-mcp-connector.conf` on (TLS block, security headers, `map`-based header filtering, proxy header set)
+- [Source: /etc/letsencrypt/renewal/nicolasdb.eu.conf] — `authenticator = manual`, `pref_challs = dns-01`, Cloudflare auth/cleanup hooks
+- [Source: _bmad-output/planning-artifacts/architecture.md#infrastructure--deployment] — Decision INFRA-2 (single root `docker-compose.yml`, services reach each other by container name on the Docker network) — the compose-service decision in AC1 is consistent with the project's own stated deployment architecture, not an exception to it. Also the CSS ACL-drift warnings (state lives in the volume; never `down -v` casually).
+- [Source: mcp-connector/package-lock.json] — `@modelcontextprotocol/sdk@1.30.0`, `express@5.2.1`, `express-rate-limit@8.6.1` (already present), `@inrupt/solid-client@2.1.2`, `@inrupt/solid-client-authn-node@2.5.0`, `zod@3.25.76`
+
+## Dev Agent Record
+
+### Agent Model Used
+
+### Debug Log References
+
+### Completion Notes List
+
+- 2026-07-31 (partial session): Reassessed story against host state after `hetzner-gateway`'s log-hygiene pass. Confirmed live via `ssh hetzner`: swap = 4 GB across `/swapfile` + `/swapfile2` (3906M free, matches Update note), nginx logrotate active (`grep -c nginx /var/lib/logrotate/status` → 34, non-zero), `mcp-connector` still absent on VPS (no dir, no container). Task 1.2 and 3.4 confirmed done elsewhere, no rework needed. Fixed the availability gap called out in the Update section: added `restart: unless-stopped` to the three existing compose services (`community-solid-server`, `oxigraph`, `qdrant`) so a host Docker restart/reboot no longer takes `pod.nicolasdb.eu` offline. This is sub-item 1.3a, not the whole of Task 1.3 — the new `mcp-connector` service (Dockerfile, compose entry, healthcheck, memory limit) and all of Tasks 2–9 (DNS/cert, nginx vhost, rate limiting, allowlist, audit journal, health semantics, verify, docs) are still open. Story remains `ready-for-dev` / in-progress, not complete.
+
+### File List
+
+- `docker-compose.yml` — added `restart: unless-stopped` to `community-solid-server`, `oxigraph`, `qdrant`.
+
+## Change Log
+
+- 2026-07-31 — Story drafted. Scope set from brief T4/T5 plus a **live VPS probe** (`ssh hetzner`) that invalidated five planning assumptions: no `mcp-connector` on the VPS at all, nginx config in a separate repo, multi-SAN (not wildcard) cert needing DNS-01 expansion, `mcp.nicolasdb.eu` DNS not existing, and UFW being the wrong layer for the Anthropic allowlist. Anthropic's outbound range re-confirmed from source (`160.79.104.0/21`, not the inbound `/23`). `express-rate-limit@8.6.1` found already locked. Three decisions taken with Nicolas: **compose service over systemd** (no host node, everything else is a container), **strict public allowlist plus an internal `gateway`-network path for on-host bots like Hermes** (so bot reuse survives the allowlist), and **local JSONL audit journal** on a named volume. Two new hardening items surfaced by the probe and folded in: **nginx logs have no rotation on this host** (48 MB / 80 MB files, disk at 73%) which turns 8.3's slug-in-access-log warning into a permanent credential store, and **`make vps-push`'s `rsync --delete-after` would delete a VPS-side `identities.json`**, taking the whole team's access down on an unrelated deploy.

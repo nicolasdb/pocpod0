@@ -2,6 +2,7 @@ services:
   community-solid-server:
     image: solidproject/community-server:7
     container_name: community-solid-server
+    restart: unless-stopped
     ports:
       - "${CSS_PORT:-3000}:3000"
     volumes:
@@ -40,6 +41,7 @@ services:
   oxigraph:
     image: ghcr.io/oxigraph/oxigraph:0.5.6
     container_name: oxigraph
+    restart: unless-stopped
     ports:
       - "${OXIGRAPH_PORT:-7878}:7878"
     volumes:
@@ -51,6 +53,7 @@ services:
   qdrant:
     image: qdrant/qdrant:v1.17.0
     container_name: qdrant
+    restart: unless-stopped
     ports:
       - "${QDRANT_REST_PORT:-6333}:6333"
       - "${QDRANT_GRPC_PORT:-6334}:6334"
