@@ -17,8 +17,13 @@
  * like a password: never commit them, never log them, load from env only.
  */
 
+const path = require("path");
 const { Session } = require("@inrupt/solid-client-authn-node");
-require("dotenv").config();
+// Path-explicit so it doesn't depend on process.cwd() — bare dotenv.config()
+// resolves .env relative to cwd, which silently finds nothing when this
+// module is required from another directory (e.g. `npm run mcp` invoked
+// elsewhere, or this sandbox where cwd is `/`).
+require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 
 /**
  * @param {object} [opts]

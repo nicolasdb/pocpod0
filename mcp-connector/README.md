@@ -42,26 +42,62 @@ await closeSession(session);
 Try it end-to-end with `npm run example` (edit `TARGET_CONTAINER` in
 `src/example-usage.js` first).
 
-## Use as an MCP server (for Hermes or any MCP-capable harness)
+## Use as an MCP server (Streamable HTTP)
 
 ```bash
 npm run mcp
 ```
 
-Exposes `solid_read_resource`, `solid_write_resource`, `solid_list_container`,
-`solid_get_permissions`, `solid_grant_access`, `solid_revoke_access` as MCP
-tools over stdio. Point your agent harness's MCP client at this process.
+Starts an HTTP server (default `http://127.0.0.1:3939/mcp`) exposing
+`solid_read_resource`, `solid_write_resource`, `solid_list_container`,
+`solid_get_permissions`, `solid_grant_access`, `solid_revoke_access`, and
+`solid_set_public_access` as MCP tools over `StreamableHTTPServerTransport`.
+This replaces the earlier stdio transport: stdio only works for a
+locally-spawned process, and Claude.ai's remote-connector infra needs to
+reach the server at a public URL instead (claude.ai's own code sandbox
+cannot reach a Pod directly — `403 host_not_allowed`).
+
+Config via env vars:
+- `PORT` — default `3939`. Rejected at startup if not an integer in 1–65535.
+- `HOST` — default `127.0.0.1`. Binding `0.0.0.0` (needed behind nginx in a
+  VPS deploy) disables the SDK's automatic DNS-rebinding protection for
+  localhost — set `ALLOWED_HOSTS` to restore it.
+- `ALLOWED_HOSTS` — comma-separated `Host` header allowlist, passed straight
+  to the SDK. Unset by default (fine on loopback, where protection is
+  automatic). Required when `HOST` is `0.0.0.0`; the VPS deploy story sets
+  its value.
+
+The server is stateless: each POST `/mcp` gets its own transport/server
+pair, so there's no session ID and no SSE stream. `GET`/`DELETE /mcp` return
+`405` accordingly. `GET /healthz` returns `{"ok":true}` for health checks
+(deliberately no WebID in the response — this endpoint is unauthenticated).
+
+The Solid login happens once at process startup (`keepAlive: true`) and is
+reused for every request — not re-done per call.
+
+Local verification (a real MCP client handshake, not just curl):
+
+```bash
+npm run mcp &
+node scripts/verify-http.js http://127.0.0.1:3939/mcp
+```
+
+This runs `initialize` → `tools/list` → one read-only `tools/call`
+(`solid_list_container`) against the running server using the SDK's own
+`Client` + `StreamableHTTPClientTransport`. Connect via `127.0.0.1`, not
+`localhost` or a LAN IP — the DNS-rebinding protection rejects a mismatched
+`Host` header otherwise.
+
+**Public exposure (TLS, nginx, systemd, rate limiting, Anthropic IP
+allowlist) is a separate VPS-deploy story — do not point this straight at
+the internet off the back of local verification alone.**
 
 ## Deploying on a VPS
 
-- Run as a systemd service (or alongside the Hermes harness process) so
-  `keepAlive` session refresh works continuously; use `keepAlive: false` in
-  `auth.js` if you're instead invoking this as a short-lived job.
 - Keep `.env` out of git (`.gitignore` it) and restrict its permissions
   (`chmod 600 .env`).
-- If the VPS also hosts the Community Solid Server instance itself, this
-  package can run as a separate process alongside it — no special
-  networking needed beyond reaching its own `SOLID_OIDC_ISSUER` URL.
+- Production HTTP exposure (nginx/TLS, systemd unit, rate limiting, IP
+  allowlisting) is handled in a dedicated deploy story, not covered here.
 
 ## Installing as a Claude skill
 

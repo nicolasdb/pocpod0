@@ -39,9 +39,40 @@ live pod (`pod.nicolasdb.eu`) — not just transcripts. Updated per story as the
 - **AC2** (WAC-read on the data-pod container) is a **verified negative**: CSS requires `acl:Control` just to *read* a resource's `.acl`, not only read/write on the resource — so `listAgentsWithAccess`/`getAgentAccess` correctly return `null` for AGENT there. This is proof the two-token model holds, not a gap to close.
 - **AC3** used `setPublicAccess` + an anonymous out-of-app fetch instead of a named second-agent grant, because no second Solid WebID exists in this environment. Allowed under AC5's own wording; noted rather than silently substituted.
 
+## Story 8.2 — MCP Server: stdio -> Streamable HTTP Transport
+
+**Status:** review (2026-07-31)
+**Full narrative:** `8-2-http-transport.md` (Dev Agent Record has per-AC detail)
+
+### What you can check yourself, right now
+
+| Check | Where | What it proves |
+|---|---|---|
+| Action log entry | `https://pod.nicolasdb.eu/nicolas_claude/epic-8-action-log.md` (Story 8.2 section, appended 2026-07-31) | Live MCP client (`initialize` -> `tools/list` -> `tools/call solid_list_container`) ran successfully over the new HTTP transport against `hyperscope_ndb/shared/`, using AGENT's existing read access from 8.1. |
+| Code diff | `git diff` on `mcp-connector/src/mcp-server.js`, `src/auth.js`, `package.json` | `StdioServerTransport` replaced by `StreamableHTTPServerTransport` behind `createMcpExpressApp()`; `.env` loading made path-explicit (no longer cwd-dependent); `express` declared as a direct dependency. |
+| Verification script | `mcp-connector/scripts/verify-http.js` | Committed, re-runnable real-client check (not a one-off) — this is what 8.5 should reuse rather than rebuilding. |
+| README | `mcp-connector/README.md` | HTTP invocation, PORT/HOST config, local-verification command documented; stdio instructions removed. |
+
+No data-pod writes in this story beyond the read-only `solid_list_container` call above — transport-only change, per the story's own scope boundary. `wacManager.js`/`podClient.js` were not touched.
+
+### Decisions recorded
+
+- **Session model: stateless, per-request transport+server** (`sessionIdGenerator: undefined`), not stateful. Rationale: 8.3 gives each person their own endpoint bound to their own token, so per-request construction is the shape that story wants anyway; a stateless server also survives restart without clients holding dead session IDs. The Solid session itself stays a boot-time singleton (`keepAlive: true`) regardless — different lifetime from the per-request MCP transport/server.
+- `GET`/`DELETE /mcp` return `405` (no SSE stream/session to serve in stateless mode).
+- `GET /healthz` added, unauthenticated, deliberately omits the WebID.
+
+### Bugs/gaps found and fixed (this story)
+
+1. **`auth.js` `.env` loading** — bare `dotenv.config()` resolved relative to `process.cwd()`, which is `/` in this sandbox (and would be wrong for `npm run mcp` invoked from elsewhere too). Fixed: path-explicit `dotenv.config({ path: path.join(__dirname, "..", ".env") })`.
+2. **`express` as transitive-only dependency** — resolved at runtime purely by hoisting from `@modelcontextprotocol/sdk`'s own dependency. Declared explicitly in `package.json` (AC7).
+
+### Scope notes
+
+- Permission-writing tools (`solid_grant_access`, `solid_revoke_access`, `solid_set_public_access`) were **not** exercised against the data pod in this story's verification — 8.1 already proved their Control-access enforcement live, and re-running that adds no new information (story's own Task 5.2 instruction).
+- Audit journal, rate limiting, TLS/nginx/systemd, and per-person routing are explicitly deferred to 8.3/8.4, per the story's scope boundary — not implemented here.
+
 ## Epic 8 — remaining stories
 
-- 8.2 HTTP transport — backlog
 - 8.3 Per-person endpoints — backlog
 - 8.4 VPS deploy hardening — backlog
 - 8.5 Live verification — backlog (depends on 8.1, now unblocked)

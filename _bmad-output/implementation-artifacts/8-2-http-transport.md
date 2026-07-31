@@ -1,6 +1,6 @@
 # Story 8.2: MCP Server — stdio → Streamable HTTP Transport
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -39,28 +39,54 @@ Do not build 8.3's multi-tenant routing or 8.4's rate limiting here. Build the s
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Swap the transport (AC: #1, #5, #7)
-  - [ ] 1.1 Add `express` to `package.json` dependencies (pin the major already in the lock: `^5.2.1`). Keep `@modelcontextprotocol/sdk` on the **1.x** line — do not bump to 2.x (brief §5 T1; 1.x is production-supported for months after v2 and the `registerTool` API changes across the major).
-  - [ ] 1.2 Replace `StdioServerTransport` with `StreamableHTTPServerTransport` from `@modelcontextprotocol/sdk/server/streamableHttp.js`. Read `PORT`/`HOST` from env with sane defaults (`127.0.0.1` while local — see Task 4 on why the default matters).
-  - [ ] 1.3 Keep the single boot-time `getAgentSession()` (`keepAlive: true`). Fail fast with a clear message if login fails.
-  - [ ] 1.4 Make `.env` loading path-explicit so it doesn't depend on `cwd`: either `dotenv.config({ path: path.join(__dirname, "..", ".env") })` in `auth.js`, or `--env-file` in the `mcp` script. **`auth.js` may be edited for this** — the "do not touch" rule below covers `wacManager.js`/`podClient.js` only. Keep the change to config loading; don't restructure the login flow.
-- [ ] Task 2: Wire Express and choose the session model (AC: #1, #4)
-  - [ ] 2.1 Use `createMcpExpressApp()` from `@modelcontextprotocol/sdk/server/express.js` rather than hand-rolling an Express app — it ships DNS-rebinding protection (see Dev Notes). Note it returns a **bare Express app** with that middleware applied and mounts no routes: you still register `app.post("/mcp", ...)` yourself, confirm whether JSON body-parsing is applied, and pass the parsed body through as `transport.handleRequest(req, res, req.body)`.
-  - [ ] 2.2 Decide stateless vs stateful, implement it, and record the decision + reason in Dev Notes. Read the "Concurrency trap" note first — this is the one place a wrong choice produces a bug that only shows up under two simultaneous clients.
-  - [ ] 2.3 If stateless: return **405** with a JSON-RPC error for `GET`/`DELETE /mcp` (no SSE stream or session teardown exists to serve), and close the per-request transport on `res.on("close")` so transports don't leak per request.
-  - [ ] 2.4 Add a plain `GET /healthz` returning `{ok:true}` — 8.4 needs it for systemd/nginx health checks and it eases AC3 verification. **Do not include the WebID** unless the listener is bound to loopback: this endpoint is unauthenticated and goes public in 8.4, and the agent's WebID is not something to hand out anonymously.
-- [ ] Task 3: Keep 8.3's per-person routing cheap (AC: #1)
-  - [ ] 3.1 Structure the server so the "build a server instance for identity X" step is a function taking a session, not module-level global wiring. 8.3 then adds a path→token map and calls it per identity; no rewrite. **Do not** implement multi-identity routing itself in this story.
-- [ ] Task 4: Error handling and log hygiene (AC: #6, #8)
-  - [ ] 4.1 Wrap each tool handler so a thrown Solid/Inrupt error becomes an MCP error result with a human-actionable message, mapping 401/403/404/409 explicitly. Reuse 8.1's documented-error wording where it already exists (`wacManager.js`'s Control-access message) rather than inventing a second phrasing.
-  - [ ] 4.2 Confirm no secret, `Authorization` header, or token appears in any log line, including error paths.
-- [ ] Task 5: Verify with a real MCP client (AC: #3)
-  - [ ] 5.1 Run the server locally, connect an actual MCP client, complete `initialize` → `tools/list` → one read-only `tools/call` (`solid_list_container` or `solid_read_resource` against `hyperscope_ndb/shared/`, where AGENT already has read access from 8.1). Use the SDK's own client — already installed, no new dep: `Client` from `@modelcontextprotocol/sdk/client/index.js` + `StreamableHTTPClientTransport` from `@modelcontextprotocol/sdk/client/streamableHttp.js`. Commit the script as `mcp-connector/scripts/verify-http.js` so 8.5 can re-run it instead of rebuilding it.
+- [x] Task 1: Swap the transport (AC: #1, #5, #7)
+  - [x] 1.1 Add `express` to `package.json` dependencies (pin the major already in the lock: `^5.2.1`). Keep `@modelcontextprotocol/sdk` on the **1.x** line — do not bump to 2.x (brief §5 T1; 1.x is production-supported for months after v2 and the `registerTool` API changes across the major).
+  - [x] 1.2 Replace `StdioServerTransport` with `StreamableHTTPServerTransport` from `@modelcontextprotocol/sdk/server/streamableHttp.js`. Read `PORT`/`HOST` from env with sane defaults (`127.0.0.1` while local — see Task 4 on why the default matters).
+  - [x] 1.3 Keep the single boot-time `getAgentSession()` (`keepAlive: true`). Fail fast with a clear message if login fails.
+  - [x] 1.4 Make `.env` loading path-explicit so it doesn't depend on `cwd`: either `dotenv.config({ path: path.join(__dirname, "..", ".env") })` in `auth.js`, or `--env-file` in the `mcp` script. **`auth.js` may be edited for this** — the "do not touch" rule below covers `wacManager.js`/`podClient.js` only. Keep the change to config loading; don't restructure the login flow.
+- [x] Task 2: Wire Express and choose the session model (AC: #1, #4)
+  - [x] 2.1 Use `createMcpExpressApp()` from `@modelcontextprotocol/sdk/server/express.js` rather than hand-rolling an Express app — it ships DNS-rebinding protection (see Dev Notes). Note it returns a **bare Express app** with that middleware applied and mounts no routes: you still register `app.post("/mcp", ...)` yourself, confirm whether JSON body-parsing is applied, and pass the parsed body through as `transport.handleRequest(req, res, req.body)`.
+  - [x] 2.2 Decide stateless vs stateful, implement it, and record the decision + reason in Dev Notes. Read the "Concurrency trap" note first — this is the one place a wrong choice produces a bug that only shows up under two simultaneous clients.
+  - [x] 2.3 If stateless: return **405** with a JSON-RPC error for `GET`/`DELETE /mcp` (no SSE stream or session teardown exists to serve), and close the per-request transport on `res.on("close")` so transports don't leak per request.
+  - [x] 2.4 Add a plain `GET /healthz` returning `{ok:true}` — 8.4 needs it for systemd/nginx health checks and it eases AC3 verification. **Do not include the WebID** unless the listener is bound to loopback: this endpoint is unauthenticated and goes public in 8.4, and the agent's WebID is not something to hand out anonymously.
+- [x] Task 3: Keep 8.3's per-person routing cheap (AC: #1)
+  - [x] 3.1 Structure the server so the "build a server instance for identity X" step is a function taking a session, not module-level global wiring. 8.3 then adds a path→token map and calls it per identity; no rewrite. **Do not** implement multi-identity routing itself in this story.
+- [x] Task 4: Error handling and log hygiene (AC: #6, #8)
+  - [x] 4.1 Wrap each tool handler so a thrown Solid/Inrupt error becomes an MCP error result with a human-actionable message, mapping 401/403/404/409 explicitly. Reuse 8.1's documented-error wording where it already exists (`wacManager.js`'s Control-access message) rather than inventing a second phrasing.
+  - [x] 4.2 Confirm no secret, `Authorization` header, or token appears in any log line, including error paths.
+- [x] Task 5: Verify with a real MCP client (AC: #3)
+  - [x] 5.1 Run the server locally, connect an actual MCP client, complete `initialize` → `tools/list` → one read-only `tools/call` (`solid_list_container` or `solid_read_resource` against `hyperscope_ndb/shared/`, where AGENT already has read access from 8.1). Use the SDK's own client — already installed, no new dep: `Client` from `@modelcontextprotocol/sdk/client/index.js` + `StreamableHTTPClientTransport` from `@modelcontextprotocol/sdk/client/streamableHttp.js`. Commit the script as `mcp-connector/scripts/verify-http.js` so 8.5 can re-run it instead of rebuilding it.
     - **Connect via `http://127.0.0.1:<port>/mcp`, not `localhost` or a LAN IP** — with `createMcpExpressApp()` defaults, DNS-rebinding protection rejects a mismatched `Host` header, which looks like a protocol failure and will otherwise burn an hour.
-  - [ ] 5.2 Record the transcript/result in Dev Notes. **Do not** exercise the permission-writing tools against the data pod here — 8.1 already proved they correctly fail, and repeating it adds live-pod noise for no new information.
-- [ ] Task 6: Docs + Epic 8 convention (AC: #9)
-  - [ ] 6.1 Update `mcp-connector/README.md`: HTTP invocation, `PORT`/`HOST`, local verification command. Note that public exposure (TLS, nginx, rate limiting, IP allowlist) is Story 8.4, so nobody deploys this straight to the internet off the back of this story.
-  - [ ] 6.2 Per the Epic 8 convention (binding from 8.2 onward, see `epic-8-progress-report.md`): **append** a dated section to `https://pod.nicolasdb.eu/nicolas_claude/epic-8-action-log.md` (read existing content first, write back existing + new — never overwrite), and add a "Story 8.2" section to `epic-8-progress-report.md` with its proof table. If this story does no live pod writes beyond AC3's read, say exactly that in the table rather than padding it.
+  - [x] 5.2 Record the transcript/result in Dev Notes. **Do not** exercise the permission-writing tools against the data pod here — 8.1 already proved they correctly fail, and repeating it adds live-pod noise for no new information.
+- [x] Task 6: Docs + Epic 8 convention (AC: #9)
+  - [x] 6.1 Update `mcp-connector/README.md`: HTTP invocation, `PORT`/`HOST`, local verification command. Note that public exposure (TLS, nginx, rate limiting, IP allowlist) is Story 8.4, so nobody deploys this straight to the internet off the back of this story.
+  - [x] 6.2 Per the Epic 8 convention (binding from 8.2 onward, see `epic-8-progress-report.md`): **append** a dated section to `https://pod.nicolasdb.eu/nicolas_claude/epic-8-action-log.md` (read existing content first, write back existing + new — never overwrite), and add a "Story 8.2" section to `epic-8-progress-report.md` with its proof table. If this story does no live pod writes beyond AC3's read, say exactly that in the table rather than padding it.
+
+### Review Findings
+
+Code review 2026-07-31 (Blind Hunter / Edge Case Hunter / Acceptance Auditor). The three
+`decision-needed` items were all resolved by live verification against `pod.nicolasdb.eu`
+rather than by argument — all three passed, closing gaps the story had asserted from static
+code reading only.
+
+- [x] [Review][Decision] AC6's two documented non-throw cases were never live-tested — **resolved: live-verified, both pass.** `solid_get_permissions` against `hyperscope_ndb/shared/` (AGENT has no Control) → `"Reading permissions requires Control access on this resource; this agent has read/write only."` with `isError:true`. Against `shared/story-8-1-proof.txt` (non-RDF) → `"Permissions can only be read for RDF resources or containers."` with `isError:true`. AC6 now holds on evidence, not inference.
+- [x] [Review][Decision] AC4's concurrency claim was unverified — **resolved: live-verified, no cross-talk.** Three simultaneous MCP clients issuing *distinct* calls (`solid_list_container` / `solid_read_resource` / `solid_get_permissions`) each received its own correct response. Note the first attempt (two clients, same container) was a non-test — identical inputs cannot reveal interleaving; the distinct-argument version is the real evidence.
+- [x] [Review][Decision] AC8 secret hygiene was only checked on a *successful* boot log, not the failure path — **resolved: live-verified clean.** Forced login failure with a wrong client secret → log contains only `fatal: Solid login failed: invalid_client (client authentication failed)`. Grep confirmed no real secret, no supplied secret value, no client id, and zero `authorization|bearer|token` hits.
+- [x] [Review][Patch] `PORT` parsed with bare `Number()`, so a malformed value became `NaN` and reached `app.listen(NaN, ...)` instead of failing fast [mcp-connector/src/mcp-server.js:36] — added `parsePort()` rejecting non-integers and out-of-range values; unit-checked across `undefined`/`""`/valid/`abc`/`0`/`70000`/`80.5`/`-1`.
+- [x] [Review][Patch] Dev Notes recommended wiring `allowedHosts` now (8.4 sets its value) but the diff silently omitted it [mcp-connector/src/mcp-server.js:262] — added an `ALLOWED_HOSTS` env var passed through to `createMcpExpressApp()`, documented in README.
+- [x] [Review][Patch] Progress report listed `8.3 Per-person endpoints — backlog` twice and dropped `8.2` entirely from the remaining-stories list [epic-8-progress-report.md:76] — deduplicated.
+
+Deferred (real, but out of scope for a transport-only story — see `deferred-work.md`):
+- [x] [Review][Defer] No re-auth/expiry handling for the process-lifetime Solid session singleton [mcp-connector/src/mcp-server.js:255] — deferred, the boot-time-singleton design is 8.1's and AC5 mandates it here
+- [x] [Review][Defer] `toToolErrorResult` classifies security-relevant errors by substring-matching `err.message` for `"control"` / `"501"` [mcp-connector/src/mcp-server.js:59-68] — deferred, fragile to upstream wording drift but extends 8.1's own established pattern; both branches are now live-confirmed against real CSS errors
+- [x] [Review][Defer] `/healthz` is a static `{ok:true}` and does not reflect Solid session liveness [mcp-connector/src/mcp-server.js:311] — deferred to 8.4, which owns health-check semantics
+- [x] [Review][Defer] No request body-size cap or request timeout on `POST /mcp` — deferred, explicitly 8.4's rate-limiting/hardening scope
+- [x] [Review][Defer] `getAgentAccess` has the same Control-null contract as `listAgentsWithAccess` but no generic tool-layer guard — deferred, no current caller reaches it; a trap for 8.3 to avoid when it wires new tools
+- [x] [Review][Defer] Fatal login error logs `err.message` only, discarding the stack trace [mcp-connector/src/mcp-server.js:258] — deferred, an intentional secret-hygiene tradeoff now validated by the AC8 failure-path test
+
+Dismissed as noise: `res.on("close")` double-fire concern (the SDK's own documented cleanup
+pattern), unverified `express` version pin (no actionable signal), and the "self-referential
+tool-count check" objection (true of the phrasing, not a defect in the tools).
 
 ## Dev Notes
 
@@ -128,8 +154,42 @@ This dev sandbox's Bash `$PWD` is not honored by the `node` process — `process
 
 ### Agent Model Used
 
+Claude Sonnet 5 (`claude-sonnet-5`)
+
 ### Debug Log References
+
+- Local server boot: `node --env-file=<abs>/.env <abs>/mcp-connector/src/mcp-server.js` → `[solid-pod-agent] authenticated as https://pod.nicolasdb.eu/nicolas_claude/profile/card#me` then `[solid-pod-agent mcp-server] listening on http://127.0.0.1:3939/mcp`.
+- `curl http://127.0.0.1:3939/healthz` → `{"ok":true}`.
+- `node scripts/verify-http.js http://127.0.0.1:3939/mcp` → `initialize: OK` → `tools/list: OK — 7 tools` (all 7 names match the pre-existing set exactly) → `tools/call solid_list_container(.../hyperscope_ndb/shared/): OK` returning the 3 resources AGENT can already read (from 8.1) → `ALL CHECKS PASSED`.
+- `curl -w "\nHTTP %{http_code}\n" http://127.0.0.1:3939/mcp` (GET) and `-X DELETE` → both `405` with the expected JSON-RPC error body.
+- `grep -iE "secret|CLIENT_SECRET|authorization" /tmp/mcp-server.log` → clean (only the WebID line and the listen line are logged).
+- `node --check` on `mcp-server.js`, `auth.js`, `scripts/verify-http.js` → all pass (no test/lint framework exists elsewhere in `mcp-connector/`, so this plus the live verify-http run is the validation available in this repo).
+- Appended Story 8.2 section to `https://pod.nicolasdb.eu/nicolas_claude/epic-8-action-log.md` via a one-off script using the existing `podClient`/`auth` modules (read-then-write, not overwrite) — confirmed new length 2769 chars (existing 2195 + 574 appended).
 
 ### Completion Notes List
 
+- Transport swapped: `StdioServerTransport` → `StreamableHTTPServerTransport` behind `createMcpExpressApp()`. `npm run mcp` unchanged as the entry point.
+- Session model: **stateless, per-request transport+server** (AC4). Chosen because 8.3 gives each person their own endpoint bound to their own token — per-request construction is the shape that story wants anyway — and a stateless server survives restart without clients holding dead session IDs. The Solid session (`getAgentSession()`) stays a single boot-time singleton with `keepAlive: true`, reused by every per-request server instance; this is a different lifetime from the per-request MCP transport/server and the two were kept deliberately separate, per the Dev Notes "Concurrency trap" guidance.
+- `GET`/`DELETE /mcp` return 405 (no SSE/session to serve in stateless mode). `GET /healthz` added, unauthenticated, no WebID in the response.
+- 8.3 readiness: `buildMcpServer(session)` is a plain function of a session, not module-level global wiring, so per-identity routing can call it per token without restructuring.
+- Error handling: `safeHandler()` wraps every tool handler and `toToolErrorResult()` maps 401/403/404/409 plus the two documented non-HTTP-status cases from 8.1 (`listAgentsWithAccess`/`getAgentAccess` returning `null` without Control; 501 on non-RDF permission reads) to actionable text instead of leaking a stack trace. `solid_get_permissions`'s `null` case is additionally handled explicitly at the tool layer since it's a return value, not a thrown error.
+- `.env` loading fixed to be path-explicit in `auth.js` (`path.join(__dirname, "..", ".env")`) — the prerequisite AC5 called out, since bare `dotenv.config()` resolved from `process.cwd()` (which is `/` in this sandbox, and would differ from `mcp-connector/` for any external invocation).
+- `express` declared as a direct dependency (`^5.2.1`, matching the version already resolved transitively via the SDK) — was previously only a transitive dep.
+- `mcp-connector/scripts/verify-http.js` committed as the reusable AC3 verification script — checks all 7 expected tool names are present, then round-trips one real `tools/call`.
+- README's "Use as an MCP server" section rewritten for HTTP: `PORT`/`HOST`, stateless behavior, `/healthz`, the `verify-http.js` invocation, and an explicit note that TLS/nginx/rate-limiting/IP-allowlisting is a separate VPS-deploy story.
+- Per the Epic 8 convention: appended to the live action log and added the "Story 8.2" section to `epic-8-progress-report.md` (see that file for the proof table). No data-pod writes occurred beyond the read-only `solid_list_container` verification call — `wacManager.js`/`podClient.js` were not touched, per the story's own scope boundary.
+- Not built (explicitly deferred, per Dev Notes): audit journal, rate limiting, TLS/nginx/systemd, per-person routing.
+
 ### File List
+
+- `mcp-connector/src/mcp-server.js` — modified (stdio → Streamable HTTP transport, stateless per-request server, error mapping, `/healthz`)
+- `mcp-connector/src/auth.js` — modified (path-explicit `.env` loading)
+- `mcp-connector/package.json` — modified (added `express` as a direct dependency)
+- `mcp-connector/scripts/verify-http.js` — added (AC3 real-MCP-client verification script)
+- `mcp-connector/README.md` — modified (HTTP invocation docs, replacing stdio instructions)
+- `_bmad-output/implementation-artifacts/epic-8-progress-report.md` — modified (added Story 8.2 section)
+
+## Change Log
+
+- 2026-07-31: Story implemented — stdio → Streamable HTTP transport, stateless per-request session model, error mapping for routine Solid/CSS failures, `express` declared as direct dependency, `.env` path-explicit fix, `verify-http.js` committed and run live against the local server, README updated, Epic 8 action log + progress report updated per convention. Status: review.
+- 2026-07-31: Code review passed. Three decision-needed findings (AC6 non-throw cases, AC4 concurrency, AC8 failure-path log hygiene) were closed by live verification against pod.nicolasdb.eu rather than by argument — all three passed. Three patches applied: `parsePort()` validation, `ALLOWED_HOSTS` wiring, progress-report dedup. Six findings deferred to 8.4/8.3. Status: done.
