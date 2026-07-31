@@ -71,9 +71,40 @@ No data-pod writes in this story beyond the read-only `solid_list_container` cal
 - Permission-writing tools (`solid_grant_access`, `solid_revoke_access`, `solid_set_public_access`) were **not** exercised against the data pod in this story's verification — 8.1 already proved their Control-access enforcement live, and re-running that adds no new information (story's own Task 5.2 instruction).
 - Audit journal, rate limiting, TLS/nginx/systemd, and per-person routing are explicitly deferred to 8.3/8.4, per the story's scope boundary — not implemented here.
 
+## Story 8.3 — Per-Person MCP Endpoints
+
+**Status:** review (2026-07-31)
+**Full narrative:** `8-3-per-person-endpoints.md` (Dev Agent Record has per-AC detail)
+
+### What you can check yourself, right now
+
+| Check | Where | What it proves |
+|---|---|---|
+| Action log entry | `https://pod.nicolasdb.eu/nicolas_claude/epic-8-action-log.md` (Story 8.3 section, appended 2026-07-31) | Boot, routing, and isolation all live-verified; throwaway account provisioned and its credentials revoked afterward. |
+| Code diff | `git diff` on `mcp-connector/src/mcp-server.js`, new `src/identityRegistry.js`, `scripts/gen-slug.js`, `scripts/verify-isolation.js` | Bare `/mcp` replaced by `POST /mcp/:slug`; N-identity boot with fail-fast; identity registry load/validation. |
+| Config template | `mcp-connector/identities.example.json` | Shape of the gitignored `identities.json` — placeholders only, no real values ever committed. |
+| Isolation script | `mcp-connector/scripts/verify-isolation.js` | Committed, re-runnable proof that identity A is denied on identity B's private resource, with 8.2's actionable error text — not asserted, run live during this story. |
+| README | `mcp-connector/README.md` | Per-person URL scheme, add/remove/rotate procedure, URL-secrecy trade-off, verification commands, explicit "public exposure is 8.4" note. |
+
+### Decisions recorded
+
+- **Bare `/mcp` removed, not kept as a configured identity.** Keeping it running alongside per-person routes would be exactly the undocumented shared-identity endpoint AC1 forbids. Anyone wanting the old single-identity shape configures it as one `identities.json` entry.
+- **`identities.json` is a separate gitignored artifact from `.env`.** `.env` still holds nothing but the OIDC issuer (and, only transiently, OWNER credentials for onboarding). Identities never touch `.env`.
+- **Slugs are validated, not just generated safely.** `identityRegistry.js` rejects non-URL-safe or too-short slugs and duplicate top-level JSON keys (which `JSON.parse` would otherwise silently drop) at load time, naming the offending entry's *label* only.
+- **Defensive webId check added beyond the story's literal ask:** after each identity logs in, the server confirms `session.info.webId` matches the configured `webId` and fails fast (naming the label) on mismatch — catches a stale/typo'd config entry before it causes confusing tool errors downstream.
+
+### Bugs/gaps found (this story)
+
+- None in the touched code. One environmental gotcha reconfirmed: this sandbox's `dotenv` treats an unescaped `#` as a comment start even mid-value with no preceding space, silently truncating `AGENT_WEBID`'s `#me` fragment when re-parsed outside the normal `auth.js` load path. Not a product bug — `auth.js`'s own load path is unaffected — but worth knowing if you ever re-parse `.env` by hand for a script.
+
+### Scope notes
+
+- Task 4.1's throwaway account (`story83throwaway1785486779`) was provisioned via the full CSS HTTP flow (account create -> password login register -> pod create -> client-credentials mint), live-confirmed end-to-end. Its client-credentials were revoked at the end of the isolation test; the **account shell** itself cannot be removed over HTTP (CSS exposes no account/pod delete) — tracked as Story 7.7's job, not this one's.
+- Rate limiting, TLS/nginx/systemd, and the Anthropic IP allowlist remain out of scope here, per the story's own boundary — 8.4's job.
+
 ## Epic 8 — remaining stories
 
-- 8.3 Per-person endpoints — backlog
 - 8.4 VPS deploy hardening — backlog
 - 8.5 Live verification — backlog (depends on 8.1, now unblocked)
 - 8.6 Team onboarding doc — backlog
+- 7.7 Delete pod with ceremony — drafted, closes the no-HTTP-delete gap noted above

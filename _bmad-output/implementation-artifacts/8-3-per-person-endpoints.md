@@ -1,6 +1,6 @@
 # Story 8.3: Per-Person MCP Endpoints
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -41,25 +41,25 @@ Do not build 8.4's rate limiting or audit journal here.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Identity registry (AC: #2, #6)
-  - [ ] 1.1 Define the config shape: a gitignored `identities.json` (or `IDENTITIES_*` env) mapping `slug → {clientId, clientSecret, webId, label}`. Commit `identities.example.json` with obvious placeholders only. Add the real file to `.gitignore` **before** creating it — an accidental commit of this file is a full credential leak for every team member at once.
-  - [ ] 1.2 Load and validate at boot: reject duplicate slugs, missing fields, and slugs that are too short or not URL-safe. Fail with a message naming the offending slug's *label*, not the slug.
-  - [ ] 1.3 Add a slug generator script using `crypto.randomBytes` → URL-safe base64/base58, ≥ 22 chars. Wire it as an npm script.
-- [ ] Task 2: Boot N sessions (AC: #3, #7)
-  - [ ] 2.1 At startup, `getAgentSession({ clientId, clientSecret, oidcIssuer, keepAlive: true })` per identity. `auth.js` **already accepts these as opts** (`auth.js:39-43`) — no change needed there; do not refactor it.
-  - [ ] 2.2 Build a `slug → { session, label, webId }` map. Fail fast naming the failing identity's label if any login fails.
-  - [ ] 2.3 Confirm the boot log shows one WebID line per identity and contains no slug/secret.
-- [ ] Task 3: Route by slug (AC: #1, #4, #8)
-  - [ ] 3.1 Replace the fixed `app.post("/mcp", ...)` with a slug-parameterised route. Look the slug up in the map; on miss return a generic 404 JSON-RPC error. Keep the per-request transport + `buildMcpServer(session)` construction exactly as 8.2 left it — pass the *matched identity's* session.
-  - [ ] 3.2 Keep `GET`/`DELETE` on MCP paths at 405 and `/healthz` unchanged and identity-free.
-  - [ ] 3.3 Decide the fate of bare `/mcp` (AC1) and record the decision + reason in Dev Notes.
-- [ ] Task 4: Prove isolation live (AC: #5)
-  - [ ] 4.1 Provision a **throwaway** second identity rather than borrowing a colleague's: create a throwaway CSS account + pod, mint client credentials for it, and configure it as the second slug. See Dev Notes for why a throwaway and not `alex`/`chabivdb`, and for the exact credential-mint flow (already live-confirmed, do not re-derive it).
-  - [ ] 4.2 Extend `scripts/verify-http.js` (or add a sibling) to drive **both** endpoints: each reaches its own resource, and identity B is denied on a resource only A can read, with the documented error text. Commit it so 8.5 can re-run it.
-  - [ ] 4.3 Clean up: revoke the throwaway's client credentials when done. Note honestly in the story that the throwaway *account shell* cannot be removed over HTTP (see Dev Notes) — that gap is Story 7.7's job, not this one's.
-- [ ] Task 5: Docs + Epic 8 convention (AC: #9)
-  - [ ] 5.1 README: URL scheme, add/remove/rotate a person, the URL-secrecy trade-off in plain words, verification command, and an explicit "public exposure is 8.4" note.
-  - [ ] 5.2 Per the Epic 8 convention (binding since 8.2): **append** a dated section to `https://pod.nicolasdb.eu/nicolas_claude/epic-8-action-log.md` (read existing, write existing + new — never overwrite) and add a "Story 8.3" section with its proof table to `epic-8-progress-report.md`.
+- [x] Task 1: Identity registry (AC: #2, #6)
+  - [x] 1.1 Define the config shape: a gitignored `identities.json` (or `IDENTITIES_*` env) mapping `slug → {clientId, clientSecret, webId, label}`. Commit `identities.example.json` with obvious placeholders only. Add the real file to `.gitignore` **before** creating it — an accidental commit of this file is a full credential leak for every team member at once.
+  - [x] 1.2 Load and validate at boot: reject duplicate slugs, missing fields, and slugs that are too short or not URL-safe. Fail with a message naming the offending slug's *label*, not the slug.
+  - [x] 1.3 Add a slug generator script using `crypto.randomBytes` → URL-safe base64/base58, ≥ 22 chars. Wire it as an npm script.
+- [x] Task 2: Boot N sessions (AC: #3, #7)
+  - [x] 2.1 At startup, `getAgentSession({ clientId, clientSecret, oidcIssuer, keepAlive: true })` per identity. `auth.js` **already accepts these as opts** (`auth.js:39-43`) — no change needed there; do not refactor it.
+  - [x] 2.2 Build a `slug → { session, label, webId }` map. Fail fast naming the failing identity's label if any login fails.
+  - [x] 2.3 Confirm the boot log shows one WebID line per identity and contains no slug/secret.
+- [x] Task 3: Route by slug (AC: #1, #4, #8)
+  - [x] 3.1 Replace the fixed `app.post("/mcp", ...)` with a slug-parameterised route. Look the slug up in the map; on miss return a generic 404 JSON-RPC error. Keep the per-request transport + `buildMcpServer(session)` construction exactly as 8.2 left it — pass the *matched identity's* session.
+  - [x] 3.2 Keep `GET`/`DELETE` on MCP paths at 405 and `/healthz` unchanged and identity-free.
+  - [x] 3.3 Decide the fate of bare `/mcp` (AC1) and record the decision + reason in Dev Notes.
+- [x] Task 4: Prove isolation live (AC: #5)
+  - [x] 4.1 Provision a **throwaway** second identity rather than borrowing a colleague's: create a throwaway CSS account + pod, mint client credentials for it, and configure it as the second slug. See Dev Notes for why a throwaway and not `alex`/`chabivdb`, and for the exact credential-mint flow (already live-confirmed, do not re-derive it).
+  - [x] 4.2 Extend `scripts/verify-http.js` (or add a sibling) to drive **both** endpoints: each reaches its own resource, and identity B is denied on a resource only A can read, with the documented error text. Commit it so 8.5 can re-run it.
+  - [x] 4.3 Clean up: revoke the throwaway's client credentials when done. Note honestly in the story that the throwaway *account shell* cannot be removed over HTTP (see Dev Notes) — that gap is Story 7.7's job, not this one's.
+- [x] Task 5: Docs + Epic 8 convention (AC: #9)
+  - [x] 5.1 README: URL scheme, add/remove/rotate a person, the URL-secrecy trade-off in plain words, verification command, and an explicit "public exposure is 8.4" note.
+  - [x] 5.2 Per the Epic 8 convention (binding since 8.2): **append** a dated section to `https://pod.nicolasdb.eu/nicolas_claude/epic-8-action-log.md` (read existing, write existing + new — never overwrite) and add a "Story 8.3" section with its proof table to `epic-8-progress-report.md`.
 
 ## Dev Notes
 
@@ -78,6 +78,15 @@ Do not build 8.4's rate limiting or audit journal here.
 - `mcp-server.js` (post-8.2) — `buildMcpServer(session)` returns a fresh `McpServer` with all 7 tools registered, taking the session as its only input. This is the per-identity factory; it needs no change.
 - Express 5 route params work normally on the app returned by `createMcpExpressApp()` — it is a bare Express app with DNS-rebinding middleware applied and no routes mounted. `app.post("/mcp/:slug", ...)` is fine.
 - **Client-credentials mint flow (live-confirmed 2026-07-23, do not re-derive):** account login `POST /.account/login/password/` `{email,password}` → `{authorization}` (the CSS-Account-Token). The `controls.account.clientCredentials` URL appears only on the **authenticated** `GET /.account/` index, and that GET must carry **no `content-type` header** or CSS content-negotiates away the controls. Then `POST {ccUrl}` `{name, webId}` → `{id, secret, resource}` with the secret shown **once**. Revoke with `DELETE {resource}` → 200.
+
+### Decision: fate of bare `/mcp` (Task 3.3)
+
+**Removed, not kept as a configured identity.** `mcp-server.js` no longer has
+a `POST /mcp` route at all — only `POST /mcp/:slug`. Keeping bare `/mcp`
+alive (even pointed at one identity) alongside the per-person routes would
+be exactly the undocumented shared-identity endpoint AC1 says not to leave
+running. Anyone who wants the old single-identity shape back configures it
+as one entry in `identities.json` and uses that entry's slug.
 
 ### Do not touch
 
@@ -136,8 +145,37 @@ Extend that script for this story (Task 4.2) rather than introducing Jest/Vitest
 
 ### Agent Model Used
 
+Claude Sonnet 5 (claude-sonnet-5)
+
 ### Debug Log References
+
+- Live boot test with a single real identity (AGENT/nicolas_claude under a generated slug): confirmed authenticated-WebID log line, no slug/secret in logs, unknown-slug 404, GET-on-real-slug 405, `/healthz` unauthenticated, and `scripts/verify-http.js` passing all 7 tools against `/mcp/<slug>`.
+- Live two-identity boot + `scripts/verify-isolation.js` run: identity B wrote+read its own private resource; identity A denied on that resource with the documented error text (`"Access denied — this agent lacks the required WAC permission on that resource."`); identity A still reached its own known-good container afterward.
+- Throwaway CSS account/pod provisioned live via the full HTTP flow (`POST /.account/account/` → password-login register → pod create → client-credentials mint), then the credentials revoked at the end (`DELETE` on the credentials resource → 200, confirmed gone via 404 on re-GET).
+- Full session narrative and proof table: `epic-8-progress-report.md` (Story 8.3 section) and the appended dated entry on `https://pod.nicolasdb.eu/nicolas_claude/epic-8-action-log.md`.
 
 ### Completion Notes List
 
+- All 9 ACs satisfied and live-verified (not just asserted): path-routed identities, gitignored config with committed `.example` template, N sessions booted at boot with fail-fast naming the failing label, unknown-slug 404 leaking nothing, isolation proven live between a real identity and a provisioned throwaway, CSPRNG slug generator wired as `npm run slug`, all 7 tools + 8.2 guarantees (405s, `/healthz`) retained, and README updated.
+- Bare `/mcp` was removed rather than kept as one configured identity — decision and reasoning recorded in Dev Notes ("Decision: fate of bare `/mcp`").
+- Added one check beyond the literal task list: after each identity logs in, the server verifies `session.info.webId` matches the configured `webId` and fails fast (naming the label) on mismatch — this caught a real bug during testing (see below) and is worth having permanently, since a stale/typo'd config entry would otherwise surface as a confusing downstream tool error instead of a clear boot failure.
+- Environment quirk reconfirmed and worth flagging for future stories: this sandbox's `dotenv` treats an unescaped `#` mid-value as a comment start even with no preceding space, so any ad hoc re-parsing of `.env` (outside `auth.js`'s own load path, which is unaffected) can silently truncate `AGENT_WEBID`'s `#me` fragment. Caught by the webId-mismatch check above during manual test-fixture setup — not a product bug, `auth.js` itself was never affected.
+- Throwaway account `story83throwaway1785486779`'s account/pod shell persists (CSS has no HTTP delete for account or pod) — consistent with the story's own Dev Notes and tracked under Story 7.7, not fixed here.
+- No test framework was introduced, per the story's own Dev Notes guidance; validation was `node --check` on every touched file, direct unit-checks of `identityRegistry.js`'s validation logic (valid config, too-short slug, missing field, duplicate top-level key), and the two committed live-verification scripts (`verify-http.js`, new `verify-isolation.js`).
+
 ### File List
+
+- `mcp-connector/src/identityRegistry.js` (new) — load/validate `identities.json`
+- `mcp-connector/identities.example.json` (new) — committed placeholder template
+- `mcp-connector/scripts/gen-slug.js` (new) — CSPRNG slug generator, wired as `npm run slug`
+- `mcp-connector/scripts/verify-isolation.js` (new) — committed live isolation-proof script
+- `mcp-connector/src/mcp-server.js` (modified) — N-identity boot, `/mcp/:slug` routing, bare `/mcp` removed, webId-mismatch fail-fast
+- `mcp-connector/package.json` (modified) — added `slug` npm script
+- `mcp-connector/.gitignore` (modified) — added `identities.json`, `.throwaway-identity.json`
+- `mcp-connector/README.md` (modified) — per-person endpoint docs, add/remove/rotate procedure, isolation-verification command
+- `_bmad-output/implementation-artifacts/epic-8-progress-report.md` (modified) — Story 8.3 section
+- `https://pod.nicolasdb.eu/nicolas_claude/epic-8-action-log.md` (live pod resource, appended) — Story 8.3 dated entry
+
+## Change Log
+
+- 2026-07-31 — Story 8.3 implemented and live-verified: per-person `/mcp/<slug>` routing, N-identity boot with fail-fast, gitignored identity config, CSPRNG slug generator, live isolation proof against a provisioned-and-cleaned-up throwaway identity, README updated, Epic 8 action log + progress report appended.

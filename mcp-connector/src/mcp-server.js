@@ -17,9 +17,16 @@
  * major versions.
  *
  * Session model: stateless, per-request transport+server (see Dev Notes in
- * story 8-2-http-transport.md, "Concurrency trap"). The Solid session is a
- * boot-time singleton reused across every request — logging in per request
- * would be a real regression (latency + needless token churn against CSS).
+ * story 8-2-http-transport.md, "Concurrency trap"). Story 8.3: N Solid
+ * sessions (one per configured identity, see identityRegistry.js) are
+ * boot-time singletons reused across every request to their slug — logging
+ * in per request would be a real regression (latency + needless token churn
+ * against CSS).
+ *
+ * Routing: POST /mcp/<slug> looks up the matching identity's session and
+ * builds a fresh per-request server bound to it (buildMcpServer(session)).
+ * Unknown slugs get a generic 404 (AC4) — see identities.example.json for
+ * the config shape and identityRegistry.js for load/validation.
  *
  * Run: node src/mcp-server.js  (reads PORT/HOST from env, defaults below)
  */
@@ -30,6 +37,7 @@ const { createMcpExpressApp } = require("@modelcontextprotocol/sdk/server/expres
 const { z } = require("zod");
 
 const { getAgentSession } = require("./auth");
+const { loadIdentities } = require("./identityRegistry");
 const podClient = require("./podClient");
 const wacManager = require("./wacManager");
 
@@ -263,18 +271,56 @@ function buildMcpServer(session) {
   return server;
 }
 
-async function main() {
-  // One shared, kept-alive session for the lifetime of this process.
-  // AC5: fail fast with a clear error if login fails, rather than serving a
-  // broken endpoint.
-  let session;
-  try {
-    session = await getAgentSession();
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error("[solid-pod-agent mcp-server] fatal: Solid login failed:", err.message);
-    process.exit(1);
+/**
+ * Boot every configured identity's Solid session, once, at startup.
+ * Story 8.3 AC3: N identities, each logged in with keepAlive:true and
+ * reused for the process lifetime. AC3: if ANY identity fails to log in,
+ * the whole process refuses to start — a half-authenticated server that
+ * silently serves 3 of 4 people is worse than one that refuses to start.
+ *
+ * @returns {Promise<Map<string, {session: object, label: string, webId: string}>>}
+ */
+async function bootIdentities() {
+  const configured = loadIdentities();
+  const identities = new Map();
+
+  for (const [slug, id] of configured) {
+    let session;
+    try {
+      session = await getAgentSession({
+        clientId: id.clientId,
+        clientSecret: id.clientSecret,
+        oidcIssuer: process.env.SOLID_OIDC_ISSUER,
+        keepAlive: true,
+      });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error(
+        `[solid-pod-agent mcp-server] fatal: Solid login failed for identity "${id.label}":`,
+        err.message
+      );
+      process.exit(1);
+    }
+
+    if (session.info.webId !== id.webId) {
+      // Defensive: catches a stale/typo'd webId in identities.json before it
+      // causes confusing tool errors later.
+      // eslint-disable-next-line no-console
+      console.error(
+        `[solid-pod-agent mcp-server] fatal: identity "${id.label}" logged in as ` +
+          `${session.info.webId}, not the configured webId. Fix identities.json.`
+      );
+      process.exit(1);
+    }
+
+    identities.set(slug, { session, label: id.label, webId: session.info.webId });
   }
+
+  return identities;
+}
+
+async function main() {
+  const identities = await bootIdentities();
 
   const app = createMcpExpressApp({ host: HOST, allowedHosts: ALLOWED_HOSTS });
 
@@ -282,12 +328,28 @@ async function main() {
   // session to disambiguate concurrent clients in stateless mode, so a
   // single shared transport would let concurrent requests interleave state
   // incorrectly — see Dev Notes "Concurrency trap". The cost (re-registering
-  // 7 tool definitions per call) is trivial. This also happens to be the
-  // shape Story 8.3 wants anyway: each person's endpoint constructs its own
-  // per-request server bound to their own token.
-  app.post("/mcp", async (req, res) => {
+  // 7 tool definitions per call) is trivial. Story 8.3: the slug in the path
+  // picks which identity's already-authenticated session backs this request.
+  app.post("/mcp/:slug", async (req, res) => {
+    const identity = identities.get(req.params.slug);
+
+    if (!identity) {
+      // AC4: reveal nothing about whether the slug exists, how many
+      // identities are configured, or any WebID. Do not log the attempted
+      // slug — it may be a near-miss of a real secret URL, and logging it
+      // would copy the secret into the log file.
+      // eslint-disable-next-line no-console
+      console.warn("[solid-pod-agent mcp-server] rejected request to unknown MCP slug");
+      res.status(404).json({
+        jsonrpc: "2.0",
+        error: { code: -32601, message: "Not found." },
+        id: null,
+      });
+      return;
+    }
+
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-    const server = buildMcpServer(session);
+    const server = buildMcpServer(identity.session);
 
     res.on("close", () => {
       transport.close();
@@ -319,19 +381,22 @@ async function main() {
       id: null,
     });
   };
-  app.get("/mcp", notSupported);
-  app.delete("/mcp", notSupported);
+  app.get("/mcp/:slug", notSupported);
+  app.delete("/mcp/:slug", notSupported);
 
   // Unauthenticated health check for 8.4's systemd/nginx checks. Deliberately
-  // does not include the WebID — this endpoint goes public in 8.4, and the
-  // agent's WebID is not something to hand out anonymously.
+  // does not include the WebID or identity count — this endpoint goes public
+  // in 8.4, and neither is something to hand out anonymously.
   app.get("/healthz", (req, res) => {
     res.json({ ok: true });
   });
 
   app.listen(PORT, HOST, () => {
     // eslint-disable-next-line no-console
-    console.log(`[solid-pod-agent mcp-server] listening on http://${HOST}:${PORT}/mcp`);
+    console.log(
+      `[solid-pod-agent mcp-server] listening on http://${HOST}:${PORT}/mcp/<slug> ` +
+        `(${identities.size} ${identities.size === 1 ? "identity" : "identities"} configured)`
+    );
   });
 }
 

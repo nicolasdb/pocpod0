@@ -67,19 +67,72 @@ Config via env vars:
   automatic). Required when `HOST` is `0.0.0.0`; the VPS deploy story sets
   its value.
 
-The server is stateless: each POST `/mcp` gets its own transport/server
-pair, so there's no session ID and no SSE stream. `GET`/`DELETE /mcp` return
-`405` accordingly. `GET /healthz` returns `{"ok":true}` for health checks
-(deliberately no WebID in the response — this endpoint is unauthenticated).
+The server is stateless: each POST `/mcp/<slug>` gets its own transport/server
+pair, so there's no session ID and no SSE stream. `GET`/`DELETE /mcp/<slug>`
+return `405` accordingly. `GET /healthz` returns `{"ok":true}` for health
+checks (deliberately no WebID and no identity count — this endpoint is
+unauthenticated).
 
-The Solid login happens once at process startup (`keepAlive: true`) and is
-reused for every request — not re-done per call.
+### Per-person endpoints (Story 8.3)
+
+Claude.ai's *Add custom connector* only exposes a URL and OAuth client
+id/secret — no way for it to inject per-request identity headers (verified
+absent 2026-07-30). So each team member gets **their own URL path** bound to
+their own AGENT credential: `POST /mcp/<slug>`, where `<slug>` is a long,
+random, unguessable string — never a person's name, never committed, never
+pasted into a shared channel.
+
+**The honest trade-off:** part of the protection here is the *secrecy of the
+URL* on top of the WAC token. Anyone who obtains a slug can act as that
+person until it's rotated. That is why slugs are CSPRNG-generated
+(`crypto.randomBytes`, ≥22 URL-safe chars — see `npm run slug`), why the
+identities file is gitignored, and why an unknown/malformed slug gets a
+generic 404 that reveals nothing (no hint whether it's a near-miss, how many
+identities exist, or any WebID).
+
+**Bare `/mcp` (Story 8.2's single shared endpoint) has been removed.** It
+would have kept exactly the shared-identity shape this story exists to
+eliminate. If you want the old single-identity behavior, configure it as one
+entry in `identities.json`.
+
+Config lives in `identities.json` (gitignored) next to `package.json`, keyed
+by slug:
+
+```bash
+cp identities.example.json identities.json
+chmod 600 identities.json
+npm run slug   # generate a slug for each person
+# then edit identities.json — one entry per person
+```
+
+Each entry needs `clientId`, `clientSecret`, `webId`, and `label` (see
+"Getting the client id/secret" above — do this once per person, against
+*their own* Solid account, never a shared one). All identities log in once
+at boot with `keepAlive: true`; if **any** fails, the whole process refuses
+to start and names the failing identity's *label* (never its slug or secret)
+in the error.
+
+**Adding, removing, or rotating a person** is a config edit + restart:
+- *Add*: mint a client-credentials token for their WebID, generate a slug
+  (`npm run slug`), add an entry, restart.
+- *Remove*: delete their entry, restart.
+- *Rotate (a slug leaked)*: generate a new slug, move the same
+  `clientId`/`clientSecret`/`webId`/`label` under it, delete the old entry,
+  restart, and tell the person their connector URL changed.
+
+Startup logs one line per identity with the authenticated WebID — never a
+slug, client id, or secret. Grep a boot log to confirm this yourself,
+including on a forced-failure path (e.g. a deliberately wrong secret).
+
+The Solid login for every configured identity happens once at process
+startup (`keepAlive: true`) and is reused for every request to that
+identity's slug — not re-done per call.
 
 Local verification (a real MCP client handshake, not just curl):
 
 ```bash
 npm run mcp &
-node scripts/verify-http.js http://127.0.0.1:3939/mcp
+node scripts/verify-http.js http://127.0.0.1:3939/mcp/<a-configured-slug>
 ```
 
 This runs `initialize` → `tools/list` → one read-only `tools/call`
@@ -88,9 +141,23 @@ This runs `initialize` → `tools/list` → one read-only `tools/call`
 `localhost` or a LAN IP — the DNS-rebinding protection rejects a mismatched
 `Host` header otherwise.
 
+To prove isolation between two identities (not just assert it), configure
+two slugs and run:
+
+```bash
+node scripts/verify-isolation.js <slugA> <slugB> <a-resource-url-only-B-can-read>
+```
+
+This has A read its own resources, has B write+read a private resource, then
+confirms A is **denied** on that same resource with 8.2's actionable error
+text (not a stack trace) while still reaching its own resources fine.
+
 **Public exposure (TLS, nginx, systemd, rate limiting, Anthropic IP
-allowlist) is a separate VPS-deploy story — do not point this straight at
-the internet off the back of local verification alone.**
+allowlist, audit journal) is a separate VPS-deploy story (8.4) — do not
+point this straight at the internet off the back of local verification
+alone.** Note for that story: slugs live in the URL path, so nginx/systemd
+access logs will capture them by default — that turns a routine access log
+into a credential store, so 8.4 needs deliberate log filtering.
 
 ## Deploying on a VPS
 

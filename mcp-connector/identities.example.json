@@ -1,0 +1,9 @@
+{
+  "_comment": "Copy to identities.json (gitignored), fill in real values, chmod 600. Never commit the real file.",
+  "example-slug-replace-me": {
+    "label": "Example Person",
+    "webId": "https://pod.example.org/example-person/profile/card#me",
+    "clientId": "example-person-CLIENT_ID_FROM_ACCOUNT_PAGE",
+    "clientSecret": "example-secret-FROM_ACCOUNT_PAGE_SHOWN_ONCE"
+  }
+}

@@ -8,7 +8,8 @@
     "onboard": "node src/onboarding.js",
     "onboard:apply": "node src/onboarding.js --apply",
     "whoami": "node src/whoami.js",
-    "example": "node src/example-usage.js"
+    "example": "node src/example-usage.js",
+    "slug": "node scripts/gen-slug.js"
   },
   "dependencies": {
     "@inrupt/solid-client": "^2.0.0",
