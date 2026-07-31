@@ -34,6 +34,7 @@
 const { McpServer } = require("@modelcontextprotocol/sdk/server/mcp.js");
 const { StreamableHTTPServerTransport } = require("@modelcontextprotocol/sdk/server/streamableHttp.js");
 const { createMcpExpressApp } = require("@modelcontextprotocol/sdk/server/express.js");
+const rateLimit = require("express-rate-limit");
 const { z } = require("zod");
 
 const { getAgentSession } = require("./auth");
@@ -51,6 +52,45 @@ const HOST = process.env.HOST || "127.0.0.1";
 const ALLOWED_HOSTS = process.env.ALLOWED_HOSTS
   ? process.env.ALLOWED_HOSTS.split(",").map((h) => h.trim()).filter(Boolean)
   : undefined;
+
+// Story 8.4 AC4. Two buckets, because the two paths are abused differently:
+// a valid slug is a known caller doing too much work, an unknown slug is
+// someone guessing at a 22-char secret. The guessing path gets the tighter
+// budget — it has no legitimate high-volume use at all.
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX || 120);
+const RATE_LIMIT_MAX_UNKNOWN = Number(process.env.RATE_LIMIT_MAX_UNKNOWN || 10);
+
+// AC4.4 (body-size cap) — resolved, no code needed here. 8.2 flagged
+// solid_write_resource's `content` as an unbounded z.string(), but the body
+// never actually was unbounded: createMcpExpressApp() registers
+// express.json() itself, with express's default 100kb limit, before any of
+// our middleware. Adding a second parser here would be dead code — the
+// first one registered wins, so a later, larger limit cannot raise the cap.
+// 100kb is the real effective ceiling; nginx's client_max_body_size is set
+// to match so oversized bodies are refused at the edge instead of being
+// streamed into Node first. Raising it means passing an explicit
+// { limit } through the SDK, which its current API does not expose.
+const MAX_BODY_BYTES = "100kb"; // effective, imposed by the SDK — informational
+
+// AC4.4: a hung upstream (CSS not answering) otherwise holds a
+// transport+server pair open forever. Slightly under nginx's
+// proxy_read_timeout 60s so this side gives the tidier JSON-RPC error
+// rather than nginx's opaque 504.
+const REQUEST_TIMEOUT_MS = Number(process.env.REQUEST_TIMEOUT_MS || 55000);
+
+/**
+ * Rate-limit responses must use the same generic shape as the 404 path
+ * (AC4/8.3): a 429 that looked different per-slug would confirm which
+ * slugs exist. Never log the slug — it is the credential being guessed.
+ */
+function rateLimitHandler(req, res) {
+  res.status(429).json({
+    jsonrpc: "2.0",
+    error: { code: -32000, message: "Too many requests." },
+    id: null,
+  });
+}
 
 function parsePort(raw) {
   if (!raw) return 3939;
@@ -333,6 +373,27 @@ async function main() {
 
   const app = createMcpExpressApp({ host: HOST, allowedHosts: ALLOWED_HOSTS });
 
+  // AC4.2: exactly one proxy hop (nginx-gateway) sits in front of this, so
+  // trust exactly one. `true` would trust the whole X-Forwarded-For chain,
+  // which a caller can forge — every attacker would then get to pick their
+  // own rate-limit bucket, and the limiter below would be decorative.
+  app.set("trust proxy", 1);
+
+  // AC4.4: bound how long a single request may occupy a transport+server
+  // pair. Fires only if nothing has been sent yet.
+  app.use((req, res, next) => {
+    res.setTimeout(REQUEST_TIMEOUT_MS, () => {
+      if (!res.headersSent) {
+        res.status(504).json({
+          jsonrpc: "2.0",
+          error: { code: -32001, message: "Request timed out." },
+          id: null,
+        });
+      }
+    });
+    next();
+  });
+
   // Stateless mode: a fresh transport + server per request. There is no
   // session to disambiguate concurrent clients in stateless mode, so a
   // single shared transport would let concurrent requests interleave state
@@ -353,11 +414,38 @@ async function main() {
     });
   };
 
+  // AC4.3. Two independent stores, both keyed on client IP (via `trust
+  // proxy: 1` above, so this is the real caller and not the nginx
+  // container). Separate stores matter: if unknown-slug guesses shared the
+  // valid-traffic bucket, a guessing attacker could exhaust a legitimate
+  // user's budget and lock them out.
+  const mcpLimiter = rateLimit({
+    windowMs: RATE_LIMIT_WINDOW_MS,
+    limit: RATE_LIMIT_MAX,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    handler: rateLimitHandler,
+  });
+
+  // Tighter, because guessing a 22-char slug is the only reason to hit this
+  // path repeatedly — there is no legitimate high-volume use of a wrong URL.
+  const unknownSlugLimiter = rateLimit({
+    windowMs: RATE_LIMIT_WINDOW_MS,
+    limit: RATE_LIMIT_MAX_UNKNOWN,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    handler: rateLimitHandler,
+  });
+
+  app.use("/mcp", mcpLimiter);
+
   app.post("/mcp/:slug", async (req, res) => {
     const identity = identities.get(req.params.slug);
 
     if (!identity) {
-      notFound(req, res);
+      // Run the tighter limiter only once we know the slug is unknown, so
+      // valid callers never consume the guessing budget.
+      unknownSlugLimiter(req, res, () => notFound(req, res));
       return;
     }
 
@@ -402,12 +490,17 @@ async function main() {
   // through to Express's default HTML 404 — a different response shape than
   // the unknown-slug path, which is itself a signal. AC4 says every miss on
   // this surface reveals nothing, so give them all the same generic body.
-  app.all("/mcp", notFound);
-  app.all("/mcp/", notFound);
+  // These are miss paths too, so they get the tighter budget for the same
+  // reason the unknown-slug path does.
+  app.all("/mcp", (req, res) => unknownSlugLimiter(req, res, () => notFound(req, res)));
+  app.all("/mcp/", (req, res) => unknownSlugLimiter(req, res, () => notFound(req, res)));
 
   // Unauthenticated health check for 8.4's systemd/nginx checks. Deliberately
   // does not include the WebID or identity count — this endpoint goes public
   // in 8.4, and neither is something to hand out anonymously.
+  // Deliberately NOT rate-limited and deliberately outside /mcp: the Docker
+  // healthcheck polls it every 15s, and a limiter here would eventually mark
+  // a perfectly healthy container unhealthy and restart it.
   app.get("/healthz", (req, res) => {
     res.json({ ok: true });
   });
