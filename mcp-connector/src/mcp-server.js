@@ -24,7 +24,7 @@
  * against CSS).
  *
  * Routing: POST /mcp/<slug> looks up the matching identity's session and
- * builds a fresh per-request server bound to it (buildMcpServer(session)).
+ * builds a fresh per-request server bound to it (buildMcpServer(identity)).
  * Unknown slugs get a generic 404 (AC4) — see identities.example.json for
  * the config shape and identityRegistry.js for load/validation.
  *
@@ -130,6 +130,19 @@ function parsePositiveInt(name, raw, fallback) {
  * instead of leaking a stack trace. Reuses 8.1's documented wording for the
  * Control-access case (wacManager.js's _saveAclOrThrowControlError) rather
  * than inventing new phrasing.
+ *
+ * Story 8.5 Task 5: classify by HTTP status code FIRST. wacManager.js now
+ * normalizes every Solid/Inrupt error it throws (or lets through) to carry
+ * an explicit `.statusCode` — extracted from the bracketed status in
+ * Inrupt's FetchError message when Inrupt itself doesn't expose one (see
+ * wacManager.js `_normalizeFetchError`) — so by the time an error reaches
+ * here, status should almost always be present. The message-substring
+ * checks below are now a genuine fallback for the rare error that reaches
+ * this function without ever having passed through wacManager's
+ * normalization (e.g. a future call path added without it), not the
+ * primary classification path. A future refactor that reword's wacManager's
+ * error text can no longer silently reclassify these as generic errors,
+ * because the status code — not the wording — is what's matched first.
  */
 function toToolErrorResult(err) {
   const status = err && (err.statusCode || err.status || (err.response && err.response.status));
@@ -145,11 +158,17 @@ function toToolErrorResult(err) {
     message = "Resource not found at that URL.";
   } else if (status === 409) {
     message = "Conflict — the request could not be completed in the resource's current state.";
-  } else if (err && err.message && err.message.toLowerCase().includes("control")) {
-    // listAgentsWithAccess/getAgentAccess return null (not throw) without Control,
-    // but wacManager surfaces a documented Error in some call paths too.
+  } else if (status === 501) {
+    message = "Permissions can only be read for RDF resources or containers.";
+  } else if (!status && err && err.message && err.message.toLowerCase().includes("control")) {
+    // Fallback only: no status code was attached at all. wacManager's own
+    // throw paths now always set statusCode=403 for Control-access denials
+    // (Story 8.5 Task 5), so reaching this branch means some other code
+    // path threw a Control-related error without going through
+    // wacManager's normalization.
     message = "Reading permissions requires Control access on this resource; this agent has read/write only.";
   } else if (
+    !status &&
     err &&
     err.message &&
     (err.message.includes("501") || err.message.toLowerCase().includes("not implemented"))
@@ -167,19 +186,43 @@ function toToolErrorResult(err) {
  * and so every invocation is recorded in the AC7 audit journal — timestamp,
  * identity label, tool name, target resource, outcome. Never the slug,
  * client id, secret or token: those never reach this function, only
- * `label` (resolved once at boot) and the tool's own args do.
+ * `identity.label` (resolved once at boot) and the tool's own args do.
+ *
+ * Story 8.5 Task 4: on a 401 (session appears dead), re-authenticate this
+ * identity exactly once and retry the same call. Never retries on 403 —
+ * that is a real WAC denial (AC6 depends on it staying denied), not an
+ * expired-session condition. `fn` must read the session via `identity`
+ * (not a value captured at server-build time) so the retry actually uses
+ * the freshly re-authenticated session — see buildMcpServer below, where
+ * every tool implementation closes over `identity.session`, not `session`.
  *
  * @param {string} toolName
- * @param {string} label - identity label, from bootIdentities().
+ * @param {{session: object, label: string, clientId: string, clientSecret: string}} identity
  * @param {string|undefined} resourceKey - name of the arg holding the
  *   target resource URL (varies per tool: url/containerUrl/resourceUrl).
  * @param {Function} fn - the actual tool implementation.
  */
-function safeHandler(toolName, label, resourceKey, fn) {
+function safeHandler(toolName, identity, resourceKey, fn) {
+  const label = identity.label;
   return async (args, ...rest) => {
     const resource = resourceKey ? args[resourceKey] : undefined;
     try {
-      const result = await fn(args, ...rest);
+      let result;
+      try {
+        result = await fn(args, ...rest);
+      } catch (err) {
+        const status = err && (err.statusCode || err.status || (err.response && err.response.status));
+        if (status === 401) {
+          // Bounded to exactly one retry: reauthIdentity is called once
+          // here, and this catch block is not itself re-entered for the
+          // retry's own errors — a second failure (401 again, or anything
+          // else) falls straight through to the outer catch below.
+          await reauthIdentity(identity);
+          result = await fn(args, ...rest);
+        } else {
+          throw err;
+        }
+      }
       // solid_get_permissions returns { isError: true } without throwing
       // when Control access is missing — that's a denial, not a crash.
       appendAuditEntry({ label, tool: toolName, resource, outcome: result && result.isError ? "denied" : "ok" });
@@ -193,11 +236,15 @@ function safeHandler(toolName, label, resourceKey, fn) {
 }
 
 /**
- * Build a fresh McpServer instance wired to the given (already-authenticated)
- * Solid session. Kept as a function of `session` — not module-level global
- * wiring — so Story 8.3 can call this per identity/token without a rewrite.
+ * Build a fresh McpServer instance wired to the given identity. Takes the
+ * whole `identity` object (not a bare `session`) so every tool
+ * implementation reads `identity.session` live at call time — required for
+ * Task 4's retry-after-reauth to actually use the new session instead of a
+ * stale one captured when this function ran. Kept as a function of
+ * `identity` — not module-level global wiring — so Story 8.3 can call this
+ * per identity/token without a rewrite.
  */
-function buildMcpServer(session, label) {
+function buildMcpServer(identity) {
   const server = new McpServer({ name: "solid-pod-agent", version: "0.1.0" });
 
   server.registerTool(
@@ -208,8 +255,8 @@ function buildMcpServer(session, label) {
         "documents (Turtle/JSON-LD) and text-based files.",
       inputSchema: { url: z.string().url() },
     },
-    safeHandler("solid_read_resource", label, "url", async ({ url }) => {
-      const file = await podClient.readFile(url, session);
+    safeHandler("solid_read_resource", identity, "url", async ({ url }) => {
+      const file = await podClient.readFile(url, identity.session);
       const text = await file.text();
       return { content: [{ type: "text", text }] };
     })
@@ -225,8 +272,8 @@ function buildMcpServer(session, label) {
         contentType: z.string().default("text/turtle"),
       },
     },
-    safeHandler("solid_write_resource", label, "url", async ({ url, content, contentType }) => {
-      await podClient.writeFile(url, content, contentType, session);
+    safeHandler("solid_write_resource", identity, "url", async ({ url, content, contentType }) => {
+      await podClient.writeFile(url, content, contentType, identity.session);
       return { content: [{ type: "text", text: `Wrote ${url}` }] };
     })
   );
@@ -237,8 +284,8 @@ function buildMcpServer(session, label) {
       description: "List the resources directly inside a Pod container (folder URL).",
       inputSchema: { containerUrl: z.string().url() },
     },
-    safeHandler("solid_list_container", label, "containerUrl", async ({ containerUrl }) => {
-      const urls = await podClient.listContainer(containerUrl, session);
+    safeHandler("solid_list_container", identity, "containerUrl", async ({ containerUrl }) => {
+      const urls = await podClient.listContainer(containerUrl, identity.session);
       return { content: [{ type: "text", text: JSON.stringify(urls, null, 2) }] };
     })
   );
@@ -250,8 +297,8 @@ function buildMcpServer(session, label) {
         "List which agents (WebIDs) currently have explicit WAC access to a resource, and what modes.",
       inputSchema: { resourceUrl: z.string().url() },
     },
-    safeHandler("solid_get_permissions", label, "resourceUrl", async ({ resourceUrl }) => {
-      const access = await wacManager.listAgentsWithAccess(resourceUrl, session);
+    safeHandler("solid_get_permissions", identity, "resourceUrl", async ({ resourceUrl }) => {
+      const access = await wacManager.listAgentsWithAccess(resourceUrl, identity.session);
       if (access === null) {
         return {
           content: [
@@ -290,12 +337,12 @@ function buildMcpServer(session, label) {
       // brief §4.4 mandates it for anything that changes who-sees-what.
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
     },
-    safeHandler("solid_grant_access", label, "resourceUrl", async ({ resourceUrl, agentWebId, read, write, append, control, scope }) => {
+    safeHandler("solid_grant_access", identity, "resourceUrl", async ({ resourceUrl, agentWebId, read, write, append, control, scope }) => {
       await wacManager.grantAccess(
         resourceUrl,
         agentWebId,
         { read, write, append, control },
-        session,
+        identity.session,
         { scope }
       );
       return {
@@ -316,8 +363,8 @@ function buildMcpServer(session, label) {
       },
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
     },
-    safeHandler("solid_revoke_access", label, "resourceUrl", async ({ resourceUrl, agentWebId }) => {
-      await wacManager.revokeAccess(resourceUrl, agentWebId, session);
+    safeHandler("solid_revoke_access", identity, "resourceUrl", async ({ resourceUrl, agentWebId }) => {
+      await wacManager.revokeAccess(resourceUrl, agentWebId, identity.session);
       return {
         content: [{ type: "text", text: `Revoked access for ${agentWebId} on ${resourceUrl}` }],
       };
@@ -341,8 +388,8 @@ function buildMcpServer(session, label) {
       },
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
     },
-    safeHandler("solid_set_public_access", label, "resourceUrl", async ({ resourceUrl, read, write, append, control, scope }) => {
-      await wacManager.setPublicAccess(resourceUrl, { read, write, append, control }, session, {
+    safeHandler("solid_set_public_access", identity, "resourceUrl", async ({ resourceUrl, read, write, append, control, scope }) => {
+      await wacManager.setPublicAccess(resourceUrl, { read, write, append, control }, identity.session, {
         scope,
       });
       return {
@@ -405,10 +452,46 @@ async function bootIdentities() {
       `[solid-pod-agent mcp-server] identity "${id.label}" ready as ${session.info.webId}`
     );
 
-    identities.set(slug, { session, label: id.label, webId: session.info.webId });
+    // clientId/clientSecret are kept in-memory only, never logged, so Task
+    // 4's one-shot re-auth-on-401 can re-login this identity later without
+    // re-reading identities.json. They already lived in `id` (from
+    // loadIdentities()) for the duration of this loop; the only change is
+    // holding onto them past boot.
+    identities.set(slug, {
+      session,
+      label: id.label,
+      webId: session.info.webId,
+      clientId: id.clientId,
+      clientSecret: id.clientSecret,
+    });
   }
 
   return identities;
+}
+
+/**
+ * Story 8.5 Task 4: on a 401 that indicates the process-lifetime Solid
+ * session has died (token revoked/expired despite `keepAlive`), re-login
+ * once for that identity and mutate `identity.session` in place so every
+ * holder of the shared `identities` Map — including /healthz and the next
+ * request's freshly-built tool server — immediately sees the new session.
+ * Bounded to exactly one attempt by construction: this function is only
+ * ever called once per failed call, from inside safeHandler's single retry
+ * branch (see below) — there is no loop here or in the caller.
+ */
+async function reauthIdentity(identity) {
+  // eslint-disable-next-line no-console
+  console.log(
+    `[solid-pod-agent mcp-server] session for identity "${identity.label}" looks expired (401) — re-authenticating once`
+  );
+  const session = await getAgentSession({
+    clientId: identity.clientId,
+    clientSecret: identity.clientSecret,
+    oidcIssuer: process.env.SOLID_OIDC_ISSUER,
+    keepAlive: true,
+  });
+  identity.session = session;
+  return session;
 }
 
 async function main() {
@@ -496,7 +579,7 @@ async function main() {
     }
 
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-    const server = buildMcpServer(identity.session, identity.label);
+    const server = buildMcpServer(identity);
 
     res.on("close", () => {
       transport.close();

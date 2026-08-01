@@ -16,6 +16,14 @@ const fs = require("fs");
 const path = require("path");
 
 const DEFAULT_PATH = path.join(__dirname, "..", "identities.json");
+const DEFAULT_ENV_PATH = path.join(__dirname, "..", ".env");
+
+// Story 8.5 Task 6.2: a secrets file readable/writable by group or other is
+// refused outright rather than left to README advice ("chmod 600"). Mask
+// against group+other read/write/execute bits (0o077, i.e. anything beyond
+// owner permissions). Windows has no equivalent POSIX mode bits, so the
+// check is a no-op there.
+const OVER_PERMISSIVE_MASK = 0o077;
 
 // AC6's floor: slugs are secrets, so they must carry >=22 chars of URL-safe
 // entropy. This matches exactly what "npm run slug" (gen-slug.js) emits —
@@ -77,6 +85,32 @@ function findDuplicateTopLevelKeys(raw) {
 }
 
 /**
+ * Refuse to load a secrets file that is readable/writable by group or
+ * other. Story 8.5 Task 6.2: this used to be README advice only
+ * ("chmod 600 identities.json") — a world-readable secrets file loaded
+ * silently. Enforced now, for both identities.json and (best-effort) .env.
+ *
+ * @param {string} filePath
+ * @param {string} humanName - what to call the file in the error message.
+ */
+function _refuseIfOverPermissive(filePath, humanName) {
+  if (process.platform === "win32") return; // no POSIX mode bits to check
+  let mode;
+  try {
+    mode = fs.statSync(filePath).mode & 0o777;
+  } catch {
+    return; // can't stat it — a separate existence/read error will surface elsewhere
+  }
+  if (mode & OVER_PERMISSIVE_MASK) {
+    throw new Error(
+      `${humanName} at ${filePath} is readable/writable by group or other ` +
+        `(mode ${mode.toString(8).padStart(3, "0")}). Refusing to load a secrets file with ` +
+        `permissive permissions — run: chmod 600 "${filePath}"`
+    );
+  }
+}
+
+/**
  * Load and validate identities.json. Throws with a message naming the
  * offending slug's *label* (never the slug itself — AC2/Task 1.2).
  *
@@ -89,6 +123,16 @@ function loadIdentities(filePath = DEFAULT_PATH) {
       `No identities file at ${filePath}. Copy identities.example.json to ` +
         `identities.json, fill in real values, and chmod 600 it.`
     );
+  }
+
+  _refuseIfOverPermissive(filePath, "identities.json");
+  // Best-effort: .env carries the AGENT/OWNER client credentials (auth.js)
+  // and lives right next to identities.json. It's optional here (auth.js
+  // loads it independently) — only check it if it actually exists, so a
+  // deployment that supplies these via real environment variables instead
+  // of a file isn't penalized for a file that was never created.
+  if (fs.existsSync(DEFAULT_ENV_PATH)) {
+    _refuseIfOverPermissive(DEFAULT_ENV_PATH, ".env");
   }
 
   const raw = fs.readFileSync(filePath, "utf-8");
@@ -120,6 +164,13 @@ function loadIdentities(filePath = DEFAULT_PATH) {
   }
 
   const identities = new Map();
+  // Story 8.5 Task 6.1: two slugs pointing at the same underlying webId or
+  // clientId silently defeats per-person isolation (8.3's whole point) —
+  // boot would happily log the same identity in twice under two URLs.
+  // Track labels seen per webId/clientId across the whole loop so this is
+  // caught before any session is opened.
+  const webIdToLabel = new Map();
+  const clientIdToLabel = new Map();
 
   for (const [slug, entry] of Object.entries(parsed)) {
     // The .example template carries a "_comment" key. Skipping it silently
@@ -155,6 +206,24 @@ function loadIdentities(filePath = DEFAULT_PATH) {
         throw new Error(`Identity "${label}" is missing required field "${field}".`);
       }
     }
+
+    if (webIdToLabel.has(entry.webId)) {
+      throw new Error(
+        `Identity "${label}" has the same webId as identity "${webIdToLabel.get(entry.webId)}". ` +
+          `Two slugs must not point at the same underlying identity — it silently ` +
+          `defeats per-person isolation. Give each person their own webId, or remove the duplicate slug.`
+      );
+    }
+    webIdToLabel.set(entry.webId, label);
+
+    if (clientIdToLabel.has(entry.clientId)) {
+      throw new Error(
+        `Identity "${label}" has the same clientId as identity "${clientIdToLabel.get(entry.clientId)}". ` +
+          `Two slugs must not share a client credential — it silently defeats per-person isolation. ` +
+          `Generate a separate client-credentials token per person.`
+      );
+    }
+    clientIdToLabel.set(entry.clientId, label);
 
     identities.set(slug, {
       clientId: entry.clientId,

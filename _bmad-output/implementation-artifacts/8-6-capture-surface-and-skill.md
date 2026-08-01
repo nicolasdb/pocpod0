@@ -122,7 +122,13 @@ Every capture that overwrites is a chance to lose something that was never backe
 
 A confirmation showing only a URL trains people to approve reflexively. Showing "this replaces 4.2 KB starting `## Meeting notes 2026-07-…`" is a confirmation someone can actually be wrong about and notice. That is the whole point of Task 2.2 — and the reason creation stays unceremonious in 2.3.
 
-Note the honest limit, and say it in 8.7: MCP annotations are **hints**. The spec is explicit that clients must not gate purely on them. AC5 tests what claude.ai actually does; a "no prompt" result is a legitimate documented finding, not something to hide or work around.
+Note the honest limit, and say it in 8.7: MCP annotations are **hints**. The spec is explicit that clients must not gate purely on them. AC5 tests what claude.ai actually does; a "no prompt" result is a legitimate documented finding, not something to hide or work around. **Update from 8.5's live run:** claude.ai did NOT take the "no prompt" path — invoking `solid_grant_access` (already `destructiveHint: true`) triggered *two* confirmation layers, a text pause from Claude itself AND claude.ai's own native approval UI/button, both before the call executed. So the "no prompt is acceptable" framing is a documented fallback, not the expected case — 8.6's new `destructiveHint`-annotated tools (delete, and the overwrite-detecting write) should expect the same double-gate on this client, and Task 2.2's "showing what's about to be lost" ceremony sits *underneath* that native prompt, not instead of it.
+
+### Notes from 8.5's live claude.ai run (carried forward, not yet acted on here)
+
+- **Pod URL isn't discoverable by the agent.** In 8.5's first live exchange, Claude had no way to guess the pod root URL ("Solid Pods don't have a single fixed address I can guess") and had to ask cold before any tool call worked. The capture skill's first-launch behavior (or a fixed system note wired into `SKILL.md`) should state the person's own pod root URL up front so this doesn't repeat per conversation.
+- **Write→read propagation is instant, live-measured.** Direct write-then-5x-immediate-read test against the pod: 335ms write, first read back byte-exact 1ms later, zero staleness across all 5 reads. No connector/CSS-side caching exists — so `solid_append_resource`'s read-then-write doesn't need any defensive delay/retry for propagation lag. The one real risk found was **client-side** caching on a human's own editor (stale local copy before their own save) — worth a line in the capture skill's guidance if humans are expected to co-edit files the agent also touches, but it's not something the connector/append tool itself needs to guard against.
+- **ACL is resource-precise, not just container-blunt.** `office-vault.md` inside the granted `shared/` container came back access-denied via its own resource-level ACL override, while every sibling resource in the same container succeeded. `solid_append_resource` and `solid_delete_resource` must both handle "container is granted, but this specific resource inside it is not" as a normal, expected denial path — not something to special-case as a bug.
 
 ### Traps
 
@@ -176,7 +182,7 @@ Changes inside `mcp-connector/`: `src/mcp-server.js` (3 tool registrations + ann
 - [Source: _bmad-output/planning-artifacts/MISSION_BRIEF_solid-mcp-connector.md#7-hors-scope] — versioning/backup deferred, and the warning to address it before pods hold anything irreplaceable
 - [Source: _bmad-output/implementation-artifacts/8-1-wac-hardening-verification.md] — `deleteResource` container trailing-slash 404, raw-fetch workaround, action-log convention origin
 - [Source: _bmad-output/implementation-artifacts/deferred-work.md#Deferred-from-code-review-of-story-8-1-wac-hardening-verification] — `deleteResource` silent container no-op (closed by AC4)
-- [Source: _bmad-output/implementation-artifacts/8-5-live-verification.md] — claude.ai verification method, allowlist/hairpin trap, pinned negative-test wording, OWNER boundary correction
+- [Source: _bmad-output/implementation-artifacts/8-5-live-verification.md] — claude.ai verification method, allowlist/hairpin trap, pinned negative-test wording, OWNER boundary correction, live approval-prompt result (both text + native UI fired), write→read propagation measurement (0 staleness), resource-level ACL override finding — see "Notes from 8.5's live claude.ai run" above
 - [Source: _bmad-output/implementation-artifacts/8-4-vps-deploy-hardening.md] — on-host hairpin verification method, deploy confirmation practice
 - [Source: mcp-connector/SKILL.md] — current developer-facing content to preserve, not overwrite
 

@@ -52,11 +52,15 @@ async function _getEditableAcl(resourceUrl, session) {
   let resourceAcl;
   if (!hasResourceAcl(datasetWithAcl)) {
     if (!hasAccessibleAcl(datasetWithAcl)) {
-      throw new Error(
+      const err = new Error(
         `${session.info.webId} does not have Control access to ${resourceUrl}, ` +
           "so it cannot change permissions here. This grant must be made by " +
           "the pod owner's WebID (see src/onboarding.js)."
       );
+      // Story 8.5 Task 5: attach the real status so downstream consumers
+      // classify by status code, not by matching "Control" in the text.
+      err.statusCode = 403;
+      throw err;
     }
     if (!hasFallbackAcl(datasetWithAcl)) {
       // No resource ACL and no readable fallback: initialise a fresh one.
@@ -117,25 +121,43 @@ async function grantAccess(resourceUrl, agentWebId, modes, session, options = {}
  * "Storing the Resource ... failed: [403]" stack instead of the documented
  * "does not have Control access" message. Normalize that here.
  */
+/**
+ * Inrupt's FetchError doesn't reliably expose a `statusCode`/`status`
+ * property, but it does embed the real HTTP status in its message (e.g.
+ * "Storing the Resource at [...] failed: [403] ..." or "... failed: [501]
+ * ..."). Extract it and attach it as `.statusCode` so every caller up the
+ * chain — including mcp-server.js's toToolErrorResult (Story 8.5 Task 5)
+ * — can classify by status code first instead of substring-matching
+ * `err.message` for "control" / "501", which breaks silently the moment
+ * the message wording changes upstream.
+ */
+function _normalizeFetchError(err) {
+  if (!err || err.statusCode || err.status) return err;
+  const messageStatus = String(err && err.message).match(/\[(\d{3})\]/)?.[1];
+  if (messageStatus) {
+    err.statusCode = Number(messageStatus);
+  }
+  return err;
+}
+
 async function _saveAclOrThrowControlError(resourceUrl, datasetWithAcl, updatedAcl, session) {
   try {
     return await saveAclFor(datasetWithAcl, updatedAcl, { fetch: session.fetch });
   } catch (e) {
-    // Inrupt's FetchError doesn't reliably expose a `statusCode`/`status`
-    // property here, so fall back to matching the bracketed status code in
-    // its message (e.g. "Storing the Resource at [...] failed: [403] ...")
-    // rather than a bare `.includes("403")`, which would false-match any
-    // unrelated error whose text happens to contain that substring.
-    const status = e.statusCode || e.status || e.response?.status;
-    const messageStatus = String(e.message).match(/\[(\d{3})\]/)?.[1];
-    if (status === 403 || messageStatus === "403") {
-      throw new Error(
+    const normalized = _normalizeFetchError(e);
+    if (normalized.statusCode === 403) {
+      const controlError = new Error(
         `${session.info.webId} does not have Control access to ${resourceUrl}, ` +
           "so it cannot change permissions here. This grant must be made by " +
           "the pod owner's WebID (see src/onboarding.js)."
       );
+      // Carry the real status forward (Story 8.5 Task 5) so
+      // toToolErrorResult classifies this by status code, not by matching
+      // the word "Control" in the message text.
+      controlError.statusCode = 403;
+      throw controlError;
     }
-    throw e;
+    throw normalized;
   }
 }
 
@@ -174,12 +196,17 @@ async function setPublicAccess(resourceUrl, modes, session, options = {}) {
  * Returns e.g. { "https://pod.example/x/profile/card#me": { read: true, ... } }
  */
 async function listAgentsWithAccess(resourceUrl, session) {
-  const datasetWithAcl = await getSolidDatasetWithAcl(resourceUrl, {
-    fetch: session.fetch,
-  });
+  let datasetWithAcl;
+  try {
+    datasetWithAcl = await getSolidDatasetWithAcl(resourceUrl, { fetch: session.fetch });
+  } catch (err) {
+    throw _normalizeFetchError(err);
+  }
   // NOTE: getAgentAccessAll takes the resource-WITH-ACL, not an extracted ACL
   // dataset — it does the resource-acl / fallback-acl branching internally.
   // (Passing getResourceAcl(...) here throws: an ACL dataset has no internal_acl.)
+  // Returns null when no ACL is accessible to this session — callers (e.g.
+  // mcp-server.js's solid_get_permissions) already branch on that.
   return getAgentAccessAll(datasetWithAcl);
 }
 
@@ -187,11 +214,27 @@ async function listAgentsWithAccess(resourceUrl, session) {
  * Read-only: what access does ONE specific agent have here? Useful for the
  * agent to check its own effective rights before attempting a write, so it
  * can report "I don't have write access to that folder" instead of 403ing.
+ *
+ * Story 8.5 Task 3: returns a discriminated result instead of a bare
+ * `null`/object, so "no ACL is visible to this session at all" (this agent
+ * lacks Control, or the resource has neither its own ACL nor a readable
+ * fallback) is distinguishable from "the ACL is visible, and this specific
+ * agent simply has no grants recorded in it" (a legitimate all-false
+ * Access). Collapsing both to `null` made onboarding.js/whoami.js print the
+ * literal string "null" to a human instead of an actionable state.
+ *
+ * @returns {Promise<{aclVisible: boolean, access: object|null}>}
+ *   aclVisible=false  -> access is always null; no ACL could be read here.
+ *   aclVisible=true   -> access is the Access object for agentWebId
+ *                        (all-false modes if this agent has no explicit rule).
  */
 async function getAgentAccess(resourceUrl, agentWebId, session) {
-  const datasetWithAcl = await getSolidDatasetWithAcl(resourceUrl, {
-    fetch: session.fetch,
-  });
+  let datasetWithAcl;
+  try {
+    datasetWithAcl = await getSolidDatasetWithAcl(resourceUrl, { fetch: session.fetch });
+  } catch (err) {
+    throw _normalizeFetchError(err);
+  }
   // getResourceAcl takes the resource; createAclFromFallbackAcl ALREADY
   // returns an ACL dataset — don't call getResourceAcl on its output.
   const acl = hasResourceAcl(datasetWithAcl)
@@ -199,9 +242,9 @@ async function getAgentAccess(resourceUrl, agentWebId, session) {
     : hasFallbackAcl(datasetWithAcl)
       ? createAclFromFallbackAcl(datasetWithAcl)
       : null;
-  if (!acl) return null;
+  if (!acl) return { aclVisible: false, access: null };
   // getAgentResourceAccess(aclDataset, agent) — takes the ACL dataset.
-  return getAgentResourceAccess(acl, agentWebId);
+  return { aclVisible: true, access: getAgentResourceAccess(acl, agentWebId) };
 }
 
 module.exports = {

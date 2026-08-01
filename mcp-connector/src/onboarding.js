@@ -34,18 +34,24 @@ const wacManager = require("./wacManager");
 const AGENT_WEBID =
   process.env.AGENT_WEBID || "https://pod.nicolasdb.eu/nicolas_claude/profile/card#me";
 
+// Story 8.5 correction: this used to list `hyperscope_ndb/notes/` and
+// `hyperscope_ndb/inbox/` as if they were real, granted containers. They
+// never were — they were this brief's own admitted guesses, never granted
+// by an OWNER, never confirmed to exist. The one container actually
+// granted (by Nicolas, by hand, as OWNER of hyperscope_ndb) and already
+// exercised by 8.1/8.2/8.4 is `hyperscope_ndb/shared/`. GRANTS below
+// describes that real grant's actual shape — read+append+write, no
+// control, scope 'both' — as honest worked-example material for 8.7,
+// where each teammate is OWNER of their own pod and adapts this list to
+// their own container(s) before running `onboard`/`onboard:apply`
+// themselves. THIS FILE IS NOT RUN IN STORY 8.5 — see the top-of-file
+// two-token-model note and the story's "Correction made during planning".
 const GRANTS = [
   {
-    container: "https://pod.nicolasdb.eu/hyperscope_ndb/notes/",
+    container: "https://pod.nicolasdb.eu/hyperscope_ndb/shared/",
     modes: { read: true, append: true, write: true, control: false },
     scope: "both", // the container itself + everything inside it
-    why: "agent reads and writes HyperScope notes",
-  },
-  {
-    container: "https://pod.nicolasdb.eu/hyperscope_ndb/inbox/",
-    modes: { read: true, append: true, write: false, control: false },
-    scope: "both",
-    why: "agent can drop new items in, but not overwrite existing ones",
+    why: "agent reads and writes into the team's shared HyperScope container",
   },
   // Deliberately NOT granted by default:
   //   - control: true anywhere in the owner's pod

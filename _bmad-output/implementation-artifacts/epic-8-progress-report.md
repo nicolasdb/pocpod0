@@ -136,8 +136,41 @@ No data-pod writes in this story beyond the read-only `solid_list_container` cal
 - Task 8's throwaway account (`mcp84iso`) was provisioned for the deferred AC5 cross-identity re-verification, live-confirmed over the **public URL**. Credentials revoked afterward (DELETE 200, re-GET 404 confirmed); the account/pod shell remains a permanent orphan pending Story 7.7. Improvement over 8.3: this throwaway's password was retained outside the repo, so a future story can reuse it instead of minting orphan #3.
 - The Epic 8 action-log/progress-report convention itself is a changelog/audit trail, not one of the four Divio quadrants — kept separate from the README restructure rather than forced into it.
 
+## Story 8.5 — Live Verification from claude.ai
+
+**Status:** review-ready — all tasks (1–9) done, all 11 ACs met with live evidence.
+**Full narrative:** `8-5-live-verification.md` (Dev Agent Record has per-task detail)
+
+Code changes were built in a dev sandbox (no AGENT credentials, no network path to the live endpoint) and validated via `node --check` + an 18-case identity-registry unit-check. Task 7 (adding the connector in claude.ai, driving a real conversation) was run live by Nicolas — the whole point of this story is proof from a client the team didn't write, so this step could not and was not automated. Tasks 2, 8, and 9.1 (AGENT self-audit, journal read, live regression, action-log append) all required either AGENT credentials or the live session Task 7 produced, and were completed afterward via `docker exec` on hetzner.
+
+### What you can check yourself, right now
+
+| Check | Where | What it proves |
+|---|---|---|
+| Code diff | `git diff` on `mcp-connector/src/wacManager.js`, `mcp-server.js`, `identityRegistry.js`, `whoami.js`, `onboarding.js`, `scripts/verify-http.js` | The four folded-in deferred items (8.1's `getAgentAccess` null ambiguity, 8.2's session-expiry + error-classification gaps, 8.3's identity-registry operator guards) plus corrected `PROBES`/`GRANTS` reference material. |
+| Identity-registry unit-check | ephemeral script, not committed (8.2/8.3/8.4 precedent) | 18/18 cases pass: 13 original 8.3 cases + 5 new (duplicate webId, duplicate clientId, over-permissive mode ×2, restrictive mode still loads). Full output in the story's Dev Agent Record. |
+| `deferred-work.md` | strikethrough + **CLOSED** notes on the four items | Traceable closure, not silent deletion of history. |
+| claude.ai transcripts | `_bmad-output/test-artifacts/Claude-Testing hypercampus connector with Solid pod.md` (one consolidated export) + connector-setup screenshot | AC4–AC7 evidence — a real, independent MCP client exercising every tool. |
+| Live journal | `/app/audit/journal.jsonl` on hetzner (`docker exec mcp-connector`) | AC8 — all three outcome classes (`ok`/`denied`/`error`), attributed by label, 0 grep hits for the slug/secrets. |
+| `verify-http.js` live re-run | via `docker exec mcp-connector node scripts/verify-http.js <live URL>` | AC10 — ALL CHECKS PASSED, including the new Task 5.2 pinned negative-test wording assertion. |
+| `epic-8-action-log.md` on the pod | `nicolas_claude`'s pod, Story 8.5 section | AC11 — appended live, byte-length growth (7995→9810) and prefix preservation both verified, not assumed. |
+
+### Live findings from Task 7 (evidence, not just checkmarks)
+
+- **`solid_get_permissions`** rendered a human sentence ("...requires Control access... read/write only") every time — never the literal string `null` (AC5).
+- **Negative test**: write into `tasks/` (ungranted) failed with the exact pinned wording ("Access denied — this agent lacks the required WAC permission on that resource."), verbatim match, no drift (AC6).
+- **Approval test**: `solid_grant_access` triggered *two* confirmation layers — a text pause from Claude itself, and claude.ai's own native approval UI — before the call ran. The client genuinely gates on `destructiveHint`, a stronger result than the "no prompt is a legitimate outcome" fallback the story allowed for (AC7). The call then 403'd correctly (agent has no Control anywhere, by design) — no grant was ever created, nothing to revert.
+- **Resource-precise isolation**: `office-vault.md` inside the granted `shared/` container came back denied via its own resource-level ACL override, while every sibling resource succeeded — WAC enforcement is finer-grained than the container grant alone.
+- **Write→read propagation, live-measured**: 335ms write, first read back byte-exact 1ms later, 5/5 consecutive reads matched. No connector- or CSS-side caching/delay exists. A real client-side stale-cache issue was found on Nicolas's own editor (not the connector) — ruled in by direct measurement, not assumed.
+
+### Decisions recorded
+
+- `wacManager.getAgentAccess()`'s return shape changed from a bare value to `{ aclVisible, access }` — a deliberate, documented break in shape (not in exported function signature/params) so "ACL not visible at all" and "ACL visible, zero grants" are structurally distinguishable rather than both reading as falsy.
+- `buildMcpServer()`/`safeHandler()` now take the whole `identity` object rather than a destructured `session`/`label`, so a mid-request re-auth's new session is picked up by tool handlers without a stale closure — necessary plumbing for Task 4's bounded 401 retry, not scope creep.
+- Task 6's file-mode guard is enforced (refuses to load), not advisory (README `chmod 600` text) — same posture upgrade already applied to slug entropy in 8.3.
+
 ## Epic 8 — remaining stories
 
-- 8.5 Live verification — backlog (depends on 8.1, now unblocked)
+- 8.5 Live verification — **in progress**, blocked on Task 7 (Nicolas, interactive, claude.ai)
 - 8.6 Team onboarding doc — backlog
 - 7.7 Delete pod with ceremony — drafted, closes the no-HTTP-delete gap noted above
