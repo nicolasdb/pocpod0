@@ -23,9 +23,20 @@ RUN chown -R node:node /app
 # gosu: entrypoint.sh needs to start as root (to chown the mcp-audit named
 # volume, which Docker creates root-owned on first use — story 8.4 Task 6)
 # and then drop to the non-root "node" user before exec'ing the app.
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends gosu \
-  && rm -rf /var/lib/apt/lists/*
+# Pinned to a fixed release + arch binary (not `apt-get install gosu`, which
+# floats to whatever version is in the base image's apt snapshot at build
+# time) so a rebuild months from now can't silently pick up a different
+# gosu build for this privilege-drop step.
+ARG GOSU_VERSION=1.17
+RUN set -eux; \
+  apt-get update; \
+  apt-get install -y --no-install-recommends ca-certificates wget; \
+  rm -rf /var/lib/apt/lists/*; \
+  dpkgArch="$(dpkg --print-architecture | awk -F- '{ print $NF }')"; \
+  wget -O /usr/local/bin/gosu "https://github.com/tianon/gosu/releases/download/${GOSU_VERSION}/gosu-${dpkgArch}"; \
+  chmod +x /usr/local/bin/gosu; \
+  gosu --version; \
+  gosu nobody true
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

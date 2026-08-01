@@ -23,7 +23,20 @@ const JOURNAL_PATH = process.env.AUDIT_LOG_PATH || "/app/audit/journal.jsonl";
 // the file entirely). Total worst case is 2x this number — an unbounded
 // audit file on a disk that's already tight is the same failure class AC3
 // exists to close for nginx logs.
-const MAX_BYTES = Number(process.env.AUDIT_LOG_MAX_BYTES || 10 * 1024 * 1024); // 10 MiB
+//
+// Validated rather than a bare Number(...): a malformed value silently
+// becomes NaN, and `size >= NaN` is always false — that would disable
+// rotation entirely instead of failing loudly at boot.
+function parseMaxBytes(raw) {
+  if (raw === undefined || raw === "") return 10 * 1024 * 1024; // 10 MiB
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error(`Invalid AUDIT_LOG_MAX_BYTES "${raw}" — must be a positive integer.`);
+  }
+  return value;
+}
+
+const MAX_BYTES = parseMaxBytes(process.env.AUDIT_LOG_MAX_BYTES);
 
 function rotateIfNeeded() {
   let size = 0;

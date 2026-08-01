@@ -59,8 +59,12 @@ const ALLOWED_HOSTS = process.env.ALLOWED_HOSTS
 // someone guessing at a 22-char secret. The guessing path gets the tighter
 // budget — it has no legitimate high-volume use at all.
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
-const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX || 120);
-const RATE_LIMIT_MAX_UNKNOWN = Number(process.env.RATE_LIMIT_MAX_UNKNOWN || 10);
+const RATE_LIMIT_MAX = parsePositiveInt("RATE_LIMIT_MAX", process.env.RATE_LIMIT_MAX, 120);
+const RATE_LIMIT_MAX_UNKNOWN = parsePositiveInt(
+  "RATE_LIMIT_MAX_UNKNOWN",
+  process.env.RATE_LIMIT_MAX_UNKNOWN,
+  10
+);
 
 // AC4.4 (body-size cap) — resolved, no code needed here. 8.2 flagged
 // solid_write_resource's `content` as an unbounded z.string(), but the body
@@ -78,7 +82,11 @@ const MAX_BODY_BYTES = "100kb"; // effective, imposed by the SDK — information
 // transport+server pair open forever. Slightly under nginx's
 // proxy_read_timeout 60s so this side gives the tidier JSON-RPC error
 // rather than nginx's opaque 504.
-const REQUEST_TIMEOUT_MS = Number(process.env.REQUEST_TIMEOUT_MS || 55000);
+const REQUEST_TIMEOUT_MS = parsePositiveInt(
+  "REQUEST_TIMEOUT_MS",
+  process.env.REQUEST_TIMEOUT_MS,
+  55000
+);
 
 /**
  * Rate-limit responses must use the same generic shape as the 404 path
@@ -100,6 +108,21 @@ function parsePort(raw) {
     throw new Error(`Invalid PORT "${raw}" — must be an integer between 1 and 65535.`);
   }
   return port;
+}
+
+/**
+ * A malformed numeric env var (e.g. RATE_LIMIT_MAX="abc") must fail loudly at
+ * boot, not silently become NaN — a NaN limit/timeout/bound compares false
+ * against everything downstream (e.g. journal.js's rotation-size check),
+ * which quietly disables the thing it was meant to configure.
+ */
+function parsePositiveInt(name, raw, fallback) {
+  if (raw === undefined || raw === "") return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error(`Invalid ${name} "${raw}" — must be a positive integer.`);
+  }
+  return value;
 }
 
 /**
@@ -449,10 +472,13 @@ async function main() {
 
   // Tighter, because guessing a 22-char slug is the only reason to hit this
   // path repeatedly — there is no legitimate high-volume use of a wrong URL.
+  // No standardHeaders here: this limiter guards the guessing path, and
+  // RateLimit-Policy/RateLimit would hand a slug-guesser exact remaining-quota
+  // telemetry to pace their guesses just under the threshold.
   const unknownSlugLimiter = rateLimit({
     windowMs: RATE_LIMIT_WINDOW_MS,
     limit: RATE_LIMIT_MAX_UNKNOWN,
-    standardHeaders: "draft-7",
+    standardHeaders: false,
     legacyHeaders: false,
     handler: rateLimitHandler,
   });
@@ -502,8 +528,23 @@ async function main() {
       id: null,
     });
   };
-  app.get("/mcp/:slug", notSupported);
-  app.delete("/mcp/:slug", notSupported);
+  // Route through the tighter limiter first: GET/DELETE on an unknown slug is
+  // the same guessing surface as POST, and without this it ran at the loose
+  // 120/min budget regardless of slug validity.
+  app.get("/mcp/:slug", (req, res) => {
+    if (!identities.has(req.params.slug)) {
+      unknownSlugLimiter(req, res, () => notSupported(req, res));
+      return;
+    }
+    notSupported(req, res);
+  });
+  app.delete("/mcp/:slug", (req, res) => {
+    if (!identities.has(req.params.slug)) {
+      unknownSlugLimiter(req, res, () => notSupported(req, res));
+      return;
+    }
+    notSupported(req, res);
+  });
 
   // A request to bare /mcp (8.2's removed endpoint) or /mcp/ with an empty
   // slug segment matches no :slug route, so without this it would fall
@@ -534,9 +575,21 @@ async function main() {
   // healthcheck polls it every 15s, and a limiter here would eventually mark
   // a perfectly healthy container unhealthy and restart it.
   app.get("/healthz", (req, res) => {
-    const allSessionsAlive = [...identities.values()].every(
-      (identity) => identity.session.info.isLoggedIn
-    );
+    let allSessionsAlive;
+    try {
+      // No identities configured is not healthy — .every() on an empty map
+      // vacuously returns true, which would hide the exact failure this AC
+      // exists to catch (e.g. identities.json missing or unreadable).
+      allSessionsAlive =
+        identities.size > 0 &&
+        [...identities.values()].every((identity) => identity.session.info.isLoggedIn);
+    } catch (err) {
+      // Any unexpected shape (session field missing, SDK throw) means we
+      // can't confirm liveness — treat as unhealthy rather than 500ing.
+      // eslint-disable-next-line no-console
+      console.error("[solid-pod-agent mcp-server] /healthz check failed:", err.message);
+      allSessionsAlive = false;
+    }
     res.status(allSessionsAlive ? 200 : 503).json({ ok: allSessionsAlive });
   });
 

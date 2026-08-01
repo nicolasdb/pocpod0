@@ -1,5 +1,11 @@
 # Deferred Work
 
+## Deferred from: code review of story-8-4-vps-deploy-hardening (2026-08-01)
+
+- Journal rotation (`renameSync` → `appendFileSync`) isn't crash-atomic — entry that triggered rotation can be lost on a kill between the two calls [mcp-connector/src/journal.js]
+- `entrypoint.sh`'s `chown -R /app/audit` runs unconditionally every boot/restart, not just first boot [mcp-connector/entrypoint.sh]
+- nginx-side changes (allowlist, log suppression, rate-limit zone) live in the separate `hetzner-gateway` repo and aren't in this diff — can't be verified from code here, only from story prose
+
 ## Deferred from: code review of story-8-1-wac-hardening-verification (2026-07-30)
 
 - `wacManager.js` `getAgentAccess` returns `null` with no distinct signal for "no ACL found" vs "no access" [wacManager.js:736] — `onboarding.js`/`whoami.js` just stringify `null`; cosmetic, not blocking.

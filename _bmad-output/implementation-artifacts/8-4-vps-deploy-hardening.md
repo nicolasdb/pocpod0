@@ -1,6 +1,6 @@
 # Story 8.4: VPS Deploy & Hardening
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -253,6 +253,22 @@ Both halves must be handled: the nginx side (don't write the slug) and the app s
   - [x] 9.2 How-to: `### How-to` — "Deploy a code change" (`make vps-push` / `make vps-deploy`, plus the separate `hetzner-gateway` deploy for nginx changes), "Add / rotate / remove a person" (pointer to the existing Story 8.3 procedure — already how-to-shaped, not duplicated), "Connect an on-host client via the internal path". Step-only, no justification inline.
   - [x] 9.3 Explanation: `### Explanation` — why Docker compose over systemd, why the allowlist is nginx-level not UFW, why the internal-reuse path bypasses nginx/TLS/allowlist/access-log by design, why `entrypoint.sh`+`gosu` (self-healing volume ownership) rather than a one-off `chown`.
   - [x] 9.4 Epic 8 convention: appended a dated "Story 8.4" section to `https://pod.nicolasdb.eu/nicolas_claude/epic-8-action-log.md` live via `podClient.readFile`+`writeFile` under the AGENT's own session (read-existing-then-append verified: length grew 5385 → 7995 bytes, not overwritten), and added a full "Story 8.4" section to `epic-8-progress-report.md` (proof table, bugs found+fixed, decisions, scope notes) ahead of the "remaining stories" list. This log/report pair is a changelog/audit trail, not a Divio quadrant — kept separate from 9.1–9.3 rather than forced into one of the four.
+
+### Review Findings
+
+Reviewed: `git diff 5afe816^..HEAD` (Tasks 3-9). 3 parallel layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor), all completed. 11 findings survived triage, 7 dismissed as noise/spec-compliant.
+
+- [x] [Review][Decision] Rate limiters key on bare `req.ip` — every caller sharing an egress IP (notably Anthropic's whole allowlisted `160.79.104.0/21`) shares one rate-limit bucket across identities/requests. **Resolved 2026-08-01 with Nicolas: accepted, dismissed** — Anthropic traffic is allowlisted/trusted at the vhost level regardless; a shared bucket across their whole range is an acceptable tradeoff, not a gap.
+- [x] [Review][Decision] Internal `gateway`-network path (AC6) can forge `X-Forwarded-For` to dodge both rate limiters — `trust proxy: 1` only holds cleanly for traffic actually behind nginx. **Resolved 2026-08-01 with Nicolas: accepted, dismissed** — only trusted containers are ever on the `gateway` network by design; that's not part of the threat model this story defends against.
+- [x] [Review][Patch] `/healthz` vacuously reports healthy with zero identities — `[...identities.values()].every(...)` on an empty map returns `true` [mcp-connector/src/mcp-server.js] — fixed, gated on `identities.size > 0`
+- [x] [Review][Patch] Rate-limit/timeout env vars unvalidated (`RATE_LIMIT_MAX`, `RATE_LIMIT_MAX_UNKNOWN`, `AUDIT_LOG_MAX_BYTES`, `REQUEST_TIMEOUT_MS`) — bare `Number(process.env.X || default)` silently produces `NaN`, disabling journal rotation without error [mcp-connector/src/mcp-server.js, mcp-connector/src/journal.js] — fixed via new `parsePositiveInt`/`parseMaxBytes` guards that throw at boot on a malformed value
+- [x] [Review][Patch] GET/DELETE `/mcp/:slug` (405 path) never hits the unknown-slug limiter regardless of slug validity — runs at 12x AC4's intended guessing-budget [mcp-connector/src/mcp-server.js] — fixed, both routes now check slug validity and route through `unknownSlugLimiter` when unknown
+- [x] [Review][Patch] `gosu` installed with no version pin in Dockerfile's new `apt-get install` layer [mcp-connector/Dockerfile] — fixed, switched to a version-pinned (`GOSU_VERSION=1.17`) binary download instead of `apt-get install gosu` — **not build-verified in this session (no container runtime available in the sandbox); verify with a real `docker build` / `make vps-build` before the next deploy**
+- [x] [Review][Patch] `RateLimit-Policy`/`RateLimit` headers exposed on unknown-slug limiter give guessers exact quota telemetry — disable `standardHeaders` on that limiter [mcp-connector/src/mcp-server.js] — decided 2026-08-01 with Nicolas, fixed (`standardHeaders: false` on `unknownSlugLimiter`)
+- [x] [Review][Patch] `/healthz` has no try/catch around `identity.session.info.isLoggedIn` — wrap and treat any throw as unhealthy (503) [mcp-connector/src/mcp-server.js] — decided 2026-08-01 with Nicolas, fixed
+- [x] [Review][Defer] Journal rotation (`renameSync` → `appendFileSync`) isn't crash-atomic — entry that triggered rotation can be lost on a kill between the two calls [mcp-connector/src/journal.js] — deferred, pre-existing
+- [x] [Review][Defer] `entrypoint.sh`'s `chown -R /app/audit` runs unconditionally every boot/restart, not just first boot [mcp-connector/entrypoint.sh] — deferred, pre-existing
+- [x] [Review][Defer] nginx-side changes (allowlist, log suppression, rate-limit zone) live in the separate `hetzner-gateway` repo and aren't in this diff — can't be verified from code here, only from story prose — deferred, pre-existing
 
 ## Dev Notes
 
