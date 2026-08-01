@@ -161,38 +161,57 @@ into a credential store, so 8.4 needs deliberate log filtering.
 
 ## Deploying on a VPS
 
-- Keep `.env` out of git (`.gitignore` it) and restrict its permissions
-  (`chmod 600 .env`). Same for `identities.json`, which holds one set of
-  client credentials per person.
-- `identities.json` is **server-authored**: it is excluded from `make
-  vps-push`'s rsync, so it is written directly on the VPS and never
-  round-trips through the repo. It must be owned by uid 1000 (`chown
-  1000:1000`) — the container runs as the non-root `node` user and a
-  root-owned `600` file gives it `EACCES` on boot.
-- Public exposure lives in the `hetzner-gateway` repo
-  (`nginx/conf.d/11-solid-mcp.conf`): TLS on `solid-mcp.nicolasdb.eu`,
-  `access_log off` (the slug in the URL path is a bearer credential),
-  `limit_req`, and an IP allowlist restricted to Anthropic's outbound range
-  plus this host. Everything else gets a 403.
-- **Audit journal** (`src/journal.js`): append-only JSONL at
-  `/app/audit/journal.jsonl` inside the container, one line per tool call
-  (`ts`, `label`, `tool`, `resource`, `outcome` — never the slug, client id,
-  secret or token). Backed by the `mcp-audit` named Docker volume, not a
-  bind-mount under the repo path (`rsync --delete-after` would delete it).
-  Bounded at 10 MiB active + one rotated `.1` backup (`AUDIT_LOG_MAX_BYTES`
-  env var to override). **Docker creates a fresh named volume root-owned**,
-  which EACCES's every write from the non-root `node` user the container
-  runs as — `entrypoint.sh` fixes this on every boot (`chown -R node:node
-  /app/audit` as root, then drops to `node` via `gosu` before exec'ing the
-  app), so it self-heals rather than needing a manual chown after a volume
-  is recreated.
+Split below by [Divio](https://docs.divio.com/documentation-system/) quadrant:
+**Reference** (facts to look up), **How-to** (steps for a known task), and
+**Explanation** (why it's built this way). Don't mix them back together when
+editing — a fact and its rationale can live in different sections and link
+to each other instead.
 
-### Connecting another client on the same host (Hermes, or any MCP client)
+### Reference
 
-On-host clients should **not** go through the public URL. Add the
-`gateway` network to the client's compose service and point it at the
-internal address:
+Env vars (`mcp-connector/.env`, never committed):
 
+| Var | Default | Notes |
+|---|---|---|
+| `PORT` | `3939` | Rejected at startup if not an integer in 1–65535. |
+| `HOST` | `127.0.0.1` | `0.0.0.0` in the VPS container; disables the SDK's automatic DNS-rebinding protection. |
+| `ALLOWED_HOSTS` | unset | Required once `HOST=0.0.0.0`. Live value: `solid-mcp.nicolasdb.eu,mcp-connector:3939,mcp-connector` — public hostname **first**, the compose healthcheck reads element 0. |
+| `AUDIT_LOG_PATH` | `/app/audit/journal.jsonl` | Inside the container, on the `mcp-audit` named volume. |
+| `AUDIT_LOG_MAX_BYTES` | `10485760` (10 MiB) | Active file rotates to a single `.1` backup past this size. |
+
+File/volume/path facts:
+- `identities.json` — server-authored on the VPS (excluded from `make
+  vps-push`'s rsync, never round-trips through the repo), one entry per
+  person (`clientId`, `clientSecret`, `webId`, `label`), must be owned by
+  uid 1000.
+- `mcp-audit` — named Docker volume, not a bind-mount (a bind-mount under
+  the repo path would be deleted by `rsync --delete-after`). Journal line
+  shape: `{ts, label, tool, resource, outcome}` — never a slug, client id,
+  secret, or token.
+- nginx vhost: `hetzner-gateway/nginx/conf.d/11-solid-mcp.conf` — **separate
+  repo**, not `pocpod0/infra/` (which has no nginx content at all). TLS on
+  `solid-mcp.nicolasdb.eu`, `access_log off`, `limit_req`, IP allowlist.
+- Allowlist: Anthropic outbound `160.79.104.0/21` (not the `/23` inbound
+  range), `127.0.0.1`, `172.16.0.0/12` (Docker bridge), this host's own
+  public IP. Everything else: `deny all` → 403.
+
+### How-to
+
+**Deploy a code change:**
+```bash
+make vps-push      # pocpod0 repo: syncs mcp-connector/, guards identities.json + node_modules
+make vps-deploy    # rebuilds + restarts mcp-connector via docker compose
+```
+nginx/TLS changes are a **separate** repo and deploy: `hetzner-gateway`'s
+own `make vps-deploy` (rsync + `nginx -t` + restart).
+
+**Add / rotate / remove a person:** see "Per-person endpoints" above —
+mint client credentials against their own Solid account, generate a slug
+(`npm run slug`), edit `identities.json` on the VPS directly (it's
+server-authored, not pushed from a checkout), restart.
+
+**Connect an on-host client (Hermes, or any MCP client on the same
+Docker daemon) — use the internal path, not the public URL:**
 ```yaml
 services:
   hermes:
@@ -202,24 +221,35 @@ networks:
   gateway:
     external: true
 ```
-
 ```
 http://mcp-connector:3939/mcp/<slug>
 ```
 
-This is preferred over `https://solid-mcp.nicolasdb.eu/mcp/<slug>` for
-anything running on this host, because it skips TLS termination and the
-nginx hop entirely, is not subject to the IP allowlist (which would
-otherwise have to grow an entry per client), and — most importantly —
-**puts no slug into any access log**, since nginx is never involved.
+### Explanation
 
-One catch: the MCP SDK's DNS-rebinding protection validates the `Host`
-header, so the internal hostname has to be listed too. `MCP_ALLOWED_HOSTS`
-is therefore `solid-mcp.nicolasdb.eu,mcp-connector:3939,mcp-connector`.
-Keep the public hostname **first** — the compose healthcheck reads
-`ALLOWED_HOSTS.split(',')[0]`. Without the internal entries the handshake
-fails with `Invalid Host: mcp-connector`, not with a connection error,
-which is easy to misread as a routing problem.
+- **Docker compose, not systemd.** The brief assumed a systemd unit; the
+  VPS has no host `node`/`npm`, every other service on the box is already a
+  container, and nginx already routes to containers by name over the
+  `gateway` network. A systemd unit would mean installing and maintaining a
+  host Node toolchain for one process — decided against with Nicolas
+  2026-07-31, recorded as a deliberate brief deviation.
+- **The IP allowlist is nginx-level, not a UFW firewall rule.** UFW opens
+  443 for the whole host, shared with `pod.nicolasdb.eu` and four other
+  vhosts — restricting it there would take all of them down. Per-`server`-
+  block in nginx is the only layer that can restrict just this vhost.
+- **The internal path bypasses nginx entirely, on purpose.** Hermes and any
+  other on-host container reach `mcp-connector:3939` directly over the
+  `gateway` Docker network — no TLS termination, no allowlist entry needed
+  per client, and critically, **no slug ever reaches an access log**,
+  since nginx is never in the request path. This is why AC6 required
+  proving the internal path live, not just asserting the network exists.
+- **`entrypoint.sh` + `gosu`, not a one-off `chown`.** Docker creates a
+  fresh named volume root-owned by default, which EACCES's every audit-
+  journal write from the non-root `node` user the container runs as. A
+  manual `chown` fixes it once; `entrypoint.sh` (`chown -R node:node
+  /app/audit` as root, then `exec gosu node "$@"`) fixes it on *every* boot,
+  so the volume self-heals after any future recreate instead of silently
+  breaking again.
 
 ## Installing as a Claude skill
 

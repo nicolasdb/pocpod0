@@ -102,9 +102,42 @@ No data-pod writes in this story beyond the read-only `solid_list_container` cal
 - Task 4.1's throwaway account (`story83throwaway1785486779`) was provisioned via the full CSS HTTP flow (account create -> password login register -> pod create -> client-credentials mint), live-confirmed end-to-end. Its client-credentials were revoked at the end of the isolation test; the **account shell** itself cannot be removed over HTTP (CSS exposes no account/pod delete) — tracked as Story 7.7's job, not this one's.
 - Rate limiting, TLS/nginx/systemd, and the Anthropic IP allowlist remain out of scope here, per the story's own boundary — 8.4's job.
 
+## Story 8.4 — VPS Deploy & Hardening
+
+**Status:** review (2026-08-01)
+**Full narrative:** `8-4-vps-deploy-hardening.md` (Dev Agent Record has per-AC detail)
+
+### What you can check yourself, right now
+
+| Check | Where | What it proves |
+|---|---|---|
+| Action log entry | `https://pod.nicolasdb.eu/nicolas_claude/epic-8-action-log.md` (Story 8.4 section, appended 2026-08-01) | Full deploy/hardening narrative, live-verified end to end. |
+| Live endpoint | `https://solid-mcp.nicolasdb.eu/mcp/<slug>` | TLS + rate limiting + IP allowlist + audit journal all live in production, not local-only. |
+| nginx vhost | `hetzner-gateway/nginx/conf.d/11-solid-mcp.conf` (separate repo) | Subdomain, TLS, `access_log off`, allowlist — not in `pocpod0/infra/`. |
+| Code diff | `mcp-connector/src/journal.js` (new), `entrypoint.sh` (new), `Dockerfile`, `src/mcp-server.js` | Audit journal + `safeHandler` outcome classification; root→node privilege-drop via `gosu`. |
+| README | `mcp-connector/README.md` — "Deploying on a VPS" | Restructured 2026-08-01 into Divio quadrants (Reference / How-to / Explanation) rather than one mixed section. |
+
+### Bugs found and fixed (live, not theoretical)
+
+1. **`mcp-audit` named volume created root-owned by Docker** — silently EACCES'd every audit-journal write from the non-root `node` container user. Fixed durably via `entrypoint.sh` + `gosu` (chowns as root, drops to `node`, self-heals every boot) rather than a one-off `chown`.
+2. **`access_log off` on the proxy `location` block was insufficient** — a resolver-failure request (upstream not yet running) still leaked the slug into the **global** `access.log`. Fixed by moving `access_log off` to server scope on both server blocks; re-probed clean (0 hits).
+3. **AC5's allowlist and AC6's internal reuse path collided** — `ALLOWED_HOSTS` set to the public hostname only made every internal call from `gateway` fail with a genuine `403 Invalid Host` (the SDK's DNS-rebinding check, not a routing fault). Fixed by listing both hostnames, public first (the compose healthcheck reads element 0).
+4. **`make vps-push`'s `rsync --delete-after` had no guard** — would silently delete server-authored files (`identities.json`, and an unrelated pre-existing gap, `backups/nightly-backup.log`) on the next unrelated push. Fixed with a dry-run-then-refuse guard (ported from `hetzner-gateway`'s own fix for the identical problem), requiring `FORCE=1` to override.
+
+### Decisions recorded
+
+- **Docker compose service, not systemd** (brief T4 deviation) — no host Node toolchain on the VPS, every other service is already a container, consistent with `architecture.md`'s own INFRA-2.
+- **`/healthz` is session-aware** (closing a gap 8.2 and 8.3 both deferred): aggregate boolean over every configured identity's `session.info.isLoggedIn`, 200 iff all alive — no per-identity/WebID/count ever exposed, by construction (`.every()`).
+- **No roaming admin IP allowlisted**, by Nicolas's choice (2026-07-31) — ssh-based administration instead, removing a credential-shaped fact that would need re-checking on every ISP IP change.
+- **README restructured along the Divio documentation system** (tutorial/how-to/reference/explanation, never mixed in one doc) rather than appending more mixed-shape prose to the existing "Deploying on a VPS" section.
+
+### Scope notes
+
+- Task 8's throwaway account (`mcp84iso`) was provisioned for the deferred AC5 cross-identity re-verification, live-confirmed over the **public URL**. Credentials revoked afterward (DELETE 200, re-GET 404 confirmed); the account/pod shell remains a permanent orphan pending Story 7.7. Improvement over 8.3: this throwaway's password was retained outside the repo, so a future story can reuse it instead of minting orphan #3.
+- The Epic 8 action-log/progress-report convention itself is a changelog/audit trail, not one of the four Divio quadrants — kept separate from the README restructure rather than forced into it.
+
 ## Epic 8 — remaining stories
 
-- 8.4 VPS deploy hardening — backlog
 - 8.5 Live verification — backlog (depends on 8.1, now unblocked)
 - 8.6 Team onboarding doc — backlog
 - 7.7 Delete pod with ceremony — drafted, closes the no-HTTP-delete gap noted above
