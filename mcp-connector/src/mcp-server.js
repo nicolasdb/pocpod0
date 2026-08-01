@@ -41,6 +41,7 @@ const { getAgentSession } = require("./auth");
 const { loadIdentities } = require("./identityRegistry");
 const podClient = require("./podClient");
 const wacManager = require("./wacManager");
+const { appendAuditEntry } = require("./journal");
 
 const PORT = parsePort(process.env.PORT);
 const HOST = process.env.HOST || "127.0.0.1";
@@ -138,12 +139,31 @@ function toToolErrorResult(err) {
   return { content: [{ type: "text", text: message }], isError: true };
 }
 
-/** Wrap a tool handler so thrown Solid/Inrupt errors become MCP error results. */
-function safeHandler(fn) {
-  return async (...args) => {
+/**
+ * Wrap a tool handler so thrown Solid/Inrupt errors become MCP error results,
+ * and so every invocation is recorded in the AC7 audit journal — timestamp,
+ * identity label, tool name, target resource, outcome. Never the slug,
+ * client id, secret or token: those never reach this function, only
+ * `label` (resolved once at boot) and the tool's own args do.
+ *
+ * @param {string} toolName
+ * @param {string} label - identity label, from bootIdentities().
+ * @param {string|undefined} resourceKey - name of the arg holding the
+ *   target resource URL (varies per tool: url/containerUrl/resourceUrl).
+ * @param {Function} fn - the actual tool implementation.
+ */
+function safeHandler(toolName, label, resourceKey, fn) {
+  return async (args, ...rest) => {
+    const resource = resourceKey ? args[resourceKey] : undefined;
     try {
-      return await fn(...args);
+      const result = await fn(args, ...rest);
+      // solid_get_permissions returns { isError: true } without throwing
+      // when Control access is missing — that's a denial, not a crash.
+      appendAuditEntry({ label, tool: toolName, resource, outcome: result && result.isError ? "denied" : "ok" });
+      return result;
     } catch (err) {
+      const status = err && (err.statusCode || err.status || (err.response && err.response.status));
+      appendAuditEntry({ label, tool: toolName, resource, outcome: status === 403 ? "denied" : "error" });
       return toToolErrorResult(err);
     }
   };
@@ -154,7 +174,7 @@ function safeHandler(fn) {
  * Solid session. Kept as a function of `session` — not module-level global
  * wiring — so Story 8.3 can call this per identity/token without a rewrite.
  */
-function buildMcpServer(session) {
+function buildMcpServer(session, label) {
   const server = new McpServer({ name: "solid-pod-agent", version: "0.1.0" });
 
   server.registerTool(
@@ -165,7 +185,7 @@ function buildMcpServer(session) {
         "documents (Turtle/JSON-LD) and text-based files.",
       inputSchema: { url: z.string().url() },
     },
-    safeHandler(async ({ url }) => {
+    safeHandler("solid_read_resource", label, "url", async ({ url }) => {
       const file = await podClient.readFile(url, session);
       const text = await file.text();
       return { content: [{ type: "text", text }] };
@@ -182,7 +202,7 @@ function buildMcpServer(session) {
         contentType: z.string().default("text/turtle"),
       },
     },
-    safeHandler(async ({ url, content, contentType }) => {
+    safeHandler("solid_write_resource", label, "url", async ({ url, content, contentType }) => {
       await podClient.writeFile(url, content, contentType, session);
       return { content: [{ type: "text", text: `Wrote ${url}` }] };
     })
@@ -194,7 +214,7 @@ function buildMcpServer(session) {
       description: "List the resources directly inside a Pod container (folder URL).",
       inputSchema: { containerUrl: z.string().url() },
     },
-    safeHandler(async ({ containerUrl }) => {
+    safeHandler("solid_list_container", label, "containerUrl", async ({ containerUrl }) => {
       const urls = await podClient.listContainer(containerUrl, session);
       return { content: [{ type: "text", text: JSON.stringify(urls, null, 2) }] };
     })
@@ -207,7 +227,7 @@ function buildMcpServer(session) {
         "List which agents (WebIDs) currently have explicit WAC access to a resource, and what modes.",
       inputSchema: { resourceUrl: z.string().url() },
     },
-    safeHandler(async ({ resourceUrl }) => {
+    safeHandler("solid_get_permissions", label, "resourceUrl", async ({ resourceUrl }) => {
       const access = await wacManager.listAgentsWithAccess(resourceUrl, session);
       if (access === null) {
         return {
@@ -247,7 +267,7 @@ function buildMcpServer(session) {
       // brief §4.4 mandates it for anything that changes who-sees-what.
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
     },
-    safeHandler(async ({ resourceUrl, agentWebId, read, write, append, control, scope }) => {
+    safeHandler("solid_grant_access", label, "resourceUrl", async ({ resourceUrl, agentWebId, read, write, append, control, scope }) => {
       await wacManager.grantAccess(
         resourceUrl,
         agentWebId,
@@ -273,7 +293,7 @@ function buildMcpServer(session) {
       },
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
     },
-    safeHandler(async ({ resourceUrl, agentWebId }) => {
+    safeHandler("solid_revoke_access", label, "resourceUrl", async ({ resourceUrl, agentWebId }) => {
       await wacManager.revokeAccess(resourceUrl, agentWebId, session);
       return {
         content: [{ type: "text", text: `Revoked access for ${agentWebId} on ${resourceUrl}` }],
@@ -298,7 +318,7 @@ function buildMcpServer(session) {
       },
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
     },
-    safeHandler(async ({ resourceUrl, read, write, append, control, scope }) => {
+    safeHandler("solid_set_public_access", label, "resourceUrl", async ({ resourceUrl, read, write, append, control, scope }) => {
       await wacManager.setPublicAccess(resourceUrl, { read, write, append, control }, session, {
         scope,
       });
@@ -450,7 +470,7 @@ async function main() {
     }
 
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-    const server = buildMcpServer(identity.session);
+    const server = buildMcpServer(identity.session, identity.label);
 
     res.on("close", () => {
       transport.close();
@@ -495,14 +515,29 @@ async function main() {
   app.all("/mcp", (req, res) => unknownSlugLimiter(req, res, () => notFound(req, res)));
   app.all("/mcp/", (req, res) => unknownSlugLimiter(req, res, () => notFound(req, res)));
 
-  // Unauthenticated health check for 8.4's systemd/nginx checks. Deliberately
-  // does not include the WebID or identity count — this endpoint goes public
-  // in 8.4, and neither is something to hand out anonymously.
+  // Unauthenticated health check for the Docker/nginx checks. Story 8.4 AC8:
+  // 8.2 shipped a static {ok:true} and both 8.2 and 8.3's reviews deferred
+  // the decision here — a compose healthcheck backed by a static value
+  // reports healthy even when every Solid session has died. Decided:
+  // session-aware, using the same `session.info.isLoggedIn` auth.js already
+  // checks right after login. Aggregate boolean only — never a per-identity
+  // breakdown, WebID, or identity count. This endpoint is public as of 8.4,
+  // and none of those is something to hand out anonymously; "some session
+  // is dead" is operationally useful, "which one" is not something an
+  // unauthenticated caller needs. `isLoggedIn` reflects the SDK's own
+  // client-side state (flips false on an expired/revoked token it has
+  // noticed, not necessarily the instant CSS invalidates it) — a
+  // best-effort liveness signal, not a live round-trip to CSS on every poll
+  // (that would turn a 15s healthcheck into 15s-interval load against CSS
+  // for a value that mostly doesn't change).
   // Deliberately NOT rate-limited and deliberately outside /mcp: the Docker
   // healthcheck polls it every 15s, and a limiter here would eventually mark
   // a perfectly healthy container unhealthy and restart it.
   app.get("/healthz", (req, res) => {
-    res.json({ ok: true });
+    const allSessionsAlive = [...identities.values()].every(
+      (identity) => identity.session.info.isLoggedIn
+    );
+    res.status(allSessionsAlive ? 200 : 503).json({ ok: allSessionsAlive });
   });
 
   app.listen(PORT, HOST, () => {

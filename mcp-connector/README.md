@@ -174,6 +174,18 @@ into a credential store, so 8.4 needs deliberate log filtering.
   `access_log off` (the slug in the URL path is a bearer credential),
   `limit_req`, and an IP allowlist restricted to Anthropic's outbound range
   plus this host. Everything else gets a 403.
+- **Audit journal** (`src/journal.js`): append-only JSONL at
+  `/app/audit/journal.jsonl` inside the container, one line per tool call
+  (`ts`, `label`, `tool`, `resource`, `outcome` — never the slug, client id,
+  secret or token). Backed by the `mcp-audit` named Docker volume, not a
+  bind-mount under the repo path (`rsync --delete-after` would delete it).
+  Bounded at 10 MiB active + one rotated `.1` backup (`AUDIT_LOG_MAX_BYTES`
+  env var to override). **Docker creates a fresh named volume root-owned**,
+  which EACCES's every write from the non-root `node` user the container
+  runs as — `entrypoint.sh` fixes this on every boot (`chown -R node:node
+  /app/audit` as root, then drops to `node` via `gosu` before exec'ing the
+  app), so it self-heals rather than needing a manual chown after a volume
+  is recreated.
 
 ### Connecting another client on the same host (Hermes, or any MCP client)
 

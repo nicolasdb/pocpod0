@@ -189,21 +189,64 @@ Both halves must be handled: the nginx side (don't write the slug) and the app s
   - [x] 5.4 Document in the README how `hermes` (or any on-host bot) joins: add `gateway` to its compose networks and use the internal URL. Note this is preferred over the public URL for on-host clients — no TLS overhead, no allowlist, and critically **no slug in any access log**.
     Added to `mcp-connector/README.md` under "Deploying on a VPS": a "Connecting another client on the same host" section with the compose `networks: [default, gateway]` + `external: true` snippet, the internal URL, the three reasons to prefer it (no TLS hop, no allowlist entry per client, no slug in any access log), and the `Invalid Host` catch from 5.3 with the ordering constraint. Also documented two operational facts this task surfaced: `identities.json` is server-authored (rsync-excluded, so it is written on the VPS and never round-trips through the repo) and must be `chown 1000:1000` or the non-root container gets `EACCES` on boot.
 
-- [ ] Task 6: Audit journal (AC: #7)
-  - [ ] 6.1 Add append-only JSONL logging around tool invocation in `mcp-server.js`. Hook it where the identity is already resolved so the **label** is available — the slug must never reach it. One line per call: timestamp, label, tool, resource URL, outcome.
-  - [ ] 6.2 Named Docker volume for the journal, not a bind-mount under the repo path (`rsync --delete-after` would eat it — same root cause as AC9).
-  - [ ] 6.3 Implement a size or age bound and state it. An unbounded audit file is the same disk-fill class as the nginx logs.
-  - [ ] 6.4 Verify with real calls: a successful read, a denied write, and an error. Confirm the three outcomes are distinguishable and that grepping the journal for the slug/clientId/secret returns nothing.
+- [x] Task 6: Audit journal (AC: #7)
+  - [x] 6.1 New `src/journal.js`: `appendAuditEntry({label, tool, resource, outcome})` → one JSONL line (`ts`, `label`, `tool`, `resource`, `outcome`). Hooked into `safeHandler` in `mcp-server.js`, which now takes `(toolName, label, resourceKey, fn)` instead of `(fn)` — `buildMcpServer(session, label)` threads the identity's label (never the slug) through to all 7 tool registrations. Outcome classification: a thrown error with `status===403` (or a non-thrown `{isError:true}` result, e.g. `solid_get_permissions`'s Control-less case) → `"denied"`; any other thrown error → `"error"`; otherwise `"ok"`.
+  - [x] 6.2 Named volume already present in `docker-compose.yml` (`mcp-audit:/app/audit`, `driver: local`) — provisioned ahead of this task alongside AC1's other volumes, confirmed still correct, no compose change needed.
+    **Live bug found and fixed:** the volume is created root-owned by Docker on first use; the container runs as non-root `node` (image default) → every write **silently EACCES'd** (`audit journal write failed: EACCES`, caught by design so it never breaks a request, but the journal was empty). Same trap class as Task 5.4's `identities.json` chown note. Fixed **durably**, not with a one-off chown: added `mcp-connector/entrypoint.sh` (starts as root, `chown -R node:node /app/audit`, then `exec gosu node "$@"`) and wired it into `Dockerfile` (`apt-get install gosu`, `ENTRYPOINT ["/entrypoint.sh"]`, `CMD` unchanged). Verified the self-heal is real, not assumed: manually reset the live volume to `root:root` ownership, redeployed, and confirmed the entrypoint fixed it back to `node:node` on boot without deleting the existing journal contents.
+  - [x] 6.3 10 MiB active-file bound (`AUDIT_LOG_MAX_BYTES`, default `10*1024*1024`): on append, if the current file is at/over the bound it is `renameSync`'d to `journal.jsonl.1` (overwriting any previous backup) before the new line is written. One active file + one rotated backup → **worst case 2x the bound**, same shape as nginx's rotation (Task 3.4) but simpler since there's only ever one writer. Verified locally: with the bound set to 200 bytes, 5 appends produced a 1-line active file and a 2-line `.1` backup, confirming rotation actually rotates rather than just capping in place.
+  - [x] 6.4 Verified against the **live production connector** (not just local), through the real identity already configured on the VPS (`Nicolas (agent)`, no throwaway needed — read/write/error against resources the agent already has documented differential access to from Story 8.1). Copied a small MCP-client script into the running `mcp-connector` container and called it over the internal `gateway` network (`http://mcp-connector:3939/mcp/<slug>`, same path Task 5.3 proved) — three real tool calls:
+    - `solid_list_container` on the agent's granted `shared/` container → `isError=false`
+    - `solid_write_resource` to `hyperscope_ndb/profile/card` (agent has no write access there) → `isError=true` (403 → `denied`)
+    - `solid_read_resource` on a nonexistent resource → `isError=true` (404 → `error`)
 
-- [ ] Task 7: Health semantics decision (AC: #8)
-  - [ ] 7.1 Decide: session-aware `/healthz`, or deliberately-static with an honest compose healthcheck. Record the decision **and its reasoning** — this has now been deferred by two consecutive stories, so "deferred again" is not an acceptable outcome without an explicit reason.
-  - [ ] 7.2 Whatever the choice, `/healthz` stays free of WebID, identity count, and slug. It is unauthenticated and, as of this story, public.
+    Resulting journal (real, from the live container):
+    ```json
+    {"ts":"2026-08-01T07:32:00.628Z","label":"Nicolas (agent)","tool":"solid_list_container","resource":"https://pod.nicolasdb.eu/hyperscope_ndb/shared/","outcome":"ok"}
+    {"ts":"2026-08-01T07:32:00.756Z","label":"Nicolas (agent)","tool":"solid_write_resource","resource":"https://pod.nicolasdb.eu/hyperscope_ndb/profile/card","outcome":"denied"}
+    {"ts":"2026-08-01T07:32:00.893Z","label":"Nicolas (agent)","tool":"solid_read_resource","resource":"https://pod.nicolasdb.eu/hyperscope_ndb/shared/does-not-exist-8a1f3c.ttl","outcome":"error"}
+    ```
+    All three outcomes distinguishable. `grep -c <slug>` and `grep -Eic "secret|bearer|clientid|client_secret"` on the journal file → **0 hits both**. Test script removed from the container afterward; `scripts/verify-http.js` re-run against the same live endpoint post-change to confirm no regression (`ALL CHECKS PASSED`).
 
-- [ ] Task 8: Verify the deployed thing, through the public URL (AC: #10)
-  - [ ] 8.1 Set `ALLOWED_HOSTS=solid-mcp.nicolasdb.eu` and confirm it is actually in effect. The container binds `0.0.0.0`, which silently disables the SDK's DNS-rebinding protection — this is the story 8.2's review wired the env var for.
-  - [ ] 8.2 `node scripts/verify-http.js https://solid-mcp.nicolasdb.eu/mcp/<slug>` — all 7 tools + a live `tools/call`, against the public URL.
-  - [ ] 8.3 Re-confirm the 8.2/8.3 guarantees survive the proxy hop: `GET`/`DELETE` → 405; unknown slug, bare `/mcp`, `/mcp/` → the byte-identical generic 404 body; `/healthz` → 200 and identity-free.
-  - [ ] 8.4 **Re-run `scripts/verify-isolation.js` with two identities.** 8.3's code review explicitly deferred live AC5 re-verification to this story ("8.4, where a second identity will exist on the VPS anyway"). See Dev Notes for the throwaway-vs-real-colleague constraint — it has not relaxed.
+- [x] Task 7: Health semantics decision (AC: #8)
+  - [x] 7.1 **Decided: session-aware, aggregate boolean only.** `/healthz` now checks `session.info.isLoggedIn` (the same field `auth.js` already checks right after login) across every configured identity and returns `200 {ok:true}` only if all are alive, `503 {ok:false}` if any is dead — closing the real gap 8.2/8.3 both deferred (a static value reports healthy while every Solid session is dead). Deliberately **not** a live round-trip to CSS on every poll: the Docker healthcheck fires every 15s, and turning that into 15s-interval load against CSS for a value that mostly doesn't change would be a worse trade than the SDK's own client-side liveness flag, which is a best-effort signal (it reflects what the SDK has itself noticed about token expiry/revocation, not necessarily the instant CSS invalidates something) but not nothing. Recorded here rather than deferred a third time, per the AC's explicit instruction.
+  - [x] 7.2 Aggregate-only by construction — `every()` collapses to a single boolean, so there is no code path that could leak a per-identity breakdown, a WebID, or the identity count even by accident.
+    Verified live: unit-checked the aggregation logic against two mocked identity maps (all-alive → `true`; one-dead → `false`) before touching production. Deployed to the VPS (`make vps-deploy`, confirmed with Nicolas) and called the real endpoint from inside the running container (`Host: mcp-connector`, matching `ALLOWED_HOSTS`) against the one real live identity → `200 {"ok":true}`, no WebID or count in the body. Docker's own healthcheck (same endpoint) already reports the container `healthy` post-deploy, confirming the 200/503 contract plugs into the existing compose healthcheck without any compose change needed.
+
+- [x] Task 8: Verify the deployed thing, through the public URL (AC: #10)
+  All of Task 8 was run **from the VPS shell / from inside the running container**, not from this dev sandbox, because Task 5.1's allowlist deliberately excludes any roaming address — the sandbox gets a 403. On-host requests to the public hostname hairpin out and back through the host's own public IP, which *is* allowlisted, so these are genuine public-URL round trips (TLS + nginx + allowlist + rate limit), not loopback shortcuts.
+  - [x] 8.1 `ALLOWED_HOSTS` confirmed in effect on the live container: `solid-mcp.nicolasdb.eu,mcp-connector:3939,mcp-connector` (public hostname first, as the healthcheck's `split(',')[0]` requires — see Task 5.3). Verified **behaviourally, not by reading the env var**: a POST carrying `Host: evil.example.com` was rejected `403 {"jsonrpc":"2.0","error":{"code":-32000,"message":"Invalid Host: evil.example.com"},"id":null}`. So DNS-rebinding protection is genuinely armed despite the container binding `0.0.0.0`, which is exactly the silent-disable case 8.2's review wired this env var for.
+  - [x] 8.2 `verify-http.js` against `https://solid-mcp.nicolasdb.eu/mcp/<slug>` → `initialize: OK`, `tools/list: OK — 7 tools` (all 7 expected names), live `tools/call solid_list_container` returning the real 3-item listing of the agent's granted container, `ALL CHECKS PASSED`. Full stack exercised over TLS.
+  - [x] 8.3 All guarantees survive the proxy hop:
+    | Request (public URL) | Result |
+    |---|---|
+    | `GET /mcp/<valid slug>` | `405` + `{"code":-32000,"message":"Method not allowed. This server is stateless."}` |
+    | `DELETE /mcp/<valid slug>` | `405`, same body |
+    | `POST /mcp/<unknown slug>` | `404` + `{"code":-32601,"message":"Not found."}` |
+    | `POST /mcp` | `404`, same body |
+    | `POST /mcp/` | `404`, same body |
+    | `GET /healthz` | `200 {"ok":true}` — no WebID, no identity count |
+
+    "Byte-identical" was **proved by hashing, not by eyeballing** — all three miss paths returned md5 `0177d4e7908504d65d5375d7f7568e96`. Worth doing that way: three bodies that merely *look* the same in a terminal can still differ by a trailing byte, and a length difference is exactly the kind of side channel AC4 exists to close.
+  - [x] 8.4 **`verify-isolation.js` re-run live with two real identities, against the public HTTPS URL** — closing the AC5 re-verification 8.3's review deferred here.
+    Provisioned exactly one throwaway (the budgeted footprint) end-to-end over the HTTP account API — account → password login → pod → client credentials — as `mcp84iso` (`https://pod.nicolasdb.eu/mcp84iso/profile/card#me`), added to `identities.json` as identity B with a freshly generated 22-char slug, container restarted, both identities confirmed in the boot log (`2 identities configured`).
+    Result, with `MCP_BASE_URL=https://solid-mcp.nicolasdb.eu`:
+    ```
+    [B] writing private resource as B ...
+    [B] read own resource: OK
+    [A] attempting to read B's private resource (must be DENIED) ...
+    [A] correctly denied — error text: "Access denied — this agent lacks the required WAC permission on that resource."
+    [A] own-resource access: OK
+    [verify-isolation] ALL CHECKS PASSED
+    ```
+    A is denied on B's private resource with 8.2's documented actionable wording (not a stack trace), and A still reaches its own resources — so the denial is real isolation, not a broken session.
+    **Unplanned cross-evidence for AC7:** the audit journal independently recorded the whole test, correctly attributing each call to the right identity *by label*, including the denial — which is a stronger demonstration of the journal than Task 6's own single-identity check, since it shows attribution actually discriminates between identities:
+    ```json
+    {"ts":"2026-08-01T08:08:09.544Z","label":"Throwaway (story 8.4 isolation test)","tool":"solid_write_resource","resource":"https://pod.nicolasdb.eu/mcp84iso/private-iso-test.txt","outcome":"ok"}
+    {"ts":"2026-08-01T08:08:09.688Z","label":"Throwaway (story 8.4 isolation test)","tool":"solid_read_resource","resource":"https://pod.nicolasdb.eu/mcp84iso/private-iso-test.txt","outcome":"ok"}
+    {"ts":"2026-08-01T08:08:09.867Z","label":"Nicolas (agent)","tool":"solid_read_resource","resource":"https://pod.nicolasdb.eu/mcp84iso/private-iso-test.txt","outcome":"denied"}
+    ```
+    **Cleanup, honestly recorded:** throwaway client credentials revoked (`DELETE → 200`, re-`GET → 404`, confirmed gone rather than assumed from the status code); identity B removed from `identities.json`; container restarted and re-confirmed healthy at `1 identity configured`; every test script removed from the container and from `/tmp` on both hosts. The **account/pod shell `mcp84iso` remains as a permanent orphan record** — CSS still has no HTTP account delete (Story 7.7's job), exactly as the Dev Notes predicted. One orphan added, as budgeted.
+    **One improvement over 8.3's handling:** 8.3's throwaway password was never recorded, which is the *only* reason this story had to mint a second orphan rather than reuse the first. This throwaway's password was generated with `openssl rand` and **retained by Nicolas outside the repo** (never committed — an account password in git would be a far worse problem than an orphan record), so a future story needing a second identity can reuse `mcp84iso` instead of creating orphan number three.
 
 - [ ] Task 9: Docs + Epic 8 convention (AC: #11)
   - [ ] 9.1 README deploy section covering all of the above, including the two-repo split (people will look for the nginx config in `pocpod0/infra/` and not find it).
