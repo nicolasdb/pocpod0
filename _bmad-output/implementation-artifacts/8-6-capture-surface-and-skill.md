@@ -1,6 +1,6 @@
 # Story 8.6: Capture Surface — Append-First Tools, Destructive Ceremony, and the Capture Skill
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -234,6 +234,16 @@ Claude Sonnet 5 (Claude Code)
 - `_bmad-output/implementation-artifacts/epic-8-progress-report.md` — modified: added Story 8.6 proof-table section.
 - `_bmad-output/implementation-artifacts/deferred-work.md` — modified: struck `deleteResource` container no-op as CLOSED; added the `/healthz` staleness item.
 - `https://pod.nicolasdb.eu/nicolas_claude/epic-8-action-log.md` (live pod resource, not a repo file) — appended Story 8.6 dated section.
+
+### Review Findings
+
+- [x] [Review][Decision] `isForeignResource` fail-open on malformed/empty reader WebID silently and permanently disabled receipts — no error surfaced. **Resolved with Nicolas: make it loud.** `isForeignResource` now throws on parse failure instead of swallowing it; the call site in `mcp-server.js` catches that throw and logs a `read_receipt`/`error` journal entry (same mechanism as a receipt-write failure), then skips the receipt for that read. The read itself is never blocked.
+- [x] [Review][Patch] Multi-byte UTF-8 first-line preview can mangle mid-codepoint before an irreversible overwrite [mcp-connector/src/mcp-server.js] — fixed: first-line preview now slices by codepoint (`Array.from(...).slice(0,120).join("")`) instead of UTF-16 code unit.
+- [x] [Review][Patch] Read-receipt latency/best-effort behavior not documented in tool description or skill [mcp-connector/src/mcp-server.js, mcp-connector/SKILL.md] — fixed: `solid_read_resource`'s tool description and the skill's read-receipts section both now note the added round trip (and possible reauth retry) on foreign reads.
+- [x] [Review][Defer] TOCTOU on container-emptiness check before delete [mcp-connector/src/mcp-server.js:340-351] — `listContainer` then `deleteResource` are separate round trips with no lock; a concurrent add between them isn't caught by the pre-check. Deferred, pre-existing class of issue — Story 7.3 already scoped concurrency/locking as a cross-API design problem, not a per-tool fix.
+- [x] [Review][Defer] Independent, uncoordinated reauth race on `identity.session` [mcp-connector/src/mcp-server.js:204-237] — the receipt block's own inline 401-retry and `safeHandler`'s existing one-shot retry can both fire on the same identity within one request (if the primary read also 401s), each reassigning `identity.session` independently. Deferred, pre-existing pattern (last-writer-wins already accepted elsewhere in this codebase for the no-ETag concurrency case).
+- [x] [Review][Defer] `appendFile`'s reported byte counts can be stale under concurrent writes [mcp-connector/src/podClient.js:31-48] — `bytesBefore`/`bytesAfter` reflect this call's own read/write, not a re-verification against the server post-write; under the documented last-writer-wins race the reported numbers can be fiction relative to what's actually stored. Deferred — same accepted limitation as the rest of the no-ETag/If-Match concurrency class (Story 7.3 scope).
+- [x] [Review][Defer] `confirmGone` has no idempotent-success path for an already-gone resource [mcp-connector/src/podClient.js:78-81] — treats any non-404 as "still exists" with no handling for eventually-consistent backends or a retry hitting a resource that's already gone. Deferred, pre-existing/low-risk — verified live against CSS with instant, non-stale propagation (8.5 finding); revisit only if a different backend is introduced.
 
 ## Change Log
 

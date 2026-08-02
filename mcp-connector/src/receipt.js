@@ -29,15 +29,14 @@ function podRootOf(url) {
 
 /**
  * Cheap "not mine" check: compare pod roots, no network round trip per read.
- * A malformed URL is treated as non-foreign — the read itself will fail or
- * succeed on its own merits; receipts are a side effect, not a gate.
+ * Throws on a malformed resourceUrl/readerWebId rather than silently
+ * defaulting to "not foreign" — a misconfigured identity (empty/malformed
+ * webId) must not silently and permanently disable receipts with no trace.
+ * The read itself is never gated on this: callers log the failure and let
+ * the read proceed regardless (receipts are a side effect, not a gate).
  */
 function isForeignResource(resourceUrl, readerWebId) {
-  try {
-    return podRootOf(resourceUrl) !== podRootOf(readerWebId);
-  } catch {
-    return false;
-  }
+  return podRootOf(resourceUrl) !== podRootOf(readerWebId);
 }
 
 /**

@@ -273,13 +273,28 @@ function buildMcpServer(identity) {
     {
       description:
         "Read a Solid Pod resource. Returns text content. Works for RDF " +
-        "documents (Turtle/JSON-LD) and text-based files.",
+        "documents (Turtle/JSON-LD) and text-based files. When the resource " +
+        "belongs to a different pod than this identity's own, reading it " +
+        "attempts a best-effort receipt write into the owner's access-log/ " +
+        "(never blocks or fails the read, but adds a round trip — and a " +
+        "possible reauth retry — before returning).",
       inputSchema: { url: z.string().url() },
     },
     safeHandler("solid_read_resource", identity, "url", async ({ url }) => {
       const file = await podClient.readFile(url, identity.session);
       const text = await file.text();
-      if (isForeignResource(url, identity.webId)) {
+      let foreign;
+      try {
+        foreign = isForeignResource(url, identity.webId);
+      } catch (err) {
+        // A malformed/empty identity.webId (misconfiguration) must not
+        // silently and permanently disable receipts with no trace — log it
+        // the same way a receipt-write failure is logged (5b.6), and skip
+        // the receipt attempt for this read rather than guessing.
+        appendAuditEntry({ label: identity.label, tool: "read_receipt", resource: url, outcome: "error" });
+        foreign = false;
+      }
+      if (foreign) {
         try {
           try {
             await writeReadReceipt(
@@ -355,7 +370,11 @@ function buildMcpServer(identity) {
       if (existing === null) {
         return { content: [{ type: "text", text: `Created ${url}` }] };
       }
-      const firstLine = existing.split("\n")[0].slice(0, 120);
+      // Slice by codepoint (Array.from), not UTF-16 code unit (.slice) — a
+      // surrogate pair or combining mark straddling the cutoff would
+      // otherwise corrupt exactly the confirmation text meant to let a
+      // human catch a wrong overwrite before it happens.
+      const firstLine = Array.from(existing.split("\n")[0]).slice(0, 120).join("");
       return {
         content: [
           {

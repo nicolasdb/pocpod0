@@ -97,6 +97,11 @@ simply fails quietly in the background and the read still succeeds — say so
 if a person asks whether their pod logs who reads it: it doesn't, on its
 own.
 
+Reading someone else's resource is a little slower than reading your own,
+because of this receipt attempt (and a possible one-time reauth retry) — it
+never fails or blocks the read, but don't be surprised if a foreign read
+takes noticeably longer than one from your own pod.
+
 ## What this skill does not cover
 
 Recursive container deletion, pod versioning/undo, granting or revoking WAC
