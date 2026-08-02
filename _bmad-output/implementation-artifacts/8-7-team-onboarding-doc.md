@@ -52,7 +52,7 @@ Walked as a concrete multi-layer scenario (student → course → school → reg
 | Identity map | `mcp-connector/identities.json`, gitignored, **chmod 600 enforced at boot** (refuses group/other-readable) | `identityRegistry.js`, 8.5 Task 6.2 |
 | Identity map shape | `slug → { label, webId, clientId, clientSecret }` | `identities.example.json` |
 | Uniqueness guard | Two slugs pointing at the same `webId` are **refused at boot** | 8.5 Task 6.1 |
-| Sessions | Boot-time singletons, one per identity — **a new identity needs a container restart** | `mcp-server.js` |
+| Sessions | Boot-time singletons for the configured roster; a slug added after boot is now lazily logged in on its first request — **no restart needed** (8.6.1, landed 2026-08-02) | `mcp-server.js` |
 | claude.ai connector dialog | **No request-headers field** (verified 2026-07-30) — this is the entire reason the slug exists | brief T2 |
 | Approval prompts on `destructiveHint` | claude.ai fired **two** layers live (Claude's own text pause + native approval UI) before a destructive call | 8.5 Task 7 |
 | Pod URL discoverability | Claude **cannot guess** a pod root URL; asked cold before any tool call worked | 8.5 live finding |
@@ -71,7 +71,7 @@ Walked as a concrete multi-layer scenario (student → course → school → reg
 
 3. **"Why can't we all share one agent login?" is answered on the page**, because it will be asked. The answer is concrete — shared secret = skeleton key across everyone's granted data, no per-human write attribution, full rotation whenever one person leaves — and states the alternative: *what scales is grants, not credentials.*
 
-4. **The walkthrough is complete and literally followable by someone who has never seen the system**, covering, in order: (a) create a CSS account at `pod.nicolasdb.eu` — you are OWNER; (b) create your data pod; (c) create your agent pod (its own WebID on the same account); (d) mint AGENT client-credentials via the backoffice (Story 7.4's flow, one-time secret); (e) hand the operator your `clientId`/`clientSecret`/`webId`/label for an `identities.json` entry + `npm run slug`, and note that the container restarts (8.6.1, if landed first, removes this restart — check its status before drafting the final wording); (f) add the connector in Claude using the assembled URL; (g) **create the `access-log/` container yourself before granting it** — CSS does not auto-create a missing parent container, so a grant against a container that does not yet exist 404s; (h) grant your own agent access to your chosen containers, by hand, as OWNER, naming `access-log/` explicitly as **RW today** (the backoffice has no Append-only option — that lands with 7.6/7.8), not the stronger Append-only guarantee the receipt design assumes. **Your OWNER credential never leaves your machine and is never given to the operator.**
+4. **The walkthrough is complete and literally followable by someone who has never seen the system**, covering, in order: (a) create a CSS account at `pod.nicolasdb.eu` — you are OWNER; (b) create your data pod; (c) create your agent pod (its own WebID on the same account); (d) mint AGENT client-credentials via the backoffice (Story 7.4's flow, one-time secret); (e) hand the operator your `clientId`/`clientSecret`/`webId`/label for an `identities.json` entry + `npm run slug` — the connector picks it up on your first request, no restart needed (8.6.1); (f) add the connector in Claude using the assembled URL; (g) **create the `access-log/` container yourself before granting it** — CSS does not auto-create a missing parent container, so a grant against a container that does not yet exist 404s; (h) grant your own agent access to your chosen containers, by hand, as OWNER, naming `access-log/` explicitly as **RW today** (the backoffice has no Append-only option — that lands with 7.6/7.8), not the stronger Append-only guarantee the receipt design assumes. **Your OWNER credential never leaves your machine and is never given to the operator.**
 
 5. **The page states the reader's own pod root URL prominently**, and tells them to state it to Claude on first use. This closes 8.5's live finding — Claude cannot guess a pod root and will otherwise ask cold before any tool call works.
 
@@ -102,7 +102,7 @@ Walked as a concrete multi-layer scenario (student → course → school → reg
 - [ ] **Task 2 — Write the walkthrough (AC: 4, 5)**
   - [ ] 2.1 Steps (a)–(g) as literal, followable instructions with real URLs — no placeholders a reader has to resolve.
   - [ ] 2.2 Make the **OWNER boundary explicit at the moment it matters**: you mint your own credentials, you grant your own access, your OWNER credential never leaves your machine and the operator never sees it. This is 8.5's corrected-scope lesson stated to a human.
-  - [ ] 2.3 Be honest about the operator-in-the-middle step (e): what you hand over, what you do not, that a restart happens, and that Story 7.9 will make this a button.
+  - [ ] 2.3 Be honest about the operator-in-the-middle step (e): what you hand over, what you do not, that it takes effect on your next request with no restart (8.6.1), and that Story 7.9 will make this a button.
   - [ ] 2.4 State the pod root URL prominently and tell the reader to give it to Claude on first use.
   - [ ] 2.5 Say plainly that the slug is a credential — treat the connector URL like a password.
   - [ ] 2.6 Suggest which containers to grant first, and why starting narrow is the right default.
@@ -151,7 +151,7 @@ AC8 is the story's spine. A page reviewed by its author reads as obvious to its 
 ### Traps
 
 - **The dev sandbox cannot reach the public URL** — the allowlist excludes roaming addresses; curl returns `403`. On-host requests hairpin through the VPS's own allowlisted IP (8.4 Task 8's method). **A 403 from your laptop is not a broken deploy.**
-- **A new identity needs a container restart** — sessions are boot-time singletons. Do not promise the new person instant availability; sequence it. Check whether 8.6.1 (lazy identity loading) has landed before finalizing this wording — it exists specifically to remove this step.
+- **A new identity no longer needs a container restart** — 8.6.1 (landed 2026-08-02) added lazy login on cache miss. A new identity works on its first request after the operator saves `identities.json`; already-connected identities are uninterrupted. Do not write a restart step into this page.
 - **CSS does not auto-create a missing parent container.** `access-log/` had to be hand-created before its grant worked — put the create-container step before the grant step, not after a failed grant teaches the reader the hard way.
 - **The backoffice has no Append-only grant option.** Only RO/RW/only-me/public-read exist, so any `access-log/` grant minted through it is RW. Say "RW today, Append-only once 7.6/7.8 lands" — do not imply the stronger guarantee the receipt design assumes.
 - **`identities.json` is chmod-600-enforced at boot.** A file written with looser permissions makes the container refuse to start. Set the mode when writing the entry, not after.
@@ -190,7 +190,7 @@ Backoffice-minted credentials and the reload path for new identities (Story 7.9)
 
 ### Project Structure Notes
 
-Primary artifact is documentation, most likely under `docs/` following 8.4's Divio structure. Config change: one new entry in `mcp-connector/identities.json` (gitignored, chmod 600) plus a container restart. Possible small edit to `mcp-connector/SKILL.md` or 8.6's capture skill if the live walkthrough exposes a gap. No changes to `backoffice/`, `pipeline/`, or `infra/`. nginx lives in the separate `hetzner-gateway` repo and is untouched.
+Primary artifact is documentation, most likely under `docs/` following 8.4's Divio structure. Config change: one new entry in `mcp-connector/identities.json` (gitignored, chmod 600) — no restart, per 8.6.1. Possible small edit to `mcp-connector/SKILL.md` or 8.6's capture skill if the live walkthrough exposes a gap. No changes to `backoffice/`, `pipeline/`, or `infra/`. nginx lives in the separate `hetzner-gateway` repo and is untouched.
 
 ### References
 

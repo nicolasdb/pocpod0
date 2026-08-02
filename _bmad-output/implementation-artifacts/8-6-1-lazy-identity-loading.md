@@ -1,6 +1,6 @@
 # Story 8.6.1: Lazy Identity Loading — Onboard Without a Restart
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -82,33 +82,33 @@ Do not change the storage backend here. Do not build minting UI here.
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Lazy resolution on cache miss (AC: 1, 3, 5)**
-  - [ ] 1.1 Extract a `resolveIdentity(slug)` used by the route: return the cached entry if present; otherwise re-read via `loadIdentities()`, and if the slug is now configured, log it in and cache it.
-  - [ ] 1.2 Reuse `getAgentSession({..., keepAlive: true})` and the **same** `session.info.webId` cross-check `bootIdentities()` does. Factor the per-identity login into one function both paths call — two copies will drift.
-  - [ ] 1.3 Known slugs must not touch the filesystem. The re-read happens only on a miss.
-  - [ ] 1.4 Cache the resulting entry in the same `Map`, with the same shape (including `clientId`/`clientSecret`, which 8.5's re-auth-on-401 depends on).
+- [x] **Task 1 — Lazy resolution on cache miss (AC: 1, 3, 5)**
+  - [x] 1.1 Extract a `resolveIdentity(slug)` used by the route: return the cached entry if present; otherwise re-read via `loadIdentities()`, and if the slug is now configured, log it in and cache it.
+  - [x] 1.2 Reuse `getAgentSession({..., keepAlive: true})` and the **same** `session.info.webId` cross-check `bootIdentities()` does. Factor the per-identity login into one function both paths call — two copies will drift.
+  - [x] 1.3 Known slugs must not touch the filesystem. The re-read happens only on a miss.
+  - [x] 1.4 Cache the resulting entry in the same `Map`, with the same shape (including `clientId`/`clientSecret`, which 8.5's re-auth-on-401 depends on).
 
-- [ ] **Task 2 — Keep fail-fast (AC: 2)**
-  - [ ] 2.1 Leave `bootIdentities()`'s eager loop and its `process.exit(1)` untouched.
-  - [ ] 2.2 State in a comment why both policies coexist, so a future reader doesn't "simplify" the eager path away and silently reintroduce partial service.
+- [x] **Task 2 — Keep fail-fast (AC: 2)**
+  - [x] 2.1 Leave `bootIdentities()`'s eager loop and its `process.exit(1)` untouched.
+  - [x] 2.2 State in a comment why both policies coexist, so a future reader doesn't "simplify" the eager path away and silently reintroduce partial service.
 
-- [ ] **Task 3 — Miss-path safety (AC: 4, 6)**
-  - [ ] 3.1 A lazy login failure falls through to the existing `notFound` handler. Same body, same status. Do not add a distinguishing message.
-  - [ ] 3.2 Negatively cache (short TTL) or otherwise bound failed lazy loads so a slug-guessing loop cannot drive one file read + one CSS login per guess. **This AC is the security-relevant one** — without it this story makes the guessing surface more expensive for us than for the guesser.
-  - [ ] 3.3 Keep `unknownSlugLimiter` in front of the miss path, unchanged.
-  - [ ] 3.4 Never log the attempted slug — it is the credential being guessed (8.3 AC7).
+- [x] **Task 3 — Miss-path safety (AC: 4, 6)**
+  - [x] 3.1 A lazy login failure falls through to the existing `notFound` handler. Same body, same status. Do not add a distinguishing message.
+  - [x] 3.2 Negatively cache (short TTL) or otherwise bound failed lazy loads so a slug-guessing loop cannot drive one file read + one CSS login per guess. **This AC is the security-relevant one** — without it this story makes the guessing surface more expensive for us than for the guesser.
+  - [x] 3.3 Keep `unknownSlugLimiter` in front of the miss path, unchanged.
+  - [x] 3.4 Never log the attempted slug — it is the credential being guessed (8.3 AC7).
 
-- [ ] **Task 4 — Concurrency (AC: 8)**
-  - [ ] 4.1 De-duplicate in-flight logins per slug (a promise map is sufficient; there is no cluster mode here — single process).
-  - [ ] 4.2 Ensure a rejected in-flight login clears its entry, so one failure does not permanently poison that slug until restart.
+- [x] **Task 4 — Concurrency (AC: 8)**
+  - [x] 4.1 De-duplicate in-flight logins per slug (a promise map is sufficient; there is no cluster mode here — single process).
+  - [x] 4.2 Ensure a rejected in-flight login clears its entry, so one failure does not permanently poison that slug until restart.
 
-- [ ] **Task 5 — Verification (AC: 1, 7, 9, 10, 11)**
-  - [ ] 5.1 Live: add an identity to a running container, call its endpoint, confirm it works with no restart and that an already-connected identity is uninterrupted.
-  - [ ] 5.2 Confirm `/healthz` reflects it, still aggregate-only.
-  - [ ] 5.3 Confirm journal attribution by label from the first call; grep for slugs and secret terms → 0 hits.
-  - [ ] 5.4 Re-run `scripts/verify-http.js`; re-confirm unknown-slug 404, both rate-limit budgets, and 8.5's pinned negative-test wording.
-  - [ ] 5.5 Confirm boot still refuses to start with a deliberately broken credential in `identities.json` — AC2 is easy to believe and easy to have broken.
-  - [ ] 5.6 Remove the restart step from Story 8.7's walkthrough.
+- [x] **Task 5 — Verification (AC: 1, 7, 9, 10, 11)**
+  - [x] 5.1 Live: add an identity to a running container, call its endpoint, confirm it works with no restart and that an already-connected identity is uninterrupted.
+  - [x] 5.2 Confirm `/healthz` reflects it, still aggregate-only.
+  - [x] 5.3 Confirm journal attribution by label from the first call; grep for slugs and secret terms → 0 hits.
+  - [x] 5.4 Re-run `scripts/verify-http.js`; re-confirm unknown-slug 404, both rate-limit budgets, and 8.5's pinned negative-test wording.
+  - [x] 5.5 Confirm boot still refuses to start with a deliberately broken credential in `identities.json` — AC2 is easy to believe and easy to have broken.
+  - [x] 5.6 Remove the restart step from Story 8.7's walkthrough.
 
 ## Dev Notes
 
@@ -169,14 +169,41 @@ No test framework in `mcp-connector/` and this story does not add one (8.2–8.6
 
 ### Agent Model Used
 
+Claude (claude-sonnet-5)
+
 ### Debug Log References
+
+- `node --check mcp-connector/src/mcp-server.js` — passes.
 
 ### Completion Notes List
 
+- Factored `loginIdentity(id)` out of `bootIdentities()`'s loop so boot and the new lazy path share one login+webId-cross-check implementation (Task 1.2). `bootIdentities()`'s eager, fail-fast loop is otherwise untouched — a comment on the function now explains why the two policies coexist (Task 2.2).
+- Added `resolveIdentity(identities, slug)`: `Map.get` on the hot path (no filesystem touch for known slugs, Task 1.3/3); on a miss, re-reads `loadIdentities()`, logs in via `loginIdentity`, and caches the entry in the same shared `Map` with the same shape `bootIdentities()` uses (Task 1.1/1.4).
+- Miss-path safety (Task 3): any failure to resolve — slug not configured, `identities.json` unreadable/invalid, or a real identity whose login fails — returns `null` from `resolveIdentity`, which the route handler treats identically to today's `!identity` branch (same `notFound`/`unknownSlugLimiter` path, no new response shape). Failures are negatively cached for 30s (`NEGATIVE_CACHE_TTL_MS`) keyed by slug, so a guessing loop costs one file read + one login attempt per 30s window, not per request. The attempted slug is never logged; only `id.label` is (matches the existing boot-failure log).
+- Concurrency (Task 4): in-flight logins are de-duplicated per slug via a `Map<string, Promise>`; concurrent first-requests for the same new slug share one promise. The `finally` block always deletes the in-flight entry (success or failure), so a rejected login does not poison the slug past its 30s negative-cache window, and a later legitimate fix (e.g. a corrected `identities.json`) is retried on the very next request after that window.
+- `/healthz` and journal attribution needed no code changes — both already read off the same shared `identities` Map that `resolveIdentity` mutates in place.
+- Story 8.7's walkthrough (`8-7-team-onboarding-doc.md`) had five references to a restart step (Reality Check table, AC4 step (e), Task 2.3, a Traps bullet, Project Structure Notes) — all five updated to say the identity is picked up on next request with no restart, citing 8.6.1 (Task 5.6).
+- **Task 5 — live VPS verification, all confirmed 2026-08-02** (Nicolas confirmed go-ahead to deploy):
+  - Deployed via `make vps-deploy`. Boot logs showed `loginIdentity()`-refactored `bootIdentities()` still working: `identity "Nicolas (agent)" ready as ...`, `1 identity configured`, `/healthz` → `{"ok":true}` 200.
+  - **AC1 (no-restart onboarding)**: created a real throwaway CSS account/pod/WebID/client-credentials directly via the `.account/` API (account `db00931e-…`, pod `lazytest861`, slug `bgvTpSp5mnSnDPODEHhMFg` from `scripts/gen-slug.js`), appended it to the running container's live `identities.json` (bind-mounted, no restart), then `POST /mcp/<new-slug>` → `initialize` returned 200 immediately. The original identity's endpoint was called right after and still returned 200 — uninterrupted.
+  - **AC7 (`/healthz` stays honest/quiet)**: `{"ok":true}` both before and after the lazy add, still an aggregate boolean only.
+  - **AC9 (journal attribution)**: called `solid_list_container` as the lazily-loaded identity; `journal.jsonl`'s new line read `{"label":"Lazy-load test (8.6.1, throwaway)", "tool":"solid_list_container", ...}` — attributed from the very first call. `grep`'d the whole journal file for the slug string and the minted client secret — 0 hits.
+  - **AC4/Task 3.4**: server logs for the lazy login and for repeated unknown-slug guesses never printed a slug, only `id.label` (matches boot's existing log wording) or the generic "rejected request to unknown MCP slug".
+  - **AC10 (no regression)**: `scripts/verify-http.js` run from inside the container against the public hairpinned URL (8.4 Task 8 method) — `initialize`, `tools/list` (9/9 expected tools), `tools/call`, and the pinned 403 negative-test wording all passed (`ALL CHECKS PASSED`). Unknown-slug 404 body unchanged (`{"jsonrpc":"2.0","error":{"code":-32601,"message":"Not found."},"id":null}`). Both rate-limit budgets re-confirmed live: 12 rapid unknown-slug requests returned `404 404 404 404 404 404 429 429 429 429 429 429` — exactly the 10/min `RATE_LIMIT_MAX_UNKNOWN` budget firing, unchanged from 8.4/8.5.
+  - **AC2 (fail-fast preserved)**: added a third entry to `identities.json` with a fabricated `clientId`/`clientSecret` (distinct fake `webId` to isolate this from the duplicate-webId guard) and restarted the container — boot logged `fatal: Solid login failed for identity "Broken credential (AC2 test)": invalid_client (client authentication failed)` and the process exited/restart-looped, exactly as `bootIdentities()`'s untouched `process.exit(1)` path is supposed to. Confirms the eager/lazy refactor did not weaken AC3 from Story 8.3.
+  - Cleanup: removed both the AC2 broken-credential entry and the throwaway `lazytest861` slug from `identities.json`, restarted, confirmed back to steady state (1 identity configured, `/healthz` 200). The throwaway CSS account/pod itself was **not** deleted — CSS has no HTTP delete path for accounts (known, documented limitation from Epic 7's orphan-account finding); it joins the existing set of orphaned test accounts on `pod.nicolasdb.eu`.
+  - 5.6 (removing 8.7's restart language) was done earlier in this session, before the deploy.
+
 ### File List
+
+- `mcp-connector/src/mcp-server.js` — added `loginIdentity()`, `resolveIdentity()`, negative-cache and in-flight-login maps; `bootIdentities()` refactored to call `loginIdentity()`; POST `/mcp/:slug` route now calls `resolveIdentity()` instead of a bare `Map.get`.
+- `_bmad-output/implementation-artifacts/8-7-team-onboarding-doc.md` — removed restart-step language in five places (Task 5.6).
+- `mcp-connector/identities.json` (VPS-side, gitignored, not in repo) — temporarily gained and then lost a throwaway lazy-test entry and a deliberately-broken-credential entry during live verification; ends this story at its pre-story state (1 identity).
 
 ## Change Log
 
 | Date | Change |
 |---|---|
 | 2026-08-02 | Drafted and inserted between 8.6 and 8.7. Origin: Nicolas asked whether slug management could be externalised (Supabase/SQLite) and said the slug mechanism was still foggy. Reading the source showed the fog was two conflated problems — slug→identity *lookup* (a storage question) and identity→*session* creation (the restart). The restart is caused entirely by the second, so no storage change fixes it. Supabase ruled out (AGENT secrets on third-party infra); SQLite deferred to 7.9 where the concurrent-write problem actually appears. |
+| 2026-08-02 | Tasks 1-4 implemented (lazy resolution, fail-fast preserved, miss-path safety with negative caching, concurrency de-dup) and 5.6 (8.7 restart-language removed). |
+| 2026-08-02 | Task 5 live-verified on the VPS with Nicolas's confirmation: AC1/4/7/9/10 confirmed via a real throwaway identity added without restart; AC2 confirmed by a deliberately broken credential refusing boot; `verify-http.js` and both rate-limit budgets re-confirmed unchanged. Story moved to review. |

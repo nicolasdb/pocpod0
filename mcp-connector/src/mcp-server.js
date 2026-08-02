@@ -585,11 +585,67 @@ function buildMcpServer(identity) {
 }
 
 /**
+ * Log a single identity in and return the Map-entry shape both bootIdentities
+ * and the lazy path (resolveIdentity, Story 8.6.1) store. Factored out so
+ * there is exactly one place that creates a session and cross-checks webId —
+ * two copies would drift (8.6.1 Task 1.2). Throws on any failure; it is the
+ * caller's job to decide what a failure means (boot: fatal; lazy: a miss).
+ *
+ * @param {{clientId:string, clientSecret:string, webId:string, label:string}} id
+ * @returns {Promise<{session:object, label:string, webId:string, clientId:string, clientSecret:string}>}
+ */
+async function loginIdentity(id) {
+  const session = await getAgentSession({
+    clientId: id.clientId,
+    clientSecret: id.clientSecret,
+    oidcIssuer: process.env.SOLID_OIDC_ISSUER,
+    keepAlive: true,
+  });
+
+  if (session.info.webId !== id.webId) {
+    // Defensive: catches a stale/typo'd webId in identities.json before it
+    // causes confusing tool errors later.
+    throw new Error(
+      `identity "${id.label}" logged in as ${session.info.webId}, not the ` +
+        `configured webId. Fix identities.json.`
+    );
+  }
+
+  // auth.js already logs "authenticated as <webId>" per login. That alone
+  // can't be correlated to a person when N identities boot, so name the
+  // label here too — label and WebID are both safe to log (AC7); the slug,
+  // client id and secret are not.
+  // eslint-disable-next-line no-console
+  console.log(
+    `[solid-pod-agent mcp-server] identity "${id.label}" ready as ${session.info.webId}`
+  );
+
+  // clientId/clientSecret are kept in-memory only, never logged, so Task
+  // 4's one-shot re-auth-on-401 can re-login this identity later without
+  // re-reading identities.json.
+  return {
+    session,
+    label: id.label,
+    webId: session.info.webId,
+    clientId: id.clientId,
+    clientSecret: id.clientSecret,
+  };
+}
+
+/**
  * Boot every configured identity's Solid session, once, at startup.
  * Story 8.3 AC3: N identities, each logged in with keepAlive:true and
  * reused for the process lifetime. AC3: if ANY identity fails to log in,
  * the whole process refuses to start — a half-authenticated server that
  * silently serves 3 of 4 people is worse than one that refuses to start.
+ *
+ * Story 8.6.1: this eager, fail-fast boot loop stays exactly as strict as
+ * before. It coexists with the lazy path (resolveIdentity, below) rather
+ * than being replaced by it — collapsing the two into "just lazy-load
+ * everything" would silently turn a broken configured identity from a
+ * refused startup into a partial, half-authenticated server (the exact
+ * failure mode AC3 was written to prevent). Lazy loading only ever covers
+ * identities *not* present in identities.json at boot time.
  *
  * @returns {Promise<Map<string, {session: object, label: string, webId: string}>>}
  */
@@ -598,14 +654,9 @@ async function bootIdentities() {
   const identities = new Map();
 
   for (const [slug, id] of configured) {
-    let session;
+    let entry;
     try {
-      session = await getAgentSession({
-        clientId: id.clientId,
-        clientSecret: id.clientSecret,
-        oidcIssuer: process.env.SOLID_OIDC_ISSUER,
-        keepAlive: true,
-      });
+      entry = await loginIdentity(id);
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error(
@@ -614,42 +665,94 @@ async function bootIdentities() {
       );
       process.exit(1);
     }
-
-    if (session.info.webId !== id.webId) {
-      // Defensive: catches a stale/typo'd webId in identities.json before it
-      // causes confusing tool errors later.
-      // eslint-disable-next-line no-console
-      console.error(
-        `[solid-pod-agent mcp-server] fatal: identity "${id.label}" logged in as ` +
-          `${session.info.webId}, not the configured webId. Fix identities.json.`
-      );
-      process.exit(1);
-    }
-
-    // auth.js already logs "authenticated as <webId>" per login. That alone
-    // can't be correlated to a person when N identities boot, so name the
-    // label here too — label and WebID are both safe to log (AC7); the slug,
-    // client id and secret are not.
-    // eslint-disable-next-line no-console
-    console.log(
-      `[solid-pod-agent mcp-server] identity "${id.label}" ready as ${session.info.webId}`
-    );
-
-    // clientId/clientSecret are kept in-memory only, never logged, so Task
-    // 4's one-shot re-auth-on-401 can re-login this identity later without
-    // re-reading identities.json. They already lived in `id` (from
-    // loadIdentities()) for the duration of this loop; the only change is
-    // holding onto them past boot.
-    identities.set(slug, {
-      session,
-      label: id.label,
-      webId: session.info.webId,
-      clientId: id.clientId,
-      clientSecret: id.clientSecret,
-    });
+    identities.set(slug, entry);
   }
 
   return identities;
+}
+
+// Story 8.6.1 Task 3.2: a failed lazy load (slug not configured, or
+// configured but credentials/webId are bad) is negatively cached for a short
+// TTL so a slug-guessing loop cannot drive one file read + one CSS login
+// attempt per guess (the amplification trap the Dev Notes call out). A
+// guess against a cached-negative slug costs a Map lookup, same as today.
+const NEGATIVE_CACHE_TTL_MS = 30 * 1000;
+const negativeLookupCache = new Map(); // slug -> expiry timestamp (ms)
+
+// Story 8.6.1 Task 4: de-duplicate concurrent first-requests for the same
+// new slug so two simultaneous requests share one in-flight login instead of
+// racing two separate sessions into existence for one identity.
+const inFlightLogins = new Map(); // slug -> Promise<entry|null>
+
+/**
+ * Resolve a slug to its identity entry, lazily logging in and caching on a
+ * miss (Story 8.6.1). Known slugs never touch the filesystem (AC3) — this is
+ * a bare Map.get for the hot path, only falling through to a re-read of
+ * identities.json when the slug isn't already cached.
+ *
+ * @param {Map<string, object>} identities the shared, mutable boot-time Map
+ * @param {string} slug
+ * @returns {Promise<object|null>} the identity entry, or null if the slug is
+ *   not a real identity (unknown, or a real one whose login just failed) —
+ *   the route handler treats both identically (AC4: no slug oracle).
+ */
+async function resolveIdentity(identities, slug) {
+  const cached = identities.get(slug);
+  if (cached) return cached;
+
+  const negativeUntil = negativeLookupCache.get(slug);
+  if (negativeUntil && negativeUntil > Date.now()) return null;
+
+  const inFlight = inFlightLogins.get(slug);
+  if (inFlight) return inFlight;
+
+  const attempt = (async () => {
+    let configured;
+    try {
+      configured = loadIdentities();
+    } catch (err) {
+      // A malformed identities.json (e.g. someone mid-edit) must not crash
+      // an in-flight request — treat it the same as "slug not found" and
+      // let the next lazy lookup re-read once the file is fixed.
+      negativeLookupCache.set(slug, Date.now() + NEGATIVE_CACHE_TTL_MS);
+      return null;
+    }
+
+    const id = configured.get(slug);
+    if (!id) {
+      negativeLookupCache.set(slug, Date.now() + NEGATIVE_CACHE_TTL_MS);
+      return null;
+    }
+
+    let entry;
+    try {
+      entry = await loginIdentity(id);
+    } catch (err) {
+      // Never log the slug (AC7/Task 3.4) — id.label is safe, same as boot.
+      // eslint-disable-next-line no-console
+      console.error(
+        `[solid-pod-agent mcp-server] lazy login failed for identity "${id.label}":`,
+        err.message
+      );
+      negativeLookupCache.set(slug, Date.now() + NEGATIVE_CACHE_TTL_MS);
+      return null;
+    }
+
+    identities.set(slug, entry);
+    negativeLookupCache.delete(slug);
+    return entry;
+  })();
+
+  inFlightLogins.set(slug, attempt);
+  try {
+    return await attempt;
+  } finally {
+    // Clearing on both success and failure means a rejected/negative
+    // in-flight login does not permanently poison the slug until restart
+    // (Task 4.2) — the next request tries again, subject only to the
+    // negative-cache TTL above.
+    inFlightLogins.delete(slug);
+  }
 }
 
 /**
@@ -752,7 +855,7 @@ async function main() {
   app.use("/mcp", mcpLimiter);
 
   app.post("/mcp/:slug", async (req, res) => {
-    const identity = identities.get(req.params.slug);
+    const identity = await resolveIdentity(identities, req.params.slug);
 
     if (!identity) {
       // Run the tighter limiter only once we know the slug is unknown, so
