@@ -1,6 +1,8 @@
 # Story 6.2: Mission Control Dashboard Implementation
 
-Status: review
+Status: superseded
+
+> **Superseded 2026-04-01.** Story 6.2 is one story — "we need a UI" — with two implementation paths. This TUI (Textual) path was attempted first and proved a dead end; superseded by the FastAPI + HTML ACL dashboard, `6-2-acl-dashboard.md`, which is the `done` path under the single `story-6-2-acl-dashboard` key. Kept on disk as history, not deleted — the same TUI dead end was reached again independently in Story 3.7.1. See `architecture_dashboard_tui_decision` and `story_6_2_textual_hybrid_decision` (archived memory).
 
 ## Story
 

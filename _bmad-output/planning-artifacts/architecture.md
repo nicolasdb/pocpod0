@@ -322,13 +322,20 @@ _Discovered during Story 3.6 deep dive (2026-03-24). These principles extend the
 - The receipt contains: who queried, when, consent grant URI, result shape (not raw data), which named graphs contributed
 - The troll can index and query these receipts for audit
 - **PoC:** structured logs capture execution (service-side only). **Pilot:** receipts written back to pods.
+- **Amended 2026-08-02:** the receipt location is confirmed as the **data subject's** pod, and the mechanism is now specified: the reader holds `acl:Append` — never `acl:Write` — scoped to `access-log/` alone. This is the deliberate exception to BP-6's single-writer invariant, and the reason for it is that a receipt held in the *reader's* pod leaves the audited party in control of the audit trail. First implementation: Story 8.6 AC11 / Task 5b (Node connector), reusing Epic 5 `receipt.py`'s field semantics so receipts from the pipeline and the connector are the same artifact.
+- **Honest limit:** this is a voluntary accountability convention, not enforcement. CSS surfaces no per-resource read log to owners, so a reader that simply declines to write receipts leaves no trace by this mechanism. Server-side access logging surfaced to owners remains unbuilt and post-PoC.
 
 ### Principle BP-2: Trustless Anonymization (Structural, Not Policy)
 
-- The `GROUP BY` clause in aggregate SPARQL is **structural anonymization** — individual records are unretrievable by query construction, not by policy promise
-- Data subjects do not need to trust that Isabelle "only sees counts" — the query architecture makes individual retrieval impossible
-- This is the distinction between *hope-based trust* (policy) and *trustless guarantee* (mathematics)
-- GDPR Article 7(3) consent withdrawal is implemented as ACL revocation: the SPARQL filter automatically excludes revoked pods — no admin action, no ticket, no bilateral agreement
+_Amended 2026-08-02 — anonymization is primarily an **ownership boundary**; `GROUP BY` is the second line, not the first._
+
+**Primary: the ownership boundary.** The strongest anonymization is that the consuming agent is never granted access to personal data at all. Each collective computes its own aggregate inside its own boundary and publishes only the result; the regional agent reads results, never records. There is no filter to misconfigure, bypass, or subvert, because there is no privileged query path to personal data in the first place. Revocation is correspondingly meaningful — withdrawing a grant stops a *read*, not merely a projection.
+
+**Secondary: query construction.** Where an aggregate *is* computed over data the querying party can reach, the `GROUP BY` clause is structural anonymization — individual records unretrievable by query construction, not by policy promise. This still matters (it is what protects inside the collective's own boundary), but it is defense-in-depth behind the ownership boundary, not the primary guarantee.
+
+- The distinction remains *hope-based trust* (policy) vs *trustless guarantee* — the amendment moves the guarantee one layer out, from "the query cannot retrieve individuals" to "the reader was never given the individuals"
+- GDPR Article 7(3) consent withdrawal is implemented as ACL revocation: the aggregating agent's next run automatically excludes revoked pods — no admin action, no ticket, no bilateral agreement
+- **Why amended:** the original framing implied a single engine holding everything, trusted to anonymize on the way out — one trust anchor, and a filter separating the region from individual records. See PRD Journey 4, "Anonymization boundary".
 
 ### Principle BP-3: Consent Grant as RDF Resource
 
@@ -374,6 +381,34 @@ The Anagnorisis food-allergy scenario: Ayoub's pod contains his food regime. A s
 - Historical aggregates remain immutable — they record what was true *at the time* with full provenance
 - **Civic signal:** if consent revocations spike in a territory, the aggregate pipeline "goes dry" — a measurable signal of community distrust, visible to policy actors without exposing individual decisions
 - This is liquid democracy at the data layer: continuous preference expression through data sovereignty choices
+
+### Principle BP-6: Single-Writer Pods, Role-Based Collective Access
+
+_Settled 2026-08-02, during the pre-draft design session for Story 8.7. Traced against a concrete multi-layer scenario (student → course → school → region) before adoption._
+
+> **Nobody overwrites your pod but your own AGENT. Everything else is a grant you hold on someone else's pod — auditable, and revocable by them.**
+
+This single invariant resolves what looked like a hard trade-off between coordination and isolation.
+
+**The one deliberate exception: append-only mailboxes.** `acl:Append` is not `acl:Write` — it lets an external agent *add* an entry to one named container without reading other entries, and without modifying or deleting anything. That is a genuinely different capability from write access, and it is what makes BP-1's access-log work: a reader deposits a receipt into the data subject's own `access-log/`, where the subject controls it and the reader cannot retract it. The alternative — receipts held in the reader's own pod — was considered and rejected on 2026-08-02: it leaves the party being audited holding the audit trail. Append-only mailboxes are granted deliberately, scoped to a single container, and revocable like any other grant. Nothing else external ever writes into a personal pod.
+
+**Three identity classes.** They are all just WebIDs holding grants; what differs is who holds the credential and what job it does.
+
+| Class | Credential held by | Job | Writes where |
+|---|---|---|---|
+| **Personal agent** (`nicolas_claude`) | exactly one human | conscious capture — the person's own assistant | that person's own pod only |
+| **Collective service agent** (`school-X_AGENT`) | nobody; runs as a service (cron) | scheduled reads across granted pods, aggregate writes | its own collective's pods only |
+| **Role-assigned control** (`directeur`, held by Charles Xavier) | the currently-assigned person | OWNER/`acl:Control` on a collective account | governance, not data |
+
+**Roles are named grant bundles, not identities.** "Teacher of classroom101" = Read+Write on `school-X/classroom101/`, no access to `school-X/admin-compta/`. Applied to whichever personal-agent WebIDs currently hold the role. Assignment is revocable; the identity is not destroyed by revoking it. Succession (`directeur` passing from one person to the next) reassigns Control — no credentials move, no pods move, no re-provisioning. This is the mechanism behind the PRD Vision item "community pods: school governance, director succession".
+
+**Personal pods are single-writer; collective pods are multi-writer via roles.** A student's course notes live in their own pod and only their own agent writes them. The school's agent *reads* them under a grant the student made at registration and can revoke. Teacher feedback does not appear in the student's pod — it lands in `school-X/classroom101/feedback/` where the student holds Read. Same outcome, invariant intact.
+
+**Why this and not a shared collective credential.** One shared AGENT WebID across several humans means one shared client-credentials secret: a skeleton key whose blast radius is everyone's granted data, with no per-human attribution on writes and a full secret rotation every time one person leaves. Per-person agents cost nothing extra — what scales is **grants, not credentials**. This is also what Story 8.3/8.5's `identityRegistry.js` uniqueness guard already enforces (one WebID ↔ one slug); the guard was validated, not merely assumed, by walking the school scenario against it.
+
+**Two-layer account model.** Personal accounts (*personne physique*) and collective accounts (*personne morale* — a school, team, family, place). A collective holds a shared memory attached to a community, and decides its own governance: which role holds Control, and the rules for transferring it. Both layers are ordinary Solid accounts owning ordinary pods; the difference is entirely in who holds Control and how that is assigned.
+
+**Conscious vs ambient input.** The MCP connector (Epic 8) is the **first line of conscious input** — a person deliberately externalizing their own thinking into their own pod, knowing who they have granted read access to. This is a different provenance class from the ambient/observed input the xAPI ingestion pipeline handles (statements generated *about* a person by systems they never touched). Both land in pods; their consent texture is not the same, and the architecture should not flatten them into one.
 
 ### 5-Star Linked Data Evolution Path
 

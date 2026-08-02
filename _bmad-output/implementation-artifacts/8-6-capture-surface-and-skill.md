@@ -66,6 +66,7 @@ The connector's purpose is a **capture path**: externalize insight from a chat i
 8. **Journal covers the new tools**: append, ceremonial write and delete all appear with correct `ok`/`denied`/`error` outcomes attributed by label, and greps clean of slug and secret terms.
 9. **No regression**: `scripts/verify-http.js` passes against the live public URL (updated for the new tool count), the container is healthy at 1 identity, and 8.5's negative test still fails cleanly with its pinned wording.
 10. **Epic 8 convention**: dated "Story 8.6" section **appended** to `epic-8-action-log.md` (read-then-write, verified by byte-length growth), Story 8.6 proof-table section added to `epic-8-progress-report.md`, and `deferred-work.md`'s `deleteResource` container no-op item struck as closed.
+11. **Read receipts (added 2026-08-02, FR42 / architecture.md BP-1)**: when the connector reads a resource it does **not** own, it appends a receipt entry — timestamp, reader label/WebID, resource URL, outcome — into the **data subject's own** `access-log/` container, using an `acl:Append`-only grant (never `acl:Write`). Evidence lands where the audited party cannot retract it. The honest limit is stated in the skill and the tool description: this is a **voluntary accountability convention**, not enforcement — CSS surfaces no per-resource read log to owners, so a reader that simply declines to write receipts leaves no trace by this mechanism. Proven live: read a resource in a granted container, then have the *subject* read back their own access log showing that access.
 
 ## Tasks / Subtasks
 
@@ -100,6 +101,16 @@ The connector's purpose is a **capture path**: externalize insight from a chat i
   - [ ] 5.3 **New conversation**: have the agent find that note, read it, and append to it. This is AC7 — the round trip, and the story's central claim.
   - [ ] 5.4 Ceremony test: overwrite an existing file, and delete a throwaway file. Record whether the client actually prompted each time.
   - [ ] 5.5 Capture transcript/screenshot evidence.
+
+- [ ] **Task 5b — Read receipts (AC: 11)**
+  - [ ] 5b.1 Reuse Epic 5's `receipt.py` (BP-1) **shape**, not its code — that module is Python and lives in the pipeline; this is a Node connector. Match the semantics and field names so receipts across the two systems are the same artifact, and reuse `_safe_uri()`'s lesson (Turtle injection) if emitting RDF.
+  - [ ] 5b.2 Emit a receipt when reading a resource whose owner is not this identity. Determining "not mine" cheaply: compare the resource URL's pod root against the identity's own `webId` pod root — do not add a network round trip per read.
+  - [ ] 5b.3 Write receipts into the **data subject's own** `access-log/` container (BP-1's path), **not** the reader's pod. Rationale settled 2026-08-02: a receipt held by the party being audited can be quietly deleted by them — evidence must land where it cannot be retracted.
+  - [ ] 5b.4 The grant this needs is **`acl:Append`, never `acl:Write`**, scoped to `access-log/` alone. Append lets a reader add an entry without reading others' entries and without modifying or deleting anything — that is precisely why the single-writer invariant survives (see architecture.md BP-6: nobody *overwrites* your pod but you; an append-only mailbox is a deliberate, narrow, revocable exception). **Verify live that CSS actually enforces Append-without-Read on this container** — if an Append grant leaks read access, that is a finding to record, not to work around.
+  - [ ] 5b.5 Append-only write path, via Task 1's `solid_append_resource` — a receipt log that can be clobbered is not a receipt log.
+  - [ ] 5b.6 Receipt-write failure must not silently swallow the read, nor abort it. Log the failure to the audit journal (`journal.js`) and report it — a read that happened without a receipt is exactly the case the subject needs to know about.
+  - [ ] 5b.7 State the voluntary/non-enforcement limit in the skill and tool description. Do not imply the pod server logs reads; it does not.
+  - [ ] 5b.8 Prove live: read a resource in the granted container from claude.ai, then have the **subject** read back their own `access-log/` showing that access recorded.
 
 - [ ] **Task 6 — Journal + regression (AC: 8, 9)**
   - [ ] 6.1 Journal shows append / write / delete with correct outcomes, attributed by label.
@@ -201,3 +212,5 @@ Changes inside `mcp-connector/`: `src/mcp-server.js` (3 tool registrations + ann
 | Date | Change |
 |---|---|
 | 2026-08-01 | Drafted and inserted between 8.5 (live verification) and team onboarding, which moves to 8.7. Origin: Nicolas asked why 8.5's Task 7 had no delete step; investigating found `deleteResource` written-but-never-wired, and surfaced the larger finding that `solid_write_resource` is a blind PUT with no destructive annotation — plus that Epic 8 had built only the MCP half of a plugin, with no capture skill. |
+| 2026-08-02 | AC11 + Task 5b added: **read receipts** (FR42). Came out of the 8.7 pre-draft design session — Nicolas's school scenario assumed "I get a log of when and what the school agent read, so I can decide whether to revoke." Verified that no such log exists: CSS surfaces no per-resource read log to owners, and 8.4's audit journal covers only the connector's *own* actions, not third-party reads of your pod. Chosen as cheap-and-already-there (Epic 5 `receipt.py`/BP-1 is the shape). |
+| 2026-08-02 | Task 5b **corrected within the same session**: first draft put receipts in the *reader's* pod to protect the single-writer invariant. Reversed to architecture.md BP-1's original location — the **subject's** `access-log/`, via an `acl:Append`-only grant. Deciding factor: under the reader's-pod version the party being audited holds the audit trail and can quietly delete it. `acl:Append` ≠ `acl:Write`, so the invariant survives as "nobody *overwrites* your pod but you", with an append-only mailbox as a deliberate narrow exception. |

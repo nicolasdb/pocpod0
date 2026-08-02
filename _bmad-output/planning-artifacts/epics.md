@@ -165,7 +165,7 @@ Learning data flows through a lossless xAPI→OSLO pipeline into a three-layer a
 **FRs covered:** FR8, FR9, FR10, FR11, FR12, FR13, FR29, FR31
 **Dashboard backlog:** Pipeline ingestion status, provenance navigation, troll injection/vector test results
 
-### Epic 3: Cross-Context Learning Insights
+## Epic 3: Cross-Context Learning Insights
 Role agents (Claire, Fatima, Isabelle) query across institutional silos, compare graph-only vs. hybrid results, and surface provenance — delivering the "aha moment" that makes the PoC compelling.
 **FRs covered:** FR14, FR15, FR16, FR17, FR18, FR19, FR20, FR30, FR35, FR36
 **Story tags:** Stories tagged as [foundation] (agent infra, shared skills) or [journey] (Claire, Fatima, Isabelle scenarios)
@@ -213,6 +213,41 @@ A self-hosted MCP server lets Claude.ai (or any MCP client) read/write pod resou
 **Relationship:** Independent of Epic 7 (pod-owner backoffice UI) and Epic 4 (parked pilot capstone) — different codebase (Node MCP server), same CSS instance and WAC model. Story 8.1 live-verifies `wacManager.js`'s WAC-specific Inrupt calls against the exact bug patterns Story 7.3 found, falling back to 7.3's hand-rolled ACL Turtle only if they reproduce.
 **Non-negotiables:** two-token model (OWNER never deployed, AGENT is runtime identity, agent never self-grants), one CSS account per person, grants always container-scoped with `scope: 'both'`, permission-writing tools require explicit human approval.
 **Dashboard backlog:** none (server-side connector, no UI of its own)
+**Identity & role model (settled 2026-08-02, see architecture.md BP-6):** only your own AGENT writes your pod; everything else is a grant you hold on someone else's pod. Three identity classes — personal agent (one human, conscious capture), collective service agent (nobody holds it, runs as cron), role-assigned control (`directeur` held by whoever is currently assigned). Roles are named grant bundles applied to personal-agent WebIDs, not identities in themselves — so succession reassigns Control without moving any credential. `identityRegistry.js`'s one-WebID-one-slug guard was validated against this model, not merely assumed. **What scales is grants, not credentials.**
+**Positioning:** this connector is the **first line of conscious input** — a person deliberately externalizing their own thinking into their own pod — as distinct from the ambient/observed input the xAPI pipeline (Epic 2) ingests. Different provenance class, different consent texture.
+
+_Story list added 2026-08-02 — Epic 8 executed with only this header in epics.md; the entries below are reconciled from `sprint-status.yaml` and the story files, which remain authoritative for detail._
+
+### Story 8.1: WAC Hardening & Verification
+As the connector's runtime (AGENT identity), I want `wacManager.js`'s grant/revoke/read proven correct against the real `pod.nicolasdb.eu` CSS instance using **only** the AGENT credential, so that the connector never silently writes an ineffective `.acl` (the failure class Story 7.3 found in the backoffice) — and the verification environment never holds the one credential able to grant itself arbitrary access.
+
+### Story 8.2: HTTP Transport
+As a team member on Claude Pro, I want the connector served over HTTP instead of stdio, so that claude.ai can reach it from Anthropic's infrastructure at a public URL — the only transport that works, since claude.ai's code sandbox cannot reach `pod.nicolasdb.eu` at all.
+
+### Story 8.3: Per-Person Endpoints
+As a team member with my own Solid pod, I want my own MCP endpoint URL bound to my own AGENT token, so that adding the connector in claude.ai acts as *me* — reaching my pod and not my colleagues' — without the server holding one shared identity for everybody.
+- Per-person secret slug (`/mcp/<slug>`, 22 chars CSPRNG) carries auth, because claude.ai's connector dialog has **no request-headers field**
+- Boot-time all-or-nothing identity login: any failed login refuses process start (revisited by Story 8.6.1)
+
+### Story 8.4: VPS Deploy & Hardening
+As the operator, I want the connector on the VPS behind TLS on its own subdomain, auto-restarted, rate-limited, reachable only from Anthropic (plus me), keeping an audit journal that never contains a secret — so a team member can add it in claude.ai against a real URL without handing the internet a credential-bearing access log or an unbounded write surface.
+
+### Story 8.5: Live Verification from claude.ai
+As a team member on Claude Pro, I want to add the deployed connector in claude.ai and, from a real conversation, list/read/write/inspect permissions on exactly the containers my WebID is granted — and nothing more — so the brief's Definition of Done is met or disproven **by a real MCP client**, not by our own scripts talking to our own server.
+
+### Story 8.6: Capture Surface — Append-First Tools, Destructive Ceremony, Capture Skill
+As someone thinking out loud in a conversation, I want "save this to my pod" to land in the right container, appended rather than clobbered, with real ceremony before anything is destroyed — so my pod becomes where my thinking accumulates.
+- `solid_append_resource` (append is the safety mechanism while pods have no versioning), `destructiveHint` + existence probe on write, `solid_delete_resource`
+- The user-facing **capture skill** — Epic 8 had built only the MCP half of a plugin
+- **Read receipts** (FR42 / BP-1): `acl:Append`-only into the subject's `access-log/`
+
+### Story 8.6.1: Lazy Identity Loading _(added 2026-08-02)_
+As the operator, I want a newly-configured person to work without restarting the connector, so onboarding isn't gated on a service restart. Keeps 8.3's fail-fast boot for known identities **and** adds lazy login on cache miss for new ones. Must land before 8.7. Storage backend unchanged (that's Story 7.9).
+
+### Story 8.7: Team Onboarding — Your Pod, Your Agent, Your Grants
+As a teammate told "you should put your notes in a pod", I want a short page explaining what I actually own, walking me from zero to a working connector, and stating honestly what the system does and does not guarantee — so I can start without a call, and without mistaking a convention for an enforcement.
+- Leads with the model (BP-6), walkthrough scoped to **personal** accounts, slug minting documented as manual (Story 7.9 automates it)
+- Central claim: a real second person completes it following **only the page** — every operator intervention is logged as a page defect
 
 ### Story 7.1: Backoffice Deploy & Real Account Registration
 As a new user, I can reach the pod backoffice at `https://pod.nicolasdb.eu/` (replacing the CSS default welcome page), create a real CSS account + pod from the onboarding flow, and manage my files and sharing against my live pod.
@@ -261,6 +296,32 @@ As a pod owner with a real, growing pod, file operations are as robust as a dedi
 - **Transfer progress** for many/large files; large-folder listing stays responsive (batch/throttle parallel ACL fetch)
 - **Reference, not dependency:** learn move/copy/bulk/progress patterns from `solid-contrib/solid-file-manager` + `solid-file-client`; deliberately NOT adopted (it lacks ACL UI + inline edit + two-tap delete — our differentiators). Audit "adopted/rejected/why" captured
 - Hardening on top of 7.3; keep pinned Inrupt libs; WCAG 2.1 AA + no regression
+
+### Story 7.7: Delete My Pod
+As a pod owner, I can delete a pod I created — with enough friction that I cannot do it by accident — so that what I make while testing or exploring is mine to remove, instead of accumulating forever on the server.
+- Closes the gap the live audit confirmed: CSS exposes **no HTTP delete path** for accounts or pods (see `css_acl_portability_audit`), which is why Epic 7 accumulated orphan accounts
+- Owner-driven **recursive container deletion** with ceremony proportional to what is lost (this is the canonical home for recursive delete — Story 8.6's `solid_delete_resource` deliberately does *not* duplicate it)
+- Friction by design: irreversible and unbacked (no pod versioning — brief §7), so the confirmation must show what is about to be destroyed, not just a name
+- WCAG 2.1 AA
+
+### Story 7.8: Roles & Grants — Permission UI Beyond Raw WebIDs _(DRAFT — added 2026-08-02)_
+As a pod owner (personal or collective), I can see and manage access as **named roles** rather than raw per-WebID ACL rows, so that permissions across a real group stay comprehensible.
+- **Why:** the identity/role model settled in architecture.md BP-6 makes roles (`teacher101`, `student101`, `assignment101`) the unit people actually think in. Today the backoffice shows raw WebID rows — nobody manages that past ~5 people and stays sane. The model is only usable if the UI expresses it.
+- Role = named grant bundle: define once (containers + access modes), assign/unassign personal-agent WebIDs, revoke an assignment without touching the underlying identity
+- Surface the **single-writer invariant** visibly: distinguish "my pod, my agent writes" from "someone else's pod, I hold a grant" — these are different mental objects and currently look identical
+- Collective-account view: which role holds `acl:Control`, who is currently assigned, and how succession reassigns it
+- Read receipts (FR42, built in Story 8.6) surfaced to the data subject: who read what, when — the thing that makes revocation an informed decision rather than a theoretical right
+- **Sequencing:** depends on 8.6 (receipts) and 8.7 (the model documented). Epic 7's original 7.1–7.7 scope is complete; this is an addition, not a reopening
+- WCAG 2.1 AA
+
+### Story 7.9: Backoffice-Minted Connector Credentials _(DRAFT — added 2026-08-02)_
+As a person onboarding, I click one button in the backoffice and receive my ready-to-paste MCP connector URL, instead of minting credentials by hand and asking an operator to edit a secrets file.
+- **Why:** Story 8.7 documents today's manual path (person mints AGENT client-credentials → operator adds an `identities.json` entry + `npm run slug` → container restart). That path does not scale past a handful of teammates and puts an operator in the middle of every onboarding.
+- Server-side endpoint mints AGENT client-credentials against the CSS account API using the person's **own** authenticated session, writes the `identities.json` entry, and returns the assembled connector URL **once** (reuse Story 7.4's one-time-secret UX)
+- **Secrets must never flow through the browser** — minting happens server-side; the person never sees a `clientSecret`, never edits a file
+- Show the person's **pod root URL** next to the connector URL — closes the live-verified gap where the agent cannot guess it and has to ask cold (8.5 finding)
+- **Blocker to resolve:** connector sessions are boot-time singletons (`mcp-server.js`), so a new identity needs either a reload path (re-read `identities.json` + authenticate the new identity) or an accepted "restart on new teammate"
+- Collapses onboarding steps 4–6 of Story 8.7 into a single action
 
 ## Epic 1: Pod Sovereignty & Access Control
 
@@ -398,6 +459,8 @@ So that I have evidence that the sovereignty primitive actually enforces its acc
 
 Learning data flows through a lossless xAPI→OSLO pipeline into a three-layer architecture (Pod→Graph→Vector) with full bidirectional provenance and adversarially validated query security.
 
+_Plan→execution reconciliation (2026-08-02): renumbered to match what was actually built. Planned 2.2 (dataset generation) was never a story — the PRD classes it as an external input. Planned 2.5 split into executed 2.5 + 2.6; planned 2.6 split into executed 2.7 + 2.8; executed 2.4 (round-trip recovery) had no plan entry. Story files are authoritative for detail._
+
 ### Story 2.1: OSLO Vocabulary Schema Contract
 
 As a **developer**,
@@ -420,7 +483,8 @@ So that the ingestion pipeline and agent query layer share a common semantic con
 **When** loaded into Oxigraph
 **Then** the schema validates without errors and SPARQL queries using OSLO classes return correct results
 
-### Story 2.2: Synthetic xAPI Dataset Generation
+### Pre-requirement: Synthetic xAPI Dataset Generation _(never executed as a story)_
+_Reconciled 2026-08-02: the PRD classes the dataset as "an external input, not a system capability", and execution treated it that way. Kept here as the input the pipeline stories assume._
 
 As a **developer**,
 I want a synthetic xAPI dataset (~10K statements) representing a realistic Belgian K-12 school semester,
@@ -445,7 +509,7 @@ So that the ingestion pipeline has realistic input data covering all 5 persona s
 **When** validated against xAPI specification
 **Then** all statements are valid xAPI JSON
 
-### Story 2.3: xAPI→OSLO RDF Ingestion Pipeline
+### Story 2.2: xAPI→OSLO RDF Ingestion Pipeline
 
 As a **developer**,
 I want a pipeline that converts xAPI statements to OSLO-mapped RDF triples and stores them as Turtle resources in learner Pods,
@@ -468,7 +532,7 @@ So that raw learning data is losslessly transformed into a semantically rich for
 **Then** each learner Pod contains Turtle resources representing their learning activities
 **And** the conversion is lossless — original xAPI data is preserved within the RDF representation
 
-### Story 2.4: Graph Layer Loading with Provenance
+### Story 2.3: Oxigraph Setup — RDF Storage with Provenance
 
 As a **developer**,
 I want RDF triples loaded into Oxigraph with provenance links back to source Pod resources,
@@ -493,7 +557,12 @@ So that every triple is traceable to its origin and any original xAPI statement 
 **When** I follow the provenance link back to the Pod resource and extract the original data
 **Then** the original xAPI statement is recoverable (round-trip verification, FR10)
 
-### Story 2.5: Vector Embeddings with Bidirectional Traceability
+### Story 2.4: Round-Trip xAPI Recovery Verification _(added in execution — recorded 2026-08-02)_
+As a developer, I want to verify that any original xAPI statement can be recovered by following provenance links from Oxigraph back through Pod resources, so that the pipeline's "lossless" claim is proven by a concrete round-trip test rather than asserted.
+- Proves FR10; the evidence behind the PRD's "any original statement recoverable" measurable outcome
+
+### Story 2.5: Qdrant Setup & Vector Embeddings
+_Reconciled 2026-08-02: planned as one story ("Vector Embeddings with Bidirectional Traceability"); execution split it into 2.5 (embeddings) and 2.6 (traceability verified end-to-end). The criteria below cover both._
 
 As a **developer**,
 I want vector embeddings generated for semantically significant content and stored in Qdrant with full traceability metadata,
@@ -518,7 +587,12 @@ So that semantic search is possible while maintaining bidirectional links betwee
 **When** I search Qdrant for points with matching `pod_resource_uri` in payload
 **Then** all derived embeddings are returned (reverse traceability)
 
-### Story 2.6: Troll SPARQL Injection & Vector Privacy Validation
+### Story 2.6: Bidirectional Traceability — Embedding, Triple, Pod _(split from planned 2.5 — recorded 2026-08-02)_
+As a developer, I want full bidirectional traceability between embeddings, triples and Pod resources verified end-to-end, so that any component of the three-layer model can be navigated to its source or derived artifacts — the precondition for deletion cascade and provenance display.
+- Proves FR12; load-bearing for Epic 5's deletion cascade
+
+### Story 2.7: Troll SPARQL Injection Validation
+_Reconciled 2026-08-02: planned as one story ("Troll SPARQL Injection & Vector Privacy Validation"); execution split it into 2.7 (injection) and 2.8 (vector privacy). The criteria below cover both._
 
 As a **security reviewer** (funder audience),
 I want the troll agent to test SPARQL injection resistance and vector store privacy,
@@ -544,11 +618,19 @@ So that I have evidence the data intelligence layer resists query manipulation a
 **When** the troll test suite for Epic 2 finishes
 **Then** a summary is produced with pass/partial/fail counts per category
 
+### Story 2.8: Troll Vector Privacy Validation _(split from planned 2.6 — recorded 2026-08-02)_
+As a security reviewer (funder audience), I want the troll agent to query Qdrant directly with semantic-similarity searches designed to extract PII from embeddings, so that I get an honest assessment of whether embeddings leak personally identifiable information.
+- Proves FR31. A **probabilistic surface**: assessed and documented, not required to pass — honest reporting is the bar (NFR Security)
+
+
 ## Epic 3: Cross-Context Learning Insights
 
 Role agents (Claire, Fatima, Isabelle) query across institutional silos, compare graph-only vs. hybrid results, and surface provenance — delivering the "aha moment" that makes the PoC compelling. Stories tagged [foundation] vs [journey], priority [must-ship] vs [target].
 
-### Story 3.1: [foundation] OpenClaw Agent Runtime & Shared SPARQL Skill
+_Plan→execution reconciliation (2026-08-02): renumbered to match what was actually built. Planned 3.1 split into executed 3.1 (SPARQL skill) + 3.3 (OpenClaw runtime, done FIRST to de-risk); journeys shifted 3.3→3.4, 3.4→3.5, 3.5→3.6; executed 3.7 (graph-vs-hybrid) and 3.7.1 (TUI, later abandoned) had no plan entries; planned 3.6 became executed 3.8. Execution order was 3.3→3.1→3.2→3.4→3.7→3.5→3.6→3.8. Story files are authoritative for detail._
+
+### Story 3.1: [foundation] Shared SPARQL Skill Foundation
+_Reconciled 2026-08-02: planned as "OpenClaw Agent Runtime & Shared SPARQL Skill"; execution split the runtime out into Story 3.3, which was then done FIRST to de-risk OpenClaw. The criteria below cover both._
 
 As a **developer**,
 I want the OpenClaw agent runtime configured with a shared SPARQL skill that validates ACLs and executes parameterized queries,
@@ -598,7 +680,11 @@ So that agents can deliver semantically enriched insights beyond what structured
 **When** both skills return results
 **Then** the combined response time is < 2s (NFR2)
 
-### Story 3.3: [journey] [must-ship] Claire — Cross-Context Insight Discovery
+### Story 3.3: OpenClaw Agent Infrastructure & Role Persona Configurations _(split from planned 3.1 — recorded 2026-08-02)_
+As a developer, I want the OpenClaw multi-agent runtime configured with all 5 role personas and the troll adversary, so that every journey story can run its agent against the shared SPARQL and Qdrant skills with proper persona context, ACL identity and query patterns.
+- **Executed FIRST in Epic 3** (order 3.3 → 3.1 → 3.2 → 3.4 → 3.7 → 3.5 → 3.6 → 3.8) to de-risk OpenClaw before journey work depended on it
+
+### Story 3.4: [journey] [must-ship] Claire — Cross-Context Insight Discovery
 
 As **Claire** (secondary school teacher, Brussels),
 I want to query cross-institutional student progress and see both graph-only and hybrid results side by side with provenance,
@@ -628,7 +714,7 @@ So that I discover the full picture of a struggling student — including learni
 **When** the query executes
 **Then** only data from authorized pods is returned — no cross-role leakage (NFR7)
 
-### Story 3.4: [journey] [target] Fatima — Unified Parental View
+### Story 3.5: [journey] [target] Fatima — Unified Parental View
 
 As **Fatima** (parent of two children, bilingual Brussels household),
 I want to see a unified view of both my children's learning progress across their different schools and activities,
@@ -650,7 +736,7 @@ So that I can make informed decisions from a position of sovereignty, not depend
 **When** she queries for data beyond her children's pods
 **Then** no unauthorized data is returned
 
-### Story 3.5: [journey] [target] Isabelle — Evidence-Based Policy
+### Story 3.6: [journey] [target] Isabelle — Evidence-Based Policy
 
 **Persona context:** Isabelle is a regional education policy advisor for Brussels-Capital Region. Education is a community competence (VGC/COCOF) — Isabelle funds cross-community extracurricular programs but has no jurisdiction over schools and cannot compel communities to share student outcome data. Her contractual leverage (grant conventions with rapportage obligations) produces Word/PDF self-reported narratives, not auditable data. Her demo moment is not being impressed by numbers — it is **relief**: seeing cross-community impact data for the first time after years of making funding decisions blind. EU alignment: the EU Data Governance Act (in force 2023) is designed for exactly this — federated consent-based aggregation across institutional boundaries. This system is DGA-forward infrastructure.
 
@@ -678,7 +764,14 @@ So that I can justify funding decisions with evidence-based data instead of self
 **Then** the system enforces aggregate-only access — no individual records returned
 **And** the denial is logged with structured JSON including reason and allowed templates
 
-### Story 3.6: [foundation] Troll Cross-Inference Validation
+### Story 3.7: Graph-Only vs Hybrid Comparison _(added in execution — recorded 2026-08-02)_
+As a researcher / funder audience, I want a systematic, reproducible comparison of graph-only and hybrid query results across all students in Claire's scope, so that the benefit of combining SPARQL with vector search is measurable, not anecdotal.
+- Proves FR16; the reusable demo artifact behind Journey 2's "aha moment"
+
+### Story 3.7.1: Pipeline Dashboard TUI _(added in execution, direction later abandoned — recorded 2026-08-02)_
+Done, then superseded: the TUI approach was dropped in favour of the ACL dashboard (Story 6.2). Retained as history — see the archived `architecture_dashboard_tui_decision` note.
+
+### Story 3.8: [foundation] Troll Cross-Inference Validation
 
 As a **security reviewer** (funder audience),
 I want the troll agent to test cross-inference data leakage via natural language prompts through the agent layer,
@@ -749,6 +842,15 @@ So that funders and external visitors can interact with every persona-agent dire
 - Named volumes: `openclaw-data` → `openclaw-data-default` (rename), document pattern in README
 
 ---
+
+### Story 4.0.1: [infra] Force-Pasta Local Fix _(inserted during execution — recorded here 2026-08-02)_
+As project lead, I want the OpenClaw gateway WebUI reachable on `http://localhost:18789` via `podman compose up` on Fedora Kinoite 42, so that local Epic 4 iteration is unblocked without deploying to VPS.
+- Unplanned insertion: local podman-compose/pasta networking bug, not foreseen at epic-planning time
+
+### Story 4.0.2: [infra] VPS Deploy — Hetzner _(inserted during execution — recorded here 2026-08-02)_
+As project lead, I want pocpod0 running on the Hetzner VPS at `~/pocpod0` with the OpenClaw WebUI reachable over the public internet (token-gated), so that Epic 4 continues unblocked by local networking bugs and Discord agents + WebUI pairing work reliably.
+- Consequence of 4.0.1: local podman path abandoned as the primary dev target; VPS became the reference environment
+- Established the deploy tooling (`make vps-push/build/deploy`) every later epic relies on
 
 ### Story 4.1: [must-ship] Marc — School Transfer Scenario (NL→FR)
 
@@ -884,6 +986,11 @@ So that I can see the boundary being actively tested at all times — not just d
 **Implementation note:** HEARTBEAT.md defines: interval (e.g., every 30 min), which attack modules to run, output format for #security_logs. The troll does NOT run the full suite on every heartbeat — a representative subset (fast, reproducible categories only; cross-inference excluded from heartbeat due to non-determinism).
 
 ---
+
+### Story 4.4.1: [infra] Nginx/OpenClaw Retirement & CSS Hardening _(inserted during execution — recorded here 2026-08-02)_
+As project lead, I want VPS nginx routing consolidated onto the shared `nginx-gateway` container, OpenClaw's local dependencies removed from the pocpod0 stack, and CSS reachable at a real public subdomain, so that the VPS stops carrying dead/duplicate infrastructure, teammates can register real Solid pods on `pod.nicolasdb.eu` for multi-user ACL testing, and the pod stack isn't exposed to identity-spoofing over the public internet.
+- **Load-bearing for Epics 7 and 8:** `pod.nicolasdb.eu` as a real public subdomain is the precondition for the backoffice (7.1) and every live connector story (8.2–8.7)
+- Removed the debug-auth-header exposure that made WebID spoofing possible over the public internet
 
 ### Story 4.5: [must-ship] Consent Revocation Scenario — Ayoub Revokes, Isabelle Reacts
 

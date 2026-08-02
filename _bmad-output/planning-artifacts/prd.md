@@ -191,15 +191,17 @@ She controls exactly who else can see what — and can verify access grants matc
 
 **Opening Scene:** Budget season. Isabelle needs to justify continued funding for after-school STEM programs. She currently receives Word/PDF narrative reports with self-reported participant counts. No way to connect program participation to learning outcomes. Cross-community visibility (NL/FR) is nonexistent.
 
-**Rising Action:** Isabelle's agent queries: "What is the measurable impact of funded STEM programs on participating students' school performance?" The query hits Oxigraph with aggregate anonymization — no individual student data exposed, consent-verified, cross-community. The system surfaces provenance: *this aggregate is derived from 847 triples across 32 student pods, all with active regional-access consent grants.*
+**Rising Action:** Isabelle's agent asks each participating school for the same aggregate: participant count and average outcome delta for the funded programs. **The region's agent never reads a student record.** Each school's own collective agent computes the aggregate from the pods it has been granted, inside its own boundary, and publishes only the result. Isabelle reads results. The system surfaces provenance at the level she is entitled to: *this figure is derived from 847 records across 32 pods, aggregated by school-X, school-Y and school-Z, each under an active regional-access grant.*
 
 **Climax:** Evidence-based program impact: students in the robotics workshop show measurable improvement in applied math scores across both communities. This query was literally unanswerable by anyone in Belgium before.
 
-**Resolution:** Budget justification backed by data, not narratives. Policy decisions become evidence-driven.
+**Resolution:** Budget justification backed by data, not narratives. Policy decisions become evidence-driven — and each school can audit exactly what the region read, and revoke at any time.
 
-**Funder Intervention Point:** Funder selects an aggregate policy query. The system displays anonymization guarantees alongside results.
+**Funder Intervention Point:** Funder selects an aggregate policy query. The system displays the anonymization boundary alongside results — which agent computed the aggregate, and what the region was therefore never able to see.
 
-**Proof Areas:** Aggregate anonymized queries, cross-community visibility, regional role access, silo-breaking at policy scale, provenance traceability for aggregates.
+**Proof Areas:** Aggregate queries computed at the ownership boundary, cross-community visibility, regional role access, silo-breaking at policy scale, provenance traceability for aggregates, school-side auditability and revocation of regional access.
+
+**Anonymization boundary (amended 2026-08-02):** Anonymization here is an **ownership boundary, not a query predicate**. The earlier framing had the region's agent query a single engine holding everything, trusted to anonymize on the way out — one trust anchor, and a filter is all that separates the region from individual records. The amended model gives each school its own computation: the region's agent is never granted access to personal data in the first place, so there is no filter to misconfigure, bypass or subvert. Correspondingly, revocation is meaningful — a school withdrawing its grant stops a *read*, not merely a projection. This is the same invariant the pod layer enforces elsewhere: **only your own agent writes your pod; everything else is a grant you can audit and revoke.** See the identity and role model in Story 8.7.
 
 ### Journey 5: Ayoub — Sovereignty Transition
 
@@ -363,7 +365,7 @@ The schema contract bridges the data layer and the agent layer. This is a **know
 - FR16: The system can display graph-only vs. hybrid query results side by side for comparison
 - FR17: A tutor agent can query cross-institutional student progress across all authorized learning contexts
 - FR18: A parent agent can query a unified view of multiple children across schools and activities
-- FR19: A regional agent can query aggregate anonymized program impact across communities
+- FR19: A regional agent can obtain aggregate anonymized program impact across communities, where each aggregate is computed by the owning collective inside its own boundary and only the result is exposed to the regional agent (anonymization at the ownership boundary, not as a query filter)
 - FR20: The system can surface provenance for query results (which triples, from which Pod resources)
 
 ### Transfer & Portability
@@ -379,6 +381,7 @@ The schema contract bridges the data layer and the agent layer. This is a **know
 - FR26: The system can propagate deletion cascade across all data layers (Pod → Oxigraph → Qdrant)
 - FR27: The system can verify deletion completeness across all data layers
 - FR41: The system can issue ephemeral time-scoped consent grants that auto-revoke at a specified expiry date, with a `consent.expired` event emitted to the JSONL event stream
+- FR42: An agent that reads another party's pod can write a read receipt (who read, what, when) into its **own** pod, readable by the data subject — making the decision to revoke an informed one rather than a theoretical right. This is a voluntary accountability convention, not enforcement: the Pod server does not surface per-resource read logs to owners, so a non-cooperating reader is not detected by this mechanism.
 
 ### Adversarial Testing (Troll Agent)
 
