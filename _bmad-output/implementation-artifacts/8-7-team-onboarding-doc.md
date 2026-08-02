@@ -60,6 +60,8 @@ Walked as a concrete multi-layer scenario (student → course → school → reg
 | Write→read propagation | 335 ms write, byte-exact read back 1 ms later, 0 staleness over 5 reads | 8.5 |
 | ACL precision | Resource-level `.acl` overrides a container grant — a granted container can still contain denied resources | 8.5 live |
 | Per-resource read log from CSS | **Does not exist.** 8.4's journal covers the connector's own actions only | verified 2026-08-02 |
+| Missing parent container | **CSS does not auto-create one.** Granting access to `access-log/` 404s until the container exists — it had to be hand-created before the grant worked | 8.6 session finding, 2026-08-02 |
+| Backoffice grant granularity | **No Append-only option.** Only RO / RW / only-me / public-read exist — any new person's `access-log/` grant is **RW**, not Append-only, until 7.6/7.8 land | 8.6 session finding, 2026-08-02 |
 
 ## Acceptance Criteria
 
@@ -69,13 +71,13 @@ Walked as a concrete multi-layer scenario (student → course → school → reg
 
 3. **"Why can't we all share one agent login?" is answered on the page**, because it will be asked. The answer is concrete — shared secret = skeleton key across everyone's granted data, no per-human write attribution, full rotation whenever one person leaves — and states the alternative: *what scales is grants, not credentials.*
 
-4. **The walkthrough is complete and literally followable by someone who has never seen the system**, covering, in order: (a) create a CSS account at `pod.nicolasdb.eu` — you are OWNER; (b) create your data pod; (c) create your agent pod (its own WebID on the same account); (d) mint AGENT client-credentials via the backoffice (Story 7.4's flow, one-time secret); (e) hand the operator your `clientId`/`clientSecret`/`webId`/label for an `identities.json` entry + `npm run slug`, and note that the container restarts; (f) add the connector in Claude using the assembled URL; (g) grant your own agent access to your chosen containers, by hand, as OWNER. **Your OWNER credential never leaves your machine and is never given to the operator.**
+4. **The walkthrough is complete and literally followable by someone who has never seen the system**, covering, in order: (a) create a CSS account at `pod.nicolasdb.eu` — you are OWNER; (b) create your data pod; (c) create your agent pod (its own WebID on the same account); (d) mint AGENT client-credentials via the backoffice (Story 7.4's flow, one-time secret); (e) hand the operator your `clientId`/`clientSecret`/`webId`/label for an `identities.json` entry + `npm run slug`, and note that the container restarts (8.6.1, if landed first, removes this restart — check its status before drafting the final wording); (f) add the connector in Claude using the assembled URL; (g) **create the `access-log/` container yourself before granting it** — CSS does not auto-create a missing parent container, so a grant against a container that does not yet exist 404s; (h) grant your own agent access to your chosen containers, by hand, as OWNER, naming `access-log/` explicitly as **RW today** (the backoffice has no Append-only option — that lands with 7.6/7.8), not the stronger Append-only guarantee the receipt design assumes. **Your OWNER credential never leaves your machine and is never given to the operator.**
 
 5. **The page states the reader's own pod root URL prominently**, and tells them to state it to Claude on first use. This closes 8.5's live finding — Claude cannot guess a pod root and will otherwise ask cold before any tool call works.
 
 6. **Day-to-day usage is covered in brief** (AC-scoped: pointer plus concrete first actions, not a duplicate of 8.6's skill): capture something, read it back in a later conversation, extend it. The read-back round trip is named as the thing that distinguishes this from artifact→download→import.
 
-7. **Honest limits are stated plainly, not buried.** At minimum: (a) destructive-action confirmations are MCP *hints* — record what claude.ai actually did (8.5: two layers fired), and say the guarantee rests on the client honouring them; (b) read receipts are a **voluntary convention** — CSS surfaces no per-resource read log, so a reader that declines to write receipts leaves no trace; (c) there is **no pod versioning** — append is the safety mechanism, overwrite can lose data permanently; (d) the slug **is** a credential — anyone holding that URL is you, to the connector.
+7. **Honest limits are stated plainly, not buried.** At minimum: (a) destructive-action confirmations are MCP *hints* — record what claude.ai actually did (8.5: two layers fired), and say the guarantee rests on the client honouring them; (b) read receipts are a **voluntary convention** — CSS surfaces no per-resource read log, so a reader that declines to write receipts leaves no trace; (c) there is **no pod versioning** — append is the safety mechanism, overwrite can lose data permanently; (d) the slug **is** a credential — anyone holding that URL is you, to the connector; (e) **your `access-log/` grant is RW today, not Append-only** — the backoffice doesn't offer the stronger option yet (7.6/7.8), so say "RW today, Append-only once that lands," never imply the tighter guarantee already holds.
 
 8. **A real second person completes the walkthrough end-to-end**, following only the page, with Nicolas available but not narrating. Every point where they get stuck, guess, or have to ask is recorded and fixed in the page. This is the story's central claim: **the page works, verified by someone using it, not by its author reading it.**
 
@@ -104,10 +106,12 @@ Walked as a concrete multi-layer scenario (student → course → school → reg
   - [ ] 2.4 State the pod root URL prominently and tell the reader to give it to Claude on first use.
   - [ ] 2.5 Say plainly that the slug is a credential — treat the connector URL like a password.
   - [ ] 2.6 Suggest which containers to grant first, and why starting narrow is the right default.
+  - [ ] 2.7 Add the hand-create-the-container step before the `access-log/` grant — CSS 404s a grant against a non-existent container, and this bit the author during 8.6.
+  - [ ] 2.8 Word the `access-log/` grant step as **RW**, not Append-only, and say why (backoffice gap, closes with 7.6/7.8) — do not let the walkthrough imply a guarantee the current UI can't produce.
 
 - [ ] **Task 3 — Day-to-day usage + honest limits (AC: 6, 7)**
   - [ ] 3.1 Concrete first actions: capture a note, find it in a later conversation, extend it. Point at 8.6's capture skill rather than restating it.
-  - [ ] 3.2 Write the limits section: hints-not-guarantees (with 8.5's actual result), receipts-are-voluntary, no-versioning, slug-is-a-credential.
+  - [ ] 3.2 Write the limits section: hints-not-guarantees (with 8.5's actual result), receipts-are-voluntary, no-versioning, slug-is-a-credential, RW-not-Append-only-yet.
   - [ ] 3.3 Frame limits as *how to work with the system*, not as disclaimers — a person who knows append is the safe path behaves differently from one who has been warned about overwrites.
 
 - [ ] **Task 4 — Onboard the second person for real (AC: 8, 9)**
@@ -147,7 +151,9 @@ AC8 is the story's spine. A page reviewed by its author reads as obvious to its 
 ### Traps
 
 - **The dev sandbox cannot reach the public URL** — the allowlist excludes roaming addresses; curl returns `403`. On-host requests hairpin through the VPS's own allowlisted IP (8.4 Task 8's method). **A 403 from your laptop is not a broken deploy.**
-- **A new identity needs a container restart** — sessions are boot-time singletons. Do not promise the new person instant availability; sequence it.
+- **A new identity needs a container restart** — sessions are boot-time singletons. Do not promise the new person instant availability; sequence it. Check whether 8.6.1 (lazy identity loading) has landed before finalizing this wording — it exists specifically to remove this step.
+- **CSS does not auto-create a missing parent container.** `access-log/` had to be hand-created before its grant worked — put the create-container step before the grant step, not after a failed grant teaches the reader the hard way.
+- **The backoffice has no Append-only grant option.** Only RO/RW/only-me/public-read exist, so any `access-log/` grant minted through it is RW. Say "RW today, Append-only once 7.6/7.8 lands" — do not imply the stronger guarantee the receipt design assumes.
 - **`identities.json` is chmod-600-enforced at boot.** A file written with looser permissions makes the container refuse to start. Set the mode when writing the entry, not after.
 - **Real CSS accounts cannot be deleted over HTTP.** Confirm the person before creating. Epic 7's orphan accounts are the precedent.
 - **OWNER credentials never leave the new person's machine**, and the operator never asks for them. This is 8.5's corrected scope, and the page is where it becomes a human-facing promise rather than an internal note.
@@ -215,3 +221,4 @@ Primary artifact is documentation, most likely under `docs/` following 8.4's Div
 |---|---|
 | 2026-08-01 | Renumbered from 8.6 when the capture-surface story was inserted ahead of it. |
 | 2026-08-02 | Drafted after a design session that resolved the deferred coordination/identity question. Nicolas reframed the connector as the "first line of conscious input" and traced a concrete school scenario (student → course → school → region), which produced architecture.md BP-6 (single-writer invariant, three identity classes, roles as grant bundles), amended BP-1 (receipt mechanism) and BP-2 (ownership boundary over query filter), amended PRD Journey 4 + FR19, added FR42, added Task 5b to Story 8.6, and drafted Stories 7.8 and 7.9. Scope confirmed with Nicolas: conceptual frame included, walkthrough personal-only, slug minting documented as manual with 7.9 noted. |
+| 2026-08-02 | Amended from 8.6 session handoff: added missing-parent-container gap (CSS doesn't auto-create `access-log/`, must be hand-created before the grant works) as an explicit walkthrough step (AC4 step g, Task 2.7) rather than a step the reader discovers via a failed grant; added the Append-only-vs-RW gap (backoffice has no Append-only option today) as an honest-limits bullet (AC7e) and walkthrough wording rule (Task 2.8, 3.2) so the page says "RW today, Append-only once 7.6/7.8 lands" rather than implying the stronger guarantee. Pod-root-URL discoverability (AC5) was already present, unchanged. Noted 8.6.1 (lazy identity loading) as a sequencing dependency to check before finalizing the restart wording in step (e). |
