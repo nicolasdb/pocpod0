@@ -1,6 +1,6 @@
 # Story 8.6.1: Lazy Identity Loading — Onboard Without a Restart
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -200,7 +200,16 @@ Claude (claude-sonnet-5)
 - `_bmad-output/implementation-artifacts/8-7-team-onboarding-doc.md` — removed restart-step language in five places (Task 5.6).
 - `mcp-connector/identities.json` (VPS-side, gitignored, not in repo) — temporarily gained and then lost a throwaway lazy-test entry and a deliberately-broken-credential entry during live verification; ends this story at its pre-story state (1 identity).
 
-## Change Log
+### Review Findings
+
+- [x] [Review][Defer] AC4 timing oracle: OIDC login round-trip only on "slug exists, bad creds" path creates observable latency gap vs immediate 404 for genuinely-unknown slugs — Both `resolveIdentity`'s "not configured" branch (sync `loadIdentities()` only) and its "configured but login fails" branch (full outbound OIDC round-trip via `loginIdentity`) end at the same generic 404, but response time differs by the login round-trip duration (tens–hundreds of ms). AC4 explicitly requires "no timing... difference that distinguishes 'slug exists but its credentials are bad' from 'slug does not exist.'" **Decided with Nicolas: accepted as documented residual risk, not patched.** Reasoning: slugs already carry a 22-char entropy floor, so brute-force enumeration is infeasible regardless of this timing signal — the oracle only tells an attacker who *already has* a specific slug string whether its credentials are currently broken server-side, not which slugs to try next. No enumeration/access power gained. Network jitter also degrades a clean timing measurement in practice.
+- [x] [Review][Patch] AC6 gap — expensive lazy-resolution path runs before the tight `unknownSlugLimiter`, so it's bounded by the loose 120/min `mcpLimiter` instead of the intended 10/min budget [mcp-connector/src/mcp-server.js: `app.post("/mcp/:slug", ...)` handler] — **Fixed.** Route now checks the plain `Map` first (cheap, no limiter, matches AC3's hot-path guarantee); on a cache miss the request is routed through `unknownSlugLimiter` *before* `resolveIdentity` is called, so the expensive file-read+login attempt itself is bounded to 10/min, not just the eventual 404 response. Handler body factored into `handleMcpRequest(req, res, identity)` to avoid duplicating the transport/server plumbing across both branches.
+- [x] [Review][Patch] Silent error swallow in `resolveIdentity`'s `loadIdentities()` catch [mcp-connector/src/mcp-server.js: `resolveIdentity`, malformed-config catch block] — **Fixed.** Now logs `err.message` (never the slug, AC7) before negatively caching, matching the sibling `loginIdentity` catch block's existing behavior.
+- [x] [Review][Patch] Unbounded growth of `negativeLookupCache` [mcp-connector/src/mcp-server.js: module-level `negativeLookupCache` Map] — **Fixed.** Added a periodic sweep (`setInterval`, unref'd so it doesn't hold the process open) that deletes expired entries every `NEGATIVE_CACHE_TTL_MS`, bounding the Map to roughly one TTL window's worth of distinct guessed slugs instead of growing without limit.
+- [x] [Review][Defer] Positive cache has no invalidation when an identity is removed from `identities.json` post-boot [mcp-connector/src/mcp-server.js: `resolveIdentity`, `identities.get(slug)` cache-hit branch] — deferred, pre-existing/out-of-scope: onboarding-without-restart is this story's stated scope; offboarding-without-restart (revoking a live session when a slug is removed from config) was never an AC here and is a reasonable candidate for a future story, not a regression introduced by this diff.
+- [x] [Review][Defer] `GET`/`DELETE /mcp/:slug` still gate on `identities.has()` directly instead of `resolveIdentity`, so a lazily-known-but-not-yet-POSTed slug is misclassified as unknown for those methods [mcp-connector/src/mcp-server.js: `app.get("/mcp/:slug", ...)`, `app.delete("/mcp/:slug", ...)`] — deferred, pre-existing: both methods return 405 regardless of slug validity either way, so this only affects which rate-limit bucket applies, not correctness or any information disclosure; out of this story's stated scope (`POST` route only, per Project Structure Notes).
+
+
 
 | Date | Change |
 |---|---|

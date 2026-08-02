@@ -679,6 +679,17 @@ async function bootIdentities() {
 const NEGATIVE_CACHE_TTL_MS = 30 * 1000;
 const negativeLookupCache = new Map(); // slug -> expiry timestamp (ms)
 
+// Review fix (8.6.1): without a sweep, a sustained guessing campaign against
+// many distinct fake slugs grows this Map without bound — expired entries
+// were only ever removed by a later successful login for that same slug.
+// `unref()` so this interval never keeps the process alive on its own.
+setInterval(() => {
+  const now = Date.now();
+  for (const [slug, expiry] of negativeLookupCache) {
+    if (expiry <= now) negativeLookupCache.delete(slug);
+  }
+}, NEGATIVE_CACHE_TTL_MS).unref();
+
 // Story 8.6.1 Task 4: de-duplicate concurrent first-requests for the same
 // new slug so two simultaneous requests share one in-flight login instead of
 // racing two separate sessions into existence for one identity.
@@ -713,7 +724,13 @@ async function resolveIdentity(identities, slug) {
     } catch (err) {
       // A malformed identities.json (e.g. someone mid-edit) must not crash
       // an in-flight request — treat it the same as "slug not found" and
-      // let the next lazy lookup re-read once the file is fixed.
+      // let the next lazy lookup re-read once the file is fixed. Still log
+      // it (never the slug, AC7) so a broken config isn't invisible.
+      // eslint-disable-next-line no-console
+      console.error(
+        "[solid-pod-agent mcp-server] lazy identity resolution: failed to load identities.json:",
+        err.message
+      );
       negativeLookupCache.set(slug, Date.now() + NEGATIVE_CACHE_TTL_MS);
       return null;
     }
@@ -854,16 +871,7 @@ async function main() {
 
   app.use("/mcp", mcpLimiter);
 
-  app.post("/mcp/:slug", async (req, res) => {
-    const identity = await resolveIdentity(identities, req.params.slug);
-
-    if (!identity) {
-      // Run the tighter limiter only once we know the slug is unknown, so
-      // valid callers never consume the guessing budget.
-      unknownSlugLimiter(req, res, () => notFound(req, res));
-      return;
-    }
-
+  const handleMcpRequest = async (req, res, identity) => {
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     const server = buildMcpServer(identity);
 
@@ -886,6 +894,33 @@ async function main() {
         });
       }
     }
+  };
+
+  app.post("/mcp/:slug", async (req, res) => {
+    const slug = req.params.slug;
+
+    // Known slugs never touch the filesystem (AC3) — a bare Map hit skips
+    // the limiter entirely, same as before.
+    const cached = identities.get(slug);
+    if (cached) {
+      await handleMcpRequest(req, res, cached);
+      return;
+    }
+
+    // Story 8.6.1 review fix (AC6): the slug isn't cached yet, so resolving
+    // it may cost a file read plus a real outbound OIDC login attempt — gate
+    // that cost behind the tight unknownSlugLimiter BEFORE paying it, not
+    // just before the eventual 404. Gating only the 404 (as originally
+    // shipped) let a slug-guessing loop ride the loose 120/min mcpLimiter
+    // budget for the expensive part instead of the intended 10/min one.
+    unknownSlugLimiter(req, res, async () => {
+      const identity = await resolveIdentity(identities, slug);
+      if (!identity) {
+        notFound(req, res);
+        return;
+      }
+      await handleMcpRequest(req, res, identity);
+    });
   });
 
   // Stateless mode has no SSE stream or session to tear down, so GET/DELETE
