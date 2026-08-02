@@ -17,7 +17,6 @@ const {
   createSolidDataset,
   getFile,
   overwriteFile,
-  deleteFile,
   createContainerAt,
   getContainedResourceUrlAll,
   isContainer,
@@ -58,9 +57,68 @@ async function writeFile(url, content, contentType, session) {
   return overwriteFile(url, body, { contentType, fetch: session.fetch });
 }
 
-/** Delete any resource (file or RDF document). Does not recursively delete containers. */
+/**
+ * Append to a non-RDF file: read-then-write, original content preserved,
+ * addition placed after it. Absent resource -> created with just `content`.
+ * Story 8.6 Task 1: the read-then-write the epic-8 action-log convention has
+ * done by hand since Story 8.2, now a reusable primitive (so library
+ * consumers like Hermes get it too, not just the MCP tool).
+ *
+ * No optimistic concurrency (ETag/If-Match) — Story 7.3 already scoped that
+ * as a cross-API design problem, not a per-tool fix. Concurrent appends to
+ * the same resource are a lost-update race: last writer wins.
+ *
+ * @returns {Promise<{existed: boolean, bytesBefore: number, bytesAfter: number}>}
+ */
+async function appendFile(url, content, contentType, session) {
+  let existing = "";
+  let existed = false;
+  try {
+    const file = await getFile(url, { fetch: session.fetch });
+    existing = await file.text();
+    existed = true;
+  } catch (err) {
+    if (!_is404(err)) throw err;
+  }
+  const combined = existing + content;
+  await overwriteFile(url, Buffer.from(combined, "utf-8"), { contentType, fetch: session.fetch });
+  return {
+    existed,
+    bytesBefore: Buffer.byteLength(existing, "utf-8"),
+    bytesAfter: Buffer.byteLength(combined, "utf-8"),
+  };
+}
+
+function _is404(err) {
+  const status = err && (err.statusCode || err.status || (err.response && err.response.status));
+  if (status) return status === 404;
+  return Boolean(err && err.message && err.message.includes("[404]"));
+}
+
+/**
+ * Delete any resource (file or RDF document). Does not recursively delete
+ * containers — callers must ensure a container is empty first.
+ *
+ * Story 8.1 (live): inrupt's `deleteFile` 404s against a container URL that
+ * ends in '/', even when the container exists — a library quirk, not a real
+ * 404 from CSS. Raw `session.fetch` with an explicit DELETE avoids it, which
+ * is exactly the workaround 8.1 used live; this makes it the permanent path
+ * instead of a per-story rediscovery.
+ */
 async function deleteResource(url, session) {
-  return deleteFile(url, { fetch: session.fetch });
+  const res = await session.fetch(url, { method: "DELETE" });
+  if (!res.ok) {
+    const err = new Error(`DELETE ${url} failed: [${res.status}] ${res.statusText || ""}`.trim());
+    err.statusCode = res.status;
+    throw err;
+  }
+  return res;
+}
+
+/** True if a GET against `url` now 404s — used to confirm a delete actually happened. */
+async function confirmGone(url, session) {
+  const res = await session.fetch(url, { method: "GET" });
+  return res.status === 404;
 }
 
 /** Create a container (folder). URL must end in '/'. */
@@ -86,7 +144,9 @@ module.exports = {
   newDataset,
   readFile,
   writeFile,
+  appendFile,
   deleteResource,
+  confirmGone,
   createContainer,
   listContainer,
   checkIsContainer,

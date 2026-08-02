@@ -52,6 +52,8 @@ async function main() {
   const expected = [
     "solid_read_resource",
     "solid_write_resource",
+    "solid_append_resource",
+    "solid_delete_resource",
     "solid_list_container",
     "solid_get_permissions",
     "solid_grant_access",

@@ -42,6 +42,7 @@ const { loadIdentities } = require("./identityRegistry");
 const podClient = require("./podClient");
 const wacManager = require("./wacManager");
 const { appendAuditEntry } = require("./journal");
+const { isForeignResource, writeReadReceipt } = require("./receipt");
 
 const PORT = parsePort(process.env.PORT);
 const HOST = process.env.HOST || "127.0.0.1";
@@ -157,7 +158,14 @@ function toToolErrorResult(err) {
   } else if (status === 404) {
     message = "Resource not found at that URL.";
   } else if (status === 409) {
-    message = "Conflict — the request could not be completed in the resource's current state.";
+    // Story 8.6: both current 409 producers are solid_delete_resource's own
+    // guards (non-empty-container refusal, post-delete still-exists check)
+    // and already carry a specific, actionable message — a generic fallback
+    // here would silently discard it (live-verified 2026-08-02: claude.ai
+    // reported a bare "Conflict" instead of the "non-empty, out of scope"
+    // guidance). Fall back to generic text only if err.message is somehow
+    // empty.
+    message = err && err.message ? err.message : "Conflict — the request could not be completed in the resource's current state.";
   } else if (status === 501) {
     message = "Permissions can only be read for RDF resources or containers.";
   } else if (!status && err && err.message && err.message.toLowerCase().includes("control")) {
@@ -179,6 +187,19 @@ function toToolErrorResult(err) {
   }
 
   return { content: [{ type: "text", text: message }], isError: true };
+}
+
+/**
+ * True if `err` represents a 404 (resource does not exist yet). Used by
+ * solid_write_resource's existence probe (Task 2.2/2.4) to distinguish
+ * "new resource, unceremonious" from a real failure that must not be
+ * silently treated as "new" (a mis-scoped permission looks like a 403, not
+ * a 404, and must still surface as an error).
+ */
+function _probe404(err) {
+  const status = err && (err.statusCode || err.status || (err.response && err.response.status));
+  if (status) return status === 404;
+  return Boolean(err && err.message && err.message.includes("[404]"));
 }
 
 /**
@@ -258,6 +279,40 @@ function buildMcpServer(identity) {
     safeHandler("solid_read_resource", identity, "url", async ({ url }) => {
       const file = await podClient.readFile(url, identity.session);
       const text = await file.text();
+      if (isForeignResource(url, identity.webId)) {
+        try {
+          try {
+            await writeReadReceipt(
+              { resourceUrl: url, readerLabel: identity.label, readerWebId: identity.webId, outcome: "read" },
+              identity.session
+            );
+          } catch (err) {
+            // Same one-shot 401-retry safeHandler gives every other tool
+            // call (Story 8.5 Task 4) — a receipt write is wrapped in its
+            // own try/catch specifically so it can't abort the read, which
+            // means it was never reaching safeHandler's own retry logic.
+            // Live-verified 2026-08-02: a fresh login succeeded instantly
+            // against the same grant that the long-running session's stale
+            // 401 was failing on — the grant was fine, the session wasn't.
+            const status = err && (err.statusCode || err.status || (err.response && err.response.status));
+            if (status === 401) {
+              await reauthIdentity(identity);
+              await writeReadReceipt(
+                { resourceUrl: url, readerLabel: identity.label, readerWebId: identity.webId, outcome: "read" },
+                identity.session
+              );
+            } else {
+              throw err;
+            }
+          }
+        } catch (err) {
+          // Task 5b.6: a receipt-write failure must not abort or hide the
+          // read that already happened — that's exactly the case the
+          // subject needs visibility into. Report it in the connector's
+          // own journal instead of swallowing it.
+          appendAuditEntry({ label: identity.label, tool: "read_receipt", resource: url, outcome: "error" });
+        }
+      }
       return { content: [{ type: "text", text }] };
     })
   );
@@ -265,16 +320,125 @@ function buildMcpServer(identity) {
   server.registerTool(
     "solid_write_resource",
     {
-      description: "Write/overwrite a resource at a given Pod URL.",
+      description:
+        "Write/overwrite a resource at a given Pod URL. This is a BLIND REPLACE: if " +
+        "the resource already has content, that content is gone after this call. " +
+        "For adding to something rather than replacing it, use solid_append_resource " +
+        "instead — that is the default path for capture. Writing to a resource that " +
+        "does not exist yet is unceremonious (creation destroys nothing); writing to " +
+        "one that does exist replaces it and is reported here so a human can confirm " +
+        "against what is actually about to be lost, not just a URL string.",
       inputSchema: {
         url: z.string().url(),
         content: z.string(),
         contentType: z.string().default("text/turtle"),
       },
+      // Story 8.6 Task 2: this was a blind PUT with no annotation at all —
+      // less ceremony than granting a stranger read access. Match the shape
+      // already used on the permission tools.
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
     },
     safeHandler("solid_write_resource", identity, "url", async ({ url, content, contentType }) => {
+      // Task 2.2/2.4: probe before writing. If it exists, report what's
+      // about to be lost. A failed probe must fail toward caution — it must
+      // never be silently treated as "the resource is new."
+      let existing = null;
+      try {
+        const file = await podClient.readFile(url, identity.session);
+        existing = await file.text();
+      } catch (err) {
+        if (!_probe404(err)) throw err;
+      }
+
       await podClient.writeFile(url, content, contentType, identity.session);
-      return { content: [{ type: "text", text: `Wrote ${url}` }] };
+
+      if (existing === null) {
+        return { content: [{ type: "text", text: `Created ${url}` }] };
+      }
+      const firstLine = existing.split("\n")[0].slice(0, 120);
+      return {
+        content: [
+          {
+            type: "text",
+            text:
+              `Wrote ${url}, REPLACING ${Buffer.byteLength(existing, "utf-8")} bytes that started: ` +
+              `"${firstLine}"`,
+          },
+        ],
+      };
+    })
+  );
+
+  server.registerTool(
+    "solid_append_resource",
+    {
+      description:
+        "Append content to a resource at a given Pod URL — the default write path for " +
+        "capture. Read-then-append: if the resource already has content, this call adds " +
+        "to it and never replaces it; if it doesn't exist yet, it's created with just " +
+        "this content. No optimistic concurrency (no ETag/If-Match) — two concurrent " +
+        "appends to the same resource are a lost-update race, last writer wins, same " +
+        "limitation Story 7.3 recorded for the backoffice.",
+      inputSchema: {
+        url: z.string().url(),
+        content: z.string(),
+        contentType: z.string().default("text/plain"),
+      },
+    },
+    safeHandler("solid_append_resource", identity, "url", async ({ url, content, contentType }) => {
+      const result = await podClient.appendFile(url, content, contentType, identity.session);
+      const verb = result.existed ? "Appended to" : "Created";
+      return {
+        content: [
+          {
+            type: "text",
+            text: `${verb} ${url} (${result.bytesBefore} -> ${result.bytesAfter} bytes)`,
+          },
+        ],
+      };
+    })
+  );
+
+  server.registerTool(
+    "solid_delete_resource",
+    {
+      description:
+        "Delete a resource at a given Pod URL. For a container (URL ending in '/'), only " +
+        "an EMPTY container may be deleted — recursive container delete is out of scope " +
+        "here (see Story 7.7, owner-driven recursive deletion with ceremony); deleting a " +
+        "non-empty container fails loudly rather than silently doing nothing. Every delete " +
+        "is confirmed gone by re-reading the URL afterward — a 200/204 that didn't actually " +
+        "remove anything is reported as an error, never as success.",
+      inputSchema: { url: z.string().url() },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
+    },
+    safeHandler("solid_delete_resource", identity, "url", async ({ url }) => {
+      if (url.endsWith("/")) {
+        const contained = await podClient.listContainer(url, identity.session);
+        if (contained.length > 0) {
+          const err = new Error(
+            `Refusing to delete non-empty container ${url} (${contained.length} item(s) inside). ` +
+              "Recursive container delete is out of scope for this tool (Story 7.7 owns it) — " +
+              "delete the contained resources first."
+          );
+          err.statusCode = 409;
+          throw err;
+        }
+      }
+
+      await podClient.deleteResource(url, identity.session);
+
+      const gone = await podClient.confirmGone(url, identity.session);
+      if (!gone) {
+        const err = new Error(
+          `Delete of ${url} reported success but the resource is still readable — ` +
+            "this is the known silent no-op on some container deletes. Refusing to report success."
+        );
+        err.statusCode = 409;
+        throw err;
+      }
+
+      return { content: [{ type: "text", text: `Deleted ${url}` }] };
     })
   );
 
@@ -524,7 +688,7 @@ async function main() {
   // session to disambiguate concurrent clients in stateless mode, so a
   // single shared transport would let concurrent requests interleave state
   // incorrectly — see Dev Notes "Concurrency trap". The cost (re-registering
-  // 7 tool definitions per call) is trivial. Story 8.3: the slug in the path
+  // 9 tool definitions per call) is trivial. Story 8.3: the slug in the path
   // picks which identity's already-authenticated session backs this request.
   // AC4: reveal nothing about whether a slug exists, how many identities are
   // configured, or any WebID. Do not log the attempted slug — it may be a

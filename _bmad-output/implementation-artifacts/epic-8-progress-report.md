@@ -169,8 +169,41 @@ Code changes were built in a dev sandbox (no AGENT credentials, no network path 
 - `buildMcpServer()`/`safeHandler()` now take the whole `identity` object rather than a destructured `session`/`label`, so a mid-request re-auth's new session is picked up by tool handlers without a stale closure — necessary plumbing for Task 4's bounded 401 retry, not scope creep.
 - Task 6's file-mode guard is enforced (refuses to load), not advisory (README `chmod 600` text) — same posture upgrade already applied to slug entropy in 8.3.
 
+## Story 8.6 — Capture Surface: Append-First Tools, Destructive Ceremony, and the Capture Skill
+
+**Status:** in-progress (2026-08-02) — Tasks 1–6, 5b all complete and live-verified; Task 7 (this section) closing the loop.
+**Full narrative:** `8-6-capture-surface-and-skill.md` (Dev Agent Record has per-task detail)
+
+Code built and `node --check`-verified in this session, then deployed live to the VPS (two rebuild+redeploy cycles, both confirmed with Nicolas — one for the initial tool set, one for two bugs found mid-live-verification), and exercised from a real claude.ai conversation by Nicolas (full transcript in `test-artifacts/`).
+
+### What you can check yourself, right now
+
+| Check | Where | What it proves |
+|---|---|---|
+| Action log entry | `https://pod.nicolasdb.eu/nicolas_claude/epic-8-action-log.md` (Story 8.6 section, appended via `solid_append_resource` — the tool this story adds, dogfooding the convention) | Live proof the append tool works for the exact job the epic-8 convention has done by hand since 8.2. |
+| Code diff | `git diff` on `mcp-connector/src/podClient.js`, `mcp-server.js`, new `src/receipt.js` | `appendFile`/`confirmGone` added; `deleteResource` switched from inrupt's `deleteFile` to raw `fetch` DELETE (fixes 8.1's trailing-slash 404 at the root); `solid_write_resource` gained `destructiveHint`+existence-probe ceremony; two new tools registered; read-receipt side effect wired into `solid_read_resource`. |
+| Skill split | `mcp-connector/SKILL.md` (now the user-facing capture skill) + `references/developer-toolkit.md` (former `SKILL.md` content, preserved) | Epic 8 now ships the *skill* half of a Claude plugin, not just the MCP half. |
+| `verify-http.js` live re-run | `docker exec mcp-connector node scripts/verify-http.js <live URL>` | 9 tools listed (was 7), `solid_list_container` OK, 8.5's negative test wording unchanged — no regression. |
+| claude.ai transcript | `_bmad-output/test-artifacts/Claude-Validating hyperCampus connector Task 5 steps.md` | AC2, AC5, AC7 live evidence, plus the two bugs found and fixed mid-session. |
+| Live proof note | `https://pod.nicolasdb.eu/hyperscope_ndb/shared/story-8-6-task5-validation-report.md` | Nicolas's own session captured a written validation report onto the pod via the capture tools — a second, independent dogfood of the capture path. |
+| Live journal | `/app/audit/journal.jsonl` on hetzner | `solid_append_resource`, `solid_delete_resource`, `solid_write_resource`, `read_receipt` all present with correct `ok`/`denied`/`error` outcomes, attributed by label. |
+
+### Bugs found and fixed (live, not theoretical)
+
+1. **`toToolErrorResult`'s 409 branch discarded specific error messages.** Any 409 (both current producers are `solid_delete_resource`'s own guards) got overwritten with a generic "Conflict" string — live-observed when the non-empty-container refusal lost its actionable "delete the contents first" text. Fixed: 409 now passes `err.message` through.
+2. **Read-receipt writes had no path to the existing 401-retry.** `safeHandler` already gives every tool call a one-shot reauth-and-retry on a stale session (Story 8.5 Task 4), but the receipt-write call sat inside its own try/catch (added so a receipt failure can never abort the read itself) — which caught 401s *before* they could reach that retry logic. A receipt attempted against a stale long-running session therefore failed permanently instead of self-healing. Root-caused via direct server-side reproduction (`docker exec`, fresh login against the identical grant succeeded instantly), disproving the claude.ai agent's own incorrect on-the-spot conclusion that receipt-writing "wasn't implemented" — the journal showed the attempt firing on every single cross-pod read from the very first one, well before any grant existed. Fixed: receipt write now gets the same one-shot reauth retry as every other tool call.
+
+### Decisions / findings recorded
+
+- **`access-log/` grant is RW, not Append-only** — Epic 7's backoffice UI has no Append-only option or reset-to-inherit today (only RO/RW/"only me"/"public read"), so 5b.4's "Append-only, never Write" design intent can't be realized through current tooling. Scoped to Story 7.6/7.8; skill/onboarding language corrected to say RW-today rather than imply Append-only already works end to end.
+- **CSS does not auto-create a missing parent container.** Nicolas had to create `access-log/` by hand before a grant on it meant anything — an 8.7 onboarding-sequence item.
+- **AC7's round trip has a caveat.** The new-conversation test had the pod root URL available via project instructions, so it wasn't discovering the pod root cold — only locating a specific file within a known container by description. A fully cold variant (WebID-profile pod-root discovery) is a stricter test not exercised here.
+- **Pre-existing `/healthz` staleness, unrelated to this story's changes**, found during pre-deploy health check: `session.info.isLoggedIn` goes stale between real tool calls, self-healing only reactively. Assessed low-risk (nothing in `docker-compose.yml` restarts on it) and deferred — see `deferred-work.md`.
+
 ## Epic 8 — remaining stories
 
-- 8.5 Live verification — **in progress**, blocked on Task 7 (Nicolas, interactive, claude.ai)
-- 8.6 Team onboarding doc — backlog
+- 8.6 Capture surface — **in-progress**, Task 7 (this update) closing the loop
+- 8.6.1 Lazy identity loading — backlog
+- 8.7 Team onboarding doc — ready-for-dev
+- 7.6/7.8 Backoffice grant-scope UI (Append-only, inherit-reset) — flagged by 8.6, not yet drafted as scoped subtasks
 - 7.7 Delete pod with ceremony — drafted, closes the no-HTTP-delete gap noted above

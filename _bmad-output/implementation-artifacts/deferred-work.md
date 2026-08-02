@@ -9,7 +9,11 @@
 ## Deferred from: code review of story-8-1-wac-hardening-verification (2026-07-30)
 
 - ~~`wacManager.js` `getAgentAccess` returns `null` with no distinct signal for "no ACL found" vs "no access" [wacManager.js:736] — `onboarding.js`/`whoami.js` just stringify `null`; cosmetic, not blocking.~~ **CLOSED (Story 8.5 Task 3).** `getAgentAccess` now returns `{ aclVisible, access }`; `whoami.js`'s ACL branch renders a distinct sentence for "not visible" vs a real (possibly all-false) Access object.
-- `podClient.js` `deleteResource` silently no-ops on containers, no API-level guard [podClient.js:515] — already flagged in Story 8.1's own Dev Notes as a concern for a future container-delete story (cf. Story 7.3).
+- ~~`podClient.js` `deleteResource` silently no-ops on containers, no API-level guard [podClient.js:515] — already flagged in Story 8.1's own Dev Notes as a concern for a future container-delete story (cf. Story 7.3).~~ **CLOSED (Story 8.6 Task 3).** `solid_delete_resource` now refuses non-empty containers outright (409, actionable message) and confirms every delete actually removed the resource (re-GET must 404) before reporting success — live-verified 2026-08-02.
+
+## Deferred from: dev-story of story-8-6-capture-surface-and-skill (2026-08-02)
+
+- `mcp-connector`'s `/healthz` reports Docker-unhealthy for long stretches in normal operation: `session.info.isLoggedIn` goes stale between real tool calls and only self-heals reactively, via `safeHandler`'s one-shot 401 retry on the *next* actual call — nothing proactively refreshes it. Live-observed: unhealthy for ~17h straight before Story 8.6's deploy (`FailingStreak: 3712`). Assessed low-risk (no `depends_on`/autoheal keyed on this container's health anywhere in `docker-compose.yml`; nginx routes by container name/TCP, not health status) and deferred rather than blocking the deploy. Candidate fix: proactive session refresh (e.g. a periodic keepalive ping, or refresh-before-expiry rather than after). Related to but **not the same problem** as Story 8.6.1's lazy-identity-loading scope (that story is about *new* identities on cache-miss, not *refreshing existing* ones) — flag explicitly if folding this in there rather than assuming it's already covered.
 
 ## Deferred from: code review of story-7.4 (2026-07-23)
 

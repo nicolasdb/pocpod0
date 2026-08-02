@@ -49,9 +49,10 @@ npm run mcp
 ```
 
 Starts an HTTP server (default `http://127.0.0.1:3939/mcp`) exposing
-`solid_read_resource`, `solid_write_resource`, `solid_list_container`,
-`solid_get_permissions`, `solid_grant_access`, `solid_revoke_access`, and
-`solid_set_public_access` as MCP tools over `StreamableHTTPServerTransport`.
+`solid_read_resource`, `solid_write_resource`, `solid_append_resource`,
+`solid_delete_resource`, `solid_list_container`, `solid_get_permissions`,
+`solid_grant_access`, `solid_revoke_access`, and `solid_set_public_access`
+as MCP tools over `StreamableHTTPServerTransport`.
 This replaces the earlier stdio transport: stdio only works for a
 locally-spawned process, and Claude.ai's remote-connector infra needs to
 reach the server at a public URL instead (claude.ai's own code sandbox
