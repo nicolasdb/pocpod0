@@ -228,12 +228,16 @@ class RealBackend {
   }
   // How many descendants a container holds — for a delete confirmation that can
   // honestly say "this also deletes N things inside".
-  async countDescendants(url) {
+  async countDescendants(url, isProtected) {
     if (!url.endsWith("/")) return 0;
     let children = [];
     try { children = await this.list(url); } catch (e) { return 0; }
-    let n = children.length;
-    for (const c of children) if (c.isContainer) n += await this.countDescendants(c.url);
+    let n = 0;
+    for (const c of children) {
+      if (isProtected && isProtected(c.url)) continue;
+      n += 1;
+      if (c.isContainer) n += await this.countDescendants(c.url, isProtected);
+    }
     return n;
   }
 
@@ -431,7 +435,8 @@ class RealBackend {
   async _accountControls() {
     if (this._controls) return this._controls;
     const res = await fetch(new URL("/.account/", ISSUER), { credentials: "include" });
-    if (!res.ok) throw new Error("SESSION_EXPIRED");
+    if (res.status === 401) throw new Error("SESSION_EXPIRED");
+    if (!res.ok) throw new Error(`Account index request failed (${res.status}).`);
     let controls;
     try { ({ controls } = await res.json()); }
     catch (e) { throw new Error("Account index returned an unreadable response."); }
@@ -633,12 +638,16 @@ class DemoBackend {
     for (const k of Object.keys(this.t)) if (this.t[k].url === url || this.t[k].url.startsWith(url)) delete this.t[k];
     return true;
   }
-  async countDescendants(url) {
+  async countDescendants(url, isProtected) {
     if (!url.endsWith("/")) return 0;
     let children;
     try { children = await this.list(url); } catch (e) { return 0; }
-    let n = children.length;
-    for (const c of children) if (c.isContainer) n += await this.countDescendants(c.url);
+    let n = 0;
+    for (const c of children) {
+      if (isProtected && isProtected(c.url)) continue;
+      n += 1;
+      if (c.isContainer) n += await this.countDescendants(c.url, isProtected);
+    }
     return n;
   }
   async deletePodContents(rootUrl, isProtected, onProgress) {

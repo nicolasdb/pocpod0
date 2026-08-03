@@ -513,9 +513,12 @@
           </sc-if>
         </div>
 
-        <!-- PODS (Story 7.10 Task 2) -->
+        <!-- PODS (Story 7.10 Task 2) — gated on the same account-session state as
+             credentials above (AC2): a stale/absent cookie must never render an
+             empty pod list, it must show the same honest sign-in state. -->
         <div style="margin-top:36px;padding-top:28px;border-top:1px solid var(--line,#e7e2d6)">
           <div style="font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--tx2,#8a8474);margin:0 0 6px;display:flex;align-items:center;gap:8px"><span>🗄️</span> Your pods</div>
+        <sc-if value="{{ credsUnlocked }}" hint-placeholder-val="{{ true }}">
           <p style="margin:0 0 10px;color:var(--tx2,#8a8474);font-size:13.5px">Each pod is its own space with its own address. Most people only need one — create another if you want to keep something fully separate.</p>
           <sc-if value="{{ accountEditUrl }}" hint-placeholder-val="{{ false }}">
             <p style="margin:0 0 16px;font-size:12.5px"><a href="{{ accountEditUrl }}" target="_blank" rel="noopener" style="color:var(--acc,#3d6b52)">Manage account &amp; identities on CSS ↗</a> — the full owner/WebID list for every pod on this account, including ones you're not signed into here.</p>
@@ -549,6 +552,16 @@
           <sc-if value="{{ podCreateClosed }}" hint-placeholder-val="{{ true }}">
             <button onClick="{{ startCreatePod }}" style="font-family:inherit;font-size:13.5px;font-weight:600;padding:9px 18px;border-radius:99px;border:1px dashed var(--acc,#3d6b52);background:none;color:var(--acc,#3d6b52);cursor:pointer" style-hover="background:var(--accSoft,#eef3ef)" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">+ Create another pod</button>
           </sc-if>
+        </sc-if>
+
+          <!-- AC2: same honest sign-in state as the credentials section, never a silent empty pod list -->
+          <sc-if value="{{ credsSignedOut }}" hint-placeholder-val="{{ false }}">
+            <div style="border:1px solid var(--line,#e7e2d6);border-radius:14px;background:var(--panel,#fbfaf7);padding:20px 22px;text-align:center">
+              <div style="font-size:26px;margin-bottom:10px">🔒</div>
+              <p style="margin:0 0 16px;font-size:13.5px;color:var(--tx2,#8a8474)">Your sign-in has expired or wasn't found. Sign in to see and manage your pods.</p>
+              <button onClick="{{ goSignIn }}" style="font-family:inherit;font-size:13.5px;font-weight:600;padding:10px 22px;border-radius:99px;border:none;background:var(--acc,#3d6b52);color:#fff;cursor:pointer" style-hover="filter:brightness(1.08)" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">Sign in</button>
+            </div>
+          </sc-if>
         </div>
       </div>
       </sc-if>
@@ -563,7 +576,12 @@
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
             <span style="font-size:20px">⚠️</span>
             <h2 style="font-size:16px;font-weight:600;margin:0;flex:1">Wipe pod contents</h2>
-            <button onClick="{{ cancelPodDelete }}" aria-label="Close" style="border:none;background:none;font-size:18px;color:var(--tx2,#8a8474);cursor:pointer;padding:4px" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">✕</button>
+            <!-- Hidden while deletion is in flight: closing does not abort the in-progress
+                 delete, so offering it here would let a user believe they'd stopped
+                 something that keeps running in the background. -->
+            <sc-if value="{{ podDeleteNotBusyStage }}" hint-placeholder-val="{{ true }}">
+              <button onClick="{{ cancelPodDelete }}" aria-label="Close" style="border:none;background:none;font-size:18px;color:var(--tx2,#8a8474);cursor:pointer;padding:4px" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">✕</button>
+            </sc-if>
           </div>
 
           <sc-if value="{{ podDeleteBackupStage }}" hint-placeholder-val="{{ true }}">
@@ -1114,7 +1132,10 @@ class Component extends DCLogic {
     if (!this.cl || !this.cl.listPods) return;
     try {
       const pods = await this.cl.listPods();
-      this.setState({ podItems: pods, podOwned: {} });
+      // Optimistically mark the session's own active pod as owned before the async
+      // Control-check below resolves — otherwise it briefly renders as "not owned
+      // here" for the very pod the user is signed into.
+      this.setState({ podItems: pods, podOwned: { [this.root()]: true } });
       // Whether THIS session can actually manage/delete each pod isn't "is it the pod
       // I'm currently browsing" — WAC ownership is per-WebID, and Task 2 now creates
       // additional pods under the SAME WebID as the active session, so a pod you just
@@ -1186,7 +1207,8 @@ class Component extends DCLogic {
       podDeleteResults: null, podDeleteProgress: null,
     });
     try {
-      const n = await this.cl.countDescendants(baseUrl);
+      const isProtected = (url) => url === baseUrl || url === baseUrl + 'profile/' || url === baseUrl + 'profile/card';
+      const n = await this.cl.countDescendants(baseUrl, isProtected);
       if (this.state.podDeleteTarget === baseUrl) this.setState({ podDeleteCount: n });
     } catch (e) { /* count is best-effort; the confirm copy degrades to "its contents" */ }
   }
@@ -1220,7 +1242,13 @@ class Component extends DCLogic {
       );
       this.setState({ podDeleteStage: 'done', podDeleteResults: results });
       this.loadPods();
-      if (S.podDeleteTarget === this.root()) this.loadFolder(this.state.path);
+      if (S.podDeleteTarget === this.root()) {
+        // Wiped the active pod's contents — an open editor on a just-deleted file
+        // would otherwise show stale content, and saving it would silently recreate
+        // the resource the user just destroyed.
+        if (this.state.view === 'editor') this.setState({ view: 'files' });
+        this.loadFolder([]);
+      }
     } catch (e) {
       this.setState({ podDeleteStage: 'done', podDeleteResults: [{ name: S.podDeleteExpectedName, ok: false, error: e.message }] });
     } finally { this._deletingPod = false; }
@@ -1720,6 +1748,7 @@ class Component extends DCLogic {
       podDeleteBackupStage: S.podDeleteStage === 'backup',
       podDeleteConfirmStage: S.podDeleteStage === 'confirm',
       podDeleteBusyStage: S.podDeleteStage === 'busy',
+      podDeleteNotBusyStage: S.podDeleteStage !== 'busy',
       podDeleteDoneStage: S.podDeleteStage === 'done',
       podDeleteTarget: S.podDeleteTarget,
       podDeleteExpectedName: S.podDeleteExpectedName,

@@ -1,6 +1,6 @@
 # Story 7.10: Account & Pod Lifecycle — Create, Protect, Delete
 
-Status: review — all 9 tasks complete. One residual item flagged for Nicolas: full browser-driven regression sweep of 7.1–7.4 UI paths on his real `/nicolas` pod (backend/protocol-level checks all pass; the browser session itself isn't something this agent can or should acquire).
+Status: done — all 9 tasks complete, code review (3-layer adversarial/edge-case/acceptance-auditor) applied 6 patches, 1 deferred (logged in deferred-work.md). One residual item flagged for Nicolas: full browser-driven regression sweep of 7.1–7.4 UI paths on his real `/nicolas` pod (backend/protocol-level checks all pass; the browser session itself isn't something this agent can or should acquire).
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -266,6 +266,16 @@ None — no automated test framework in `backoffice/`; verification was `node --
 - `_bmad-output/implementation-artifacts/7-10-account-and-pod-lifecycle.md` — modified (task checkboxes, Dev Agent Record)
 - `_bmad-output/implementation-artifacts/deferred-work.md` — modified (Task 9 bookkeeping)
 - `_bmad-output/implementation-artifacts/sprint-status.yaml` — modified (story marked in-progress)
+
+### Review Findings
+
+- [x] [Review][Patch] `countDescendants()` counts protected resources that `deletePodContents()` skips, inflating the delete ceremony's "exact count" (AC9) [backoffice/pod-api.js:231,240]
+- [x] [Review][Patch] Pods section not gated on account-session state; SESSION_EXPIRED silently leaves a stale/empty pod list (AC2) [backoffice/index.html:516; backoffice/pod-api.js loadPods]
+- [x] [Review][Patch] `_accountControls()` maps any non-2xx (incl. 5xx) to SESSION_EXPIRED, misdirecting users to re-auth on backend errors [backoffice/pod-api.js]
+- [x] [Review][Patch] Ceremony's ✕ Close button doesn't abort in-flight `deletePodContents()` — deletion continues after user believes it's cancelled [backoffice/index.html:566, podDeleteConfirm]
+- [x] [Review][Patch] `podOwned` flashes false for the user's own active pod before the async Control-check resolves, briefly hiding the Wipe button on their own pod [backoffice/index.html loadPods/podItems]
+- [x] [Review][Patch] Wiping the active pod's contents doesn't reconcile an open editor view on a just-deleted file — stale content, risk of silent recreate on save [backoffice/index.html podDeleteConfirm]
+- [x] [Review][Defer] Ownership gate (`isOwnedPod`) trusts `getAccess()` throw-on-fail behavior not verified in this diff [backoffice/index.html loadPods] — deferred, pre-existing
 
 ## Change Log
 
