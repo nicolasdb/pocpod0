@@ -1,6 +1,20 @@
 # Story 7.7: Delete My Pod — Owner-Driven Removal with Ceremony
 
-Status: ready-for-dev
+Status: merged-into-7-10
+
+> **SUPERSEDED 2026-08-03** — merged into **Story 7.10: Account & Pod Lifecycle**
+> (`sprint-change-proposal-2026-08-03.md`, approved by Nicolas).
+>
+> Create-pod and delete-pod are the same reversibility problem inverted: same
+> `RealBackend` methods, same screen, same ceremony design language. Splitting them
+> split one design conversation across two review cycles.
+>
+> **No scope was dropped.** Everything below carries into 7.10 — the recursive-delete
+> ceremony, the "confirmation shows what is about to be destroyed, not just a name"
+> requirement, and the no-HTTP-delete-path / orphan-accumulation context.
+>
+> This file is kept as the source of that detail when 7.10 is drafted. **Do not
+> implement it directly.**
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 

@@ -288,6 +288,7 @@ As a pod owner, I can download my pod as an archive and understand how portabili
 - Honest portability explainer: no standard pod archive / no CSS export endpoint; cross-provider move breaks `.acl` agent URIs (WebID changes) — needs re-applying permissions
 - Distinct from operator-level `make vps-backup` (whole-server volume tar). Cross-provider import/restore (WebID/ACL rebinding) deferred to a follow-on
 - WCAG 2.1 AA
+- **Sequencing (2026-08-03): runs LAST in Epic 7.** The per-resource access-metadata sidecars depend on Story 7.11's effective-access resolver. Shipping before it would emit `inherited` for most resources — technically true, operationally useless, and permanently baked into an archive users keep.
 
 ### Story 7.6: My Things — File-Manager Hardening
 As a pod owner with a real, growing pod, file operations are as robust as a dedicated Solid file manager — without losing our ACL UI, inline edit, or reversibility.
@@ -297,31 +298,43 @@ As a pod owner with a real, growing pod, file operations are as robust as a dedi
 - **Reference, not dependency:** learn move/copy/bulk/progress patterns from `solid-contrib/solid-file-manager` + `solid-file-client`; deliberately NOT adopted (it lacks ACL UI + inline edit + two-tap delete — our differentiators). Audit "adopted/rejected/why" captured
 - Hardening on top of 7.3; keep pinned Inrupt libs; WCAG 2.1 AA + no regression
 
-### Story 7.7: Delete My Pod
-As a pod owner, I can delete a pod I created — with enough friction that I cannot do it by accident — so that what I make while testing or exploring is mine to remove, instead of accumulating forever on the server.
-- Closes the gap the live audit confirmed: CSS exposes **no HTTP delete path** for accounts or pods (see `css_acl_portability_audit`), which is why Epic 7 accumulated orphan accounts
-- Owner-driven **recursive container deletion** with ceremony proportional to what is lost (this is the canonical home for recursive delete — Story 8.6's `solid_delete_resource` deliberately does *not* duplicate it)
-- Friction by design: irreversible and unbacked (no pod versioning — brief §7), so the confirmation must show what is about to be destroyed, not just a name
-- WCAG 2.1 AA
+### Story 7.7: Delete My Pod _(MERGED into Story 7.10 — 2026-08-03)_
+Superseded. Scope moved wholesale into **Story 7.10: Account & Pod Lifecycle**, where create-pod and delete-pod are designed as one reversibility problem rather than two. No scope was dropped in the merge; the recursive-delete ceremony, the "show what is destroyed, not just a name" requirement, and the no-HTTP-delete-path context all carry over.
 
-### Story 7.8: Roles & Grants — Permission UI Beyond Raw WebIDs _(DRAFT — added 2026-08-02)_
-As a pod owner (personal or collective), I can see and manage access as **named roles** rather than raw per-WebID ACL rows, so that permissions across a real group stay comprehensible.
-- **Why:** the identity/role model settled in architecture.md BP-6 makes roles (`teacher101`, `student101`, `assignment101`) the unit people actually think in. Today the backoffice shows raw WebID rows — nobody manages that past ~5 people and stays sane. The model is only usable if the UI expresses it.
-- Role = named grant bundle: define once (containers + access modes), assign/unassign personal-agent WebIDs, revoke an assignment without touching the underlying identity
-- Surface the **single-writer invariant** visibly: distinguish "my pod, my agent writes" from "someone else's pod, I hold a grant" — these are different mental objects and currently look identical
-- Collective-account view: which role holds `acl:Control`, who is currently assigned, and how succession reassigns it
-- Read receipts (FR42, built in Story 8.6) surfaced to the data subject: who read what, when — the thing that makes revocation an informed decision rather than a theoretical right
-- **Sequencing:** depends on 8.6 (receipts) and 8.7 (the model documented). Epic 7's original 7.1–7.7 scope is complete; this is an addition, not a reopening
-- WCAG 2.1 AA
+### Story 7.8: Roles & Grants — Permission UI _(MERGED into Story 7.11 — 2026-08-03)_
+Superseded. Scope moved wholesale into **Story 7.11: Effective Access & Roles**, which pairs the roles UI with the effective-access resolver it silently depended on. No scope was dropped: role-as-grant-bundle, the single-writer invariant made visible, the collective-account Control view, and FR42 read-receipt surfacing all carry over.
 
 ### Story 7.9: Backoffice-Minted Connector Credentials _(DRAFT — added 2026-08-02)_
 As a person onboarding, I click one button in the backoffice and receive my ready-to-paste MCP connector URL, instead of minting credentials by hand and asking an operator to edit a secrets file.
 - **Why:** Story 8.7 documents today's manual path (person mints AGENT client-credentials → operator adds an `identities.json` entry + `npm run slug` → container restart). That path does not scale past a handful of teammates and puts an operator in the middle of every onboarding.
 - Server-side endpoint mints AGENT client-credentials against the CSS account API using the person's **own** authenticated session, writes the `identities.json` entry, and returns the assembled connector URL **once** (reuse Story 7.4's one-time-secret UX)
+- **Depends on Story 7.10** for the account session (no password re-entry) and for pod creation — without 7.10 this button automates the middle of a journey that still forces the user out of the product
 - **Secrets must never flow through the browser** — minting happens server-side; the person never sees a `clientSecret`, never edits a file
 - Show the person's **pod root URL** next to the connector URL — closes the live-verified gap where the agent cannot guess it and has to ask cold (8.5 finding)
-- **Blocker to resolve:** connector sessions are boot-time singletons (`mcp-server.js`), so a new identity needs either a reload path (re-read `identities.json` + authenticate the new identity) or an accepted "restart on new teammate"
+- ~~Blocker: boot-time singletons~~ **RESOLVED by Story 8.6.1** (2026-08-02): lazy login on cache miss means a new identity works on its first request. **Do not build a reload path; do not add a restart step.**
 - Collapses onboarding steps 4–6 of Story 8.7 into a single action
+
+### Story 7.10: Account & Pod Lifecycle — Create, Protect, Delete _(ADDED 2026-08-03 — absorbs 7.7)_
+As a pod owner, I can create a pod, see and set its top-level permissions, and delete it — all without leaving the backoffice or re-typing my password — so that the lifecycle of the thing I own is managed where I own it.
+- **Kill the unlock gate.** VERIFIED: CSS's account cookie and the `CSS-Account-Token` are the same value (`ResolveLoginHandler.js:35-36`), and the backoffice is same-origin with CSS — the browser already holds it. Remove `accountLogin(email,password)` and the "Unlock app management" prompt; read the authed `/.account/` index with `credentials: 'include'`. Net code deletion. **Trap: that GET must carry no `content-type` header** or CSS content-negotiates a controls-less body (7.4's live finding).
+- **Create a pod from the backoffice** via `controls.account.pod`. Pod names collide **globally across the instance**, not per-account — a duplicate is refused `409 Conflict` (verified in `TemplatedPodGenerator.generate`, 2026-08-03). Surface that as a name-availability affordance, not a raw error.
+- **Show the pod-root ACL as a real row.** CSS's pod template grants `foaf:Agent` `acl:Read` on `<./>` with no `acl:default` — the pod root is publicly *listable* while its children are not. Today no UI row exists for it. Make it visible, explain it, make it editable.
+- **Protected-resource guardrails.** `profile/card` is the WebID document; deleting it breaks OIDC login and orphans every `.acl` that names that WebID, with no versioning and no undo. It currently carries the same delete affordance as a throwaway note. Distinct treatment + an explanation of what breaks — not a scary modal.
+- **Delete a pod** (absorbed from 7.7): owner-driven recursive deletion, ceremony proportional to what is lost, confirmation shows what is about to be destroyed rather than just a name. Closes the orphan-accumulation gap — CSS exposes no HTTP delete path for accounts or pods.
+- **Welcoming README template.** Override CSS's stock `README` (no extension, reads as `text`, says nothing) with a `README.md` that explains ownership, what is public by default, and where the identity document lives. **Lockstep requirement:** `README.acl.hbs` hardcodes `acl:accessTo <./README>` — rename without overriding it in the same change and the welcome file loses its public ACL. Same bind-mount mechanism as Story 7.2.
+- WCAG 2.1 AA
+
+### Story 7.11: Effective Access & Roles _(ADDED 2026-08-03 — absorbs 7.8)_
+As a pod owner, I can see what access actually applies to a resource — not just that it "inherits from parent" — and manage that access as named roles rather than raw WebID rows.
+- **Effective-access resolver.** `pod-api.js:253` returns `inherited: true` with empty agents/public when no standalone `.acl` exists, and nothing ever walks upward to resolve what the parent's `acl:default` actually grants. Build that walk once. Consumed here, by Story 7.5's export sidecars, and by the badge fix below.
+- **Finish the sentence the badge starts.** "Inherits from parent" is accurate but unanswerable — it must state what the parent grants, or link to the row that does.
+- Role = named grant bundle (absorbed from 7.8): define once (containers + modes), assign/unassign personal-agent WebIDs, revoke an assignment without touching the underlying identity
+- Surface the **single-writer invariant** visibly: "my pod, my agent writes" vs "someone else's pod, I hold a grant" are different mental objects that currently render identically
+- Collective-account view: which role holds `acl:Control`, who is assigned, how succession reassigns it
+- Read receipts (FR42, built in Story 8.6) surfaced to the data subject — what makes revocation an informed decision rather than a theoretical right
+- **Honesty constraint:** never offer an "only me" control at pod scope that the protocol will not honour. `profile/card` stays public by necessity (WebID discovery). If a user restricts the pod root, tell them why that one resource remains public rather than letting them find the inconsistency later.
+- **Sequencing:** depends on 8.6 (receipts) and 8.7 (model documented). Runs before Story 7.5.
+- WCAG 2.1 AA
 
 ## Epic 1: Pod Sovereignty & Access Control
 
