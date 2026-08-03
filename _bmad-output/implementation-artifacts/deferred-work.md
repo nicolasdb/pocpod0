@@ -154,9 +154,17 @@ While live-testing the resumable `registerAccount` fix, a curl call to `controls
 - `wacManager.getAgentAccess` shares `listAgentsWithAccess`'s null-without-Control contract but has no generic tool-layer guard [mcp-connector/src/mcp-server.js] — no registered tool calls it today, so it is inert; it becomes a live trap if 8.3 wires it into a new tool via `safeHandler` without an explicit null check, which would surface as the literal text `"null"`.
 - Fatal login error logs `err.message` only, discarding the stack trace [mcp-connector/src/mcp-server.js] — a deliberate secret-hygiene tradeoff, validated by this review's forced-failure test (log was clean). Noted so the lost debuggability is a known choice, not an accident.
 
-## Resolved: pod/account deletion gap (2026-07-31)
+## Resolved: pod/account deletion gap (2026-07-31, re-pointed 2026-08-03)
 
-The recurring "throwaway accounts can't be deleted" item — logged since Story 7.1 and re-noted in 7.3, 7.4 and 7.6 — is now scoped as **Story 7.7 (Delete My Pod — Owner-Driven Removal with Ceremony)**, `ready-for-dev`. It covers owner-driven recursive deletion of a pod's contents with proportional ceremony, and documents honestly that the CSS account shell still cannot be removed over HTTP (re-verified live 2026-07-31 on account API v0.5). Operator-side full removal via CSS's internal `AccountStore` cascade is documented in that story with a build-vs-defer decision. Remaining orphan account records on the VPS (29 as of 2026-07-31) stay inert until that story lands.
+The recurring "throwaway accounts can't be deleted" item — logged since Story 7.1 and re-noted in 7.3, 7.4 and 7.6 — was scoped as Story 7.7, which was then **merged into Story 7.10** (Account & Pod Lifecycle, `sprint-change-proposal-2026-08-03.md`) as AC8–AC12. Implemented: owner-driven recursive deletion of a pod's contents (skipping `profile/`/`profile/card` — see Task 5.4 decision), proportional ceremony (backup-first, type-the-pod-name, exact count, irreversibility statement), per-item failure reporting. Still honestly true: the CSS account shell and pod record **cannot** be removed over HTTP (re-verified live 2026-07-31, source re-read 2026-08-03 — no delete route exists). Operator-side `AccountStore` cascade script: **deferred**, not built (Task 6.4 decision — 29 orphan records are inert, not worth speculative effort). Live throwaway-pod verification (create/populate/delete/independently-confirm-empty) is still pending Nicolas's go-ahead for a VPS deploy — see Story 7.10 Task 8.
+
+### Story 7.10 — dated section (2026-08-03)
+
+- Absorbed Story 7.7 in full; no scope dropped.
+- Deferred: operator-side `AccountStore.delete(type, id)` cascade script (Task 6.4) — build only if the orphan-record count becomes an operational problem.
+- Deferred: Task 8 (live VPS verification, AC16/AC17) — code is complete and `node --check`s clean, but destructive live testing requires explicit user confirmation before any VPS deploy (`make vps-backup` first, non-negotiable).
+- **Pending edit, not made:** `docs/team-onboarding.md` steps (b)/(c) now have a home in this story's account-session and pod-create/list flow, but the rewrite is explicitly deferred until Story 7.9 also lands (per the sprint-change-proposal) so the doc isn't rewritten twice.
+- **Idea, not built (Nicolas, 2026-08-03):** for a pod this session can't manage (different owner WebID), instead of only linking to CSS's stock "add owner" page, offer a "mark this pod for deletion" action that notifies an operator/admin. Ties directly to Task 6.4's deferred `AccountStore` cascade script — a mark-for-deletion queue would be the trigger for that script, if it's ever built. Not started: no admin-notification channel (Discord webhook, email, etc.) exists in this project yet, and building one is bigger than this story's scope.
 
 ## Deferred from: code review of story-8.3 (2026-07-31)
 

@@ -19,6 +19,11 @@ services:
       # CSS's own client-side JS (which drives these forms) keeps working (AC4).
       - ./infra/css/templates/identity/account/create-pod.html.ejs:/community-server/templates/identity/account/create-pod.html.ejs:ro${VOLUME_FLAGS:-}
       - ./infra/css/templates/identity/oidc/consent.html.ejs:/community-server/templates/identity/oidc/consent.html.ejs:ro${VOLUME_FLAGS:-}
+      # Story 7.10 Task 7: replace the stock jargon-heavy welcome README on every
+      # freshly-created pod with our own plain-language voice. Resource name kept as
+      # `README` (unchanged) so README.acl.hbs's hardcoded `acl:accessTo <./README>`
+      # still applies — no ACL template override needed.
+      - "./infra/css/templates/pod/base/README$$.md.hbs:/community-server/templates/pod/base/README$$.md.hbs:ro${VOLUME_FLAGS:-}"
     command:
       - "-p"
       - "3000"

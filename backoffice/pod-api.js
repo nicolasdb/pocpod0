@@ -81,12 +81,12 @@ class RealBackend {
     this.webId = session.info.webId;
     // Best-guess default so root()/urlFor() never see `undefined` before init() resolves.
     this.root = this.webId.replace(/profile\/card#me$/, "");
-    // Account-API session (client-credentials mgmt). Story 7.4: this is a SEPARATE
-    // auth from the DPoP/WebID pod session above — the CSS account API is reached with
-    // a `CSS-Account-Token`, obtained via email+password, NOT via the OIDC login. So
-    // managing credentials requires an explicit account sign-in even when the pod
-    // session is live. Held in memory only, for the page session.
-    this._acctToken = null;
+    // Account-API session (Story 7.10): the browser already holds the `css-account`
+    // cookie from the OIDC/pod login — ResolveLoginHandler emits ONE cookieStore value
+    // as both the Set-Cookie and the CSS-Account-Token, so no separate email+password
+    // sign-in is needed. `_controls` is resolved lazily from the authed account index
+    // and cached for the page session; a 401 clears it so the UI re-resolves.
+    this._controls = null;
     this._ccUrl = null;
   }
   async init() {
@@ -235,6 +235,30 @@ class RealBackend {
     let n = children.length;
     for (const c of children) if (c.isContainer) n += await this.countDescendants(c.url);
     return n;
+  }
+
+  // ---- Pod deletion (Story 7.10 Task 5, absorbed from 7.7) ----
+  // Deletes a pod's CONTENTS via the owner's own session — never the CSS account/pod
+  // record itself (no HTTP delete route exists; see Trap re: BasePodStore). Reuses
+  // remove() (recursive, depth-first) for each top-level child — do NOT write a second
+  // traversal. Decision (Task 5.4): protected resources (profile/, profile/card) are
+  // SKIPPED, not deleted-last — a pod that lost its WebID document is unusable, while
+  // one that kept it is still a working, describable identity. Reported to the caller
+  // as `skipped`, never silently dropped.
+  async deletePodContents(rootUrl, isProtected, onProgress) {
+    let children;
+    try { children = await this.list(rootUrl); }
+    catch (e) { throw new Error(`Could not list the pod's contents: ${e.message}`); }
+    const results = [];
+    for (const c of children) {
+      if (isProtected(c.url)) { results.push({ url: c.url, name: c.name, skipped: true }); }
+      else {
+        try { await this.remove(c.url); results.push({ url: c.url, name: c.name, ok: true }); }
+        catch (e) { results.push({ url: c.url, name: c.name, ok: false, error: e.message }); }
+      }
+      if (onProgress) onProgress(results.length, children.length);
+    }
+    return results;
   }
   // ---- ACL: read/write the raw .acl document ourselves ----
   // Story 7.3 fix: `universalAccess.setAgentAccess/setPublicAccess` was found (live audit,
@@ -398,57 +422,44 @@ class RealBackend {
   // WAC caveat surfaced to the user in the UI: a credential is bound to a WebID and
   // acts with THAT WebID's full access — WAC can't scope it to one app's data. The real
   // controls are least-privilege ACLs + fast revocation, not per-app sandboxing.
-  _acctAuth() {
-    return { authorization: `CSS-Account-Token ${this._acctToken}` };
+  // Resolve `controls` from the authed account index, using the `css-account` cookie
+  // the browser already holds (same-origin: backoffice is served from ISSUER's root).
+  // Trap: this GET must carry NO content-type header — with one present, CSS
+  // content-negotiates a controls-less body and `controls.account.*` comes back
+  // `undefined`, which looks exactly like "the endpoint does not exist" (7.4 finding).
+  // Cached per page session; callers re-fetch on a 401 by clearing `_controls` first.
+  async _accountControls() {
+    if (this._controls) return this._controls;
+    const res = await fetch(new URL("/.account/", ISSUER), { credentials: "include" });
+    if (!res.ok) throw new Error("SESSION_EXPIRED");
+    let controls;
+    try { ({ controls } = await res.json()); }
+    catch (e) { throw new Error("Account index returned an unreadable response."); }
+    if (!controls || !controls.account) throw new Error("SESSION_EXPIRED");
+    this._controls = controls;
+    this._ccUrl = controls.account.clientCredentials;
+    return controls;
+  }
+  // Story 7.10 UX follow-up (2026-08-03): CSS's own stock account HTML page already
+  // does exactly what this app can't — list every WebID registered to the account and
+  // let you add one as a pod's owner (its "Owners" section, per pod). Rather than
+  // rebuild that, link to it directly. Returns null until `_accountControls()` has
+  // resolved once (same lazy-cache as everything else account-scoped).
+  accountEditUrl() {
+    return this._controls?.html?.account?.account || this._controls?.account?.account || null;
   }
   hasAccountSession() {
-    return !!this._acctToken;
-  }
-  // Sign in to the account API (email+password) to unlock credential management, then
-  // resolve the token-scoped client-credentials control from the authed account index.
-  async accountLogin(email, password) {
-    const loginRes = await fetch(new URL("/.account/login/password/", ISSUER), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
-    if (!loginRes.ok) throw new Error(`Sign-in failed (${await _errDetail(loginRes)}).`);
-    let authorization;
-    try { ({ authorization } = await loginRes.json()); }
-    catch (e) { throw new Error("Signed in but the account API returned an unreadable response."); }
-    if (!authorization) throw new Error("Signed in but no account token was returned.");
-    this._acctToken = authorization;
-    // The clientCredentials control URL is account-scoped and only appears on the
-    // AUTHED index — re-fetch it with the token. (Don't send content-type on this GET:
-    // CSS content-negotiation returns a controls-less body when it's present.)
-    const idxRes = await fetch(new URL("/.account/", ISSUER), { headers: this._acctAuth() });
-    if (!idxRes.ok) { this._acctToken = null; throw new Error("Signed in but could not load account controls."); }
-    let controls;
-    try { ({ controls } = await idxRes.json()); }
-    catch (e) { this._acctToken = null; throw new Error("Signed in but the account index returned an unreadable response."); }
-    this._ccUrl = controls?.account?.clientCredentials;
-    if (!this._ccUrl) { this._acctToken = null; throw new Error("This account exposes no client-credentials endpoint."); }
-    return true;
-  }
-  // Drop the in-memory account token. NOTE: deliberately does NOT hit the server
-  // `logout` control — that would invalidate the token for any concurrent use; here we
-  // just forget it locally. (The pod/OIDC session is untouched.)
-  accountLogout() {
-    this._acctToken = null;
-    this._ccUrl = null;
-  }
-  _requireAcct() {
-    // Sentinel the UI catches to re-prompt for the password (token expired / logged out).
-    if (!this._acctToken) throw new Error("SESSION_EXPIRED");
+    return !!this._controls;
   }
   _onAcctResponse(res) {
-    // A 401 means the account token lapsed — forget it so the UI falls back to the
-    // unlock prompt instead of retrying a dead token.
-    if (res.status === 401) { this._acctToken = null; throw new Error("SESSION_EXPIRED"); }
+    // A 401 means the account cookie lapsed (or was never present) — forget any
+    // cached controls so the next call re-resolves instead of retrying a dead session.
+    if (res.status === 401) { this._controls = null; this._ccUrl = null; throw new Error("SESSION_EXPIRED"); }
   }
   async listClientCredentials() {
-    this._requireAcct();
-    const res = await fetch(this._ccUrl, { headers: this._acctAuth() });
+    await this._accountControls();
+    if (!this._ccUrl) throw new Error("This account exposes no client-credentials endpoint.");
+    const res = await fetch(this._ccUrl, { credentials: "include" });
     this._onAcctResponse(res);
     if (!res.ok) throw new Error(`Could not list credentials (HTTP ${res.status}).`);
     const body = await res.json();
@@ -462,12 +473,14 @@ class RealBackend {
     }));
   }
   async createClientCredential(name, webId) {
-    this._requireAcct();
+    await this._accountControls();
+    if (!this._ccUrl) throw new Error("This account exposes no client-credentials endpoint.");
     // webId is echoed into a token later and stored server-side; keep it a clean URL.
     if (!/^https?:\/\/[^\s<>"]+$/.test(webId || "")) throw new Error("Not a valid WebID URL.");
     const res = await fetch(this._ccUrl, {
       method: "POST",
-      headers: { ...this._acctAuth(), "content-type": "application/json" },
+      credentials: "include",
+      headers: { "content-type": "application/json" },
       body: JSON.stringify({ name: name || "", webId }),
     });
     this._onAcctResponse(res);
@@ -481,13 +494,54 @@ class RealBackend {
     return { id, secret, resource };
   }
   async revokeClientCredential(resourceUrl) {
-    this._requireAcct();
-    const res = await fetch(resourceUrl, { method: "DELETE", headers: this._acctAuth() });
+    await this._accountControls();
+    const res = await fetch(resourceUrl, { method: "DELETE", credentials: "include" });
     this._onAcctResponse(res);
     // A 404 means it's already gone (revoked elsewhere, expired, etc.) — that's the
     // outcome the caller wanted, not a failure.
     if (!res.ok && res.status !== 404) throw new Error(`Could not revoke (HTTP ${res.status}).`);
     return true;
+  }
+
+  // ---- Pods (Story 7.10) ----
+  async listPods() {
+    const controls = await this._accountControls();
+    const podUrl = controls.account.pod;
+    if (!podUrl) throw new Error("This account exposes no pod endpoint.");
+    const res = await fetch(podUrl, { credentials: "include" });
+    this._onAcctResponse(res);
+    if (!res.ok) throw new Error(`Could not list pods (HTTP ${res.status}).`);
+    const { pods } = await res.json();
+    return Object.entries(pods || {}).map(([baseUrl, resource]) => ({ baseUrl, resource }));
+  }
+  async createPod(name) {
+    // Defense in depth: an empty/whitespace name must never reach the network — CSS's
+    // `allowRoot: false` refuses it server-side too, but the root-claim path
+    // (`overwrite = !input.name`) still exists in BasePodCreator, guarded only by that
+    // config flag (Trap 3). Never imply the server is unguarded.
+    const trimmed = (name || "").trim();
+    if (!trimmed) throw new Error("Pod name is required.");
+    const controls = await this._accountControls();
+    const podUrl = controls.account.pod;
+    if (!podUrl) throw new Error("This account exposes no pod endpoint.");
+    // Pass the CURRENT session's WebID as the new pod's owner (CreatePodHandler's
+    // `settings.webId`, source-verified live 2026-08-03: BasePodCreator.js uses
+    // `input.webId ?? <freshly generated one>`). Omitting this mints a BRAND-NEW WebID
+    // for every additional pod — which is what Task 2 originally did, and it's a real
+    // gap: WAC ownership is per-WebID, so a pod owned by a different, never-signed-into
+    // WebID can never be managed (or deleted — see deletePodContents) from this same
+    // session. Passing our own WebID keeps every pod this account creates under one
+    // identity, so "your account, your pods" is actually true end to end.
+    const res = await fetch(podUrl, {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: trimmed, settings: { webId: this.webId } }),
+    });
+    this._onAcctResponse(res);
+    if (res.status === 409) throw new Error("NAME_TAKEN");
+    if (!res.ok) throw new Error(`Could not create pod (${await _errDetail(res)}).`);
+    return await res.json();
   }
 }
 
@@ -579,6 +633,24 @@ class DemoBackend {
     for (const k of Object.keys(this.t)) if (this.t[k].url === url || this.t[k].url.startsWith(url)) delete this.t[k];
     return true;
   }
+  async countDescendants(url) {
+    if (!url.endsWith("/")) return 0;
+    let children;
+    try { children = await this.list(url); } catch (e) { return 0; }
+    let n = children.length;
+    for (const c of children) if (c.isContainer) n += await this.countDescendants(c.url);
+    return n;
+  }
+  async deletePodContents(rootUrl, isProtected, onProgress) {
+    const children = await this.list(rootUrl);
+    const results = [];
+    for (const c of children) {
+      if (isProtected(c.url)) { results.push({ url: c.url, name: c.name, skipped: true }); }
+      else { await this.remove(c.url); results.push({ url: c.url, name: c.name, ok: true }); }
+      if (onProgress) onProgress(results.length, children.length);
+    }
+    return results;
+  }
   async rename(oldUrl, newUrl) {
     oldUrl = this._norm(oldUrl); newUrl = this._norm(newUrl);
     // Re-key every node under oldUrl (self + descendants) to the new prefix.
@@ -624,8 +696,7 @@ class DemoBackend {
     { id: "discord-bridge_00000000-0000-0000-0000-000000000001", name: "discord-bridge", resource: DEMO_ROOT + ".creds/demo-1/", webId: DEMO_WEBID },
   ];
   hasAccountSession() { return true; }
-  async accountLogin() { return true; }
-  accountLogout() { /* demo stays unlocked */ }
+  accountEditUrl() { return null; } // no stock CSS account page to link to in the offline preview
   async listClientCredentials() {
     return this._demoCreds.map((c) => ({ id: c.id, name: c.name, resource: c.resource }));
   }
@@ -639,6 +710,23 @@ class DemoBackend {
   async revokeClientCredential(resourceUrl) {
     this._demoCreds = this._demoCreds.filter((c) => c.resource !== resourceUrl);
     return true;
+  }
+
+  // ---- Pods (Story 7.10 demo parity) ----
+  // "taken" is scripted to collide, so the 409/name-availability copy is reviewable
+  // in the offline preview without a real server.
+  _demoPods = [{ baseUrl: DEMO_ROOT, resource: DEMO_ROOT + ".account/pod/demo/" }];
+  async listPods() {
+    return this._demoPods.map((p) => ({ ...p }));
+  }
+  async createPod(name) {
+    const trimmed = (name || "").trim();
+    if (!trimmed) throw new Error("Pod name is required.");
+    if (trimmed === "taken") throw new Error("NAME_TAKEN");
+    const baseUrl = `https://pod.nicolasdb.eu/${trimmed}/`;
+    const resource = DEMO_ROOT + ".account/pod/" + trimmed + "/";
+    this._demoPods.push({ baseUrl, resource });
+    return { baseUrl };
   }
   async turtleAcl(url) {
     const n = this._node(url); if (!n) return "# resource not found";

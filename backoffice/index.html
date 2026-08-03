@@ -381,12 +381,17 @@
                     <span style="display:block;font-size:12px;color:var(--tx3,#b3ac9a)">{{ it.meta }}</span>
                   </span>
                   <button onClick="{{ it.share }}" style="{{ it.badgeStyle }}" style-hover="filter:brightness(.96)">{{ it.badgeIcon }} {{ it.badgeLabel }}</button>
-                  <button onClick="{{ it.rename }}" aria-label="{{ it.renameLabel }}" style="border:none;background:none;color:var(--tx3,#b3ac9a);cursor:pointer;font-size:14px;padding:6px" style-hover="color:var(--acc,#3d6b52)" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">✏️</button>
-                  <sc-if value="{{ it.armed }}" hint-placeholder-val="{{ false }}">
-                    <button onClick="{{ it.del }}" aria-label="{{ it.confirmLabel }}" style="border:1px solid #a33;background:#a33;color:#fff;cursor:pointer;font-size:12px;font-weight:600;padding:6px 12px;border-radius:8px;flex-shrink:0" style-hover="filter:brightness(1.08)" style-focus-visible="outline:2px solid #a33;outline-offset:2px">Confirm delete{{ it.confirmCountSuffix }}</button>
+                  <sc-if value="{{ it.showEdit }}" hint-placeholder-val="{{ true }}">
+                    <button onClick="{{ it.rename }}" aria-label="{{ it.renameLabel }}" style="border:none;background:none;color:var(--tx3,#b3ac9a);cursor:pointer;font-size:14px;padding:6px" style-hover="color:var(--acc,#3d6b52)" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">✏️</button>
+                    <sc-if value="{{ it.armed }}" hint-placeholder-val="{{ false }}">
+                      <button onClick="{{ it.del }}" aria-label="{{ it.confirmLabel }}" style="border:1px solid #a33;background:#a33;color:#fff;cursor:pointer;font-size:12px;font-weight:600;padding:6px 12px;border-radius:8px;flex-shrink:0" style-hover="filter:brightness(1.08)" style-focus-visible="outline:2px solid #a33;outline-offset:2px">Confirm delete{{ it.confirmCountSuffix }}</button>
+                    </sc-if>
+                    <sc-if value="{{ it.notArmed }}" hint-placeholder-val="{{ true }}">
+                      <button onClick="{{ it.arm }}" aria-label="{{ it.delLabel }}" style="border:none;background:none;color:var(--tx3,#b3ac9a);cursor:pointer;font-size:15px;padding:6px" style-hover="color:#a33" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">🗑</button>
+                    </sc-if>
                   </sc-if>
-                  <sc-if value="{{ it.notArmed }}" hint-placeholder-val="{{ true }}">
-                    <button onClick="{{ it.arm }}" aria-label="{{ it.delLabel }}" style="border:none;background:none;color:var(--tx3,#b3ac9a);cursor:pointer;font-size:15px;padding:6px" style-hover="color:#a33" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">🗑</button>
+                  <sc-if value="{{ it.protectedNote }}" hint-placeholder-val="{{ false }}">
+                    <button onClick="{{ it.explainProtected }}" aria-label="Why this can't be deleted here" style="border:none;background:none;color:var(--tx3,#b3ac9a);cursor:pointer;font-size:15px;padding:6px" style-hover="color:var(--warn,#b5722a)" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">ℹ️</button>
                   </sc-if>
                 </sc-if>
               </div>
@@ -410,8 +415,13 @@
             <button onClick="{{ togglePreview }}" style="font-family:inherit;font-size:12.5px;padding:7px 14px;border-radius:99px;border:1px solid var(--line,#e7e2d6);background:none;color:var(--tx2,#8a8474);cursor:pointer" style-hover="border-color:var(--acc,#3d6b52)">{{ previewLabel }}</button>
           </sc-if>
           <button onClick="{{ openShareCurrent }}" style="{{ editorBadgeStyle }}" style-hover="filter:brightness(.96)">{{ editorBadgeIcon }} {{ editorBadgeLabel }}</button>
-          <button onClick="{{ renameCurrent }}" style="font-family:inherit;font-size:12.5px;padding:7px 14px;border-radius:99px;border:1px solid var(--line,#e7e2d6);background:none;color:var(--tx2,#8a8474);cursor:pointer" style-hover="border-color:var(--acc,#3d6b52);color:var(--acc,#3d6b52)">Rename</button>
-          <button onClick="{{ deleteCurrent }}" style="{{ deleteCurrentStyle }}" style-hover="filter:brightness(1.05)">{{ deleteCurrentLabel }}</button>
+          <sc-if value="{{ editorEditableAffordances }}" hint-placeholder-val="{{ true }}">
+            <button onClick="{{ renameCurrent }}" style="font-family:inherit;font-size:12.5px;padding:7px 14px;border-radius:99px;border:1px solid var(--line,#e7e2d6);background:none;color:var(--tx2,#8a8474);cursor:pointer" style-hover="border-color:var(--acc,#3d6b52);color:var(--acc,#3d6b52)">Rename</button>
+            <button onClick="{{ deleteCurrent }}" style="{{ deleteCurrentStyle }}" style-hover="filter:brightness(1.05)">{{ deleteCurrentLabel }}</button>
+          </sc-if>
+          <sc-if value="{{ editorProtectedNote }}" hint-placeholder-val="{{ false }}">
+            <button onClick="{{ explainCurrentProtected }}" style="font-family:inherit;font-size:12.5px;padding:7px 14px;border-radius:99px;border:1px solid var(--warnLine,#e3c9a3);background:var(--warnBg,#faf3e6);color:var(--warn,#b5722a);cursor:pointer">ℹ️ Protected — why?</button>
+          </sc-if>
           <button onClick="{{ saveFile }}" style="{{ saveBtnStyle }}" style-hover="filter:brightness(1.08)">{{ saveLabel }}</button>
         </div>
         <sc-if value="{{ formatHint }}" hint-placeholder-val="{{ false }}"><div style="{{ formatHintStyle }}">{{ formatHint }}</div></sc-if>
@@ -463,12 +473,12 @@
           <!-- honest WAC limitation note -->
           <div style="font-size:12.5px;color:var(--tx2,#8a8474);background:var(--warnBg,#faf3e6);border:1px solid var(--warnLine,#e3c9a3);border-radius:11px;padding:12px 14px;margin-bottom:18px;line-height:1.55">⚠︎ <strong>A credential acts as you.</strong> It carries your identity and can do whatever <em>you</em> can do in your pod — today it can't be limited to just one app's data. Your real safety controls are: share as little as possible with each thing (least-privilege), name credentials clearly, and <strong>revoke</strong> the moment you're done. Revoking is instant.</div>
 
-          <!-- unlock gate (real mode needs an account sign-in for this API) -->
+          <!-- account session comes from the css-account cookie the browser already
+               holds (Story 7.10) — no in-app password prompt. credsUnlocked degrades
+               to credsSignedOut when the cookie is absent/expired (AC2). -->
           <sc-if value="{{ credsUnlocked }}" hint-placeholder-val="{{ true }}">
             <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
               <button onClick="{{ startMint }}" style="font-family:inherit;font-size:13.5px;font-weight:600;padding:10px 20px;border-radius:99px;border:none;background:var(--acc,#3d6b52);color:#fff;cursor:pointer" style-hover="filter:brightness(1.08)" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">+ Connect an app</button>
-              <span style="flex:1"></span>
-              <button onClick="{{ lockCreds }}" style="font-family:inherit;font-size:12.5px;padding:8px 14px;border-radius:99px;border:1px solid var(--line,#e7e2d6);background:none;color:var(--tx2,#8a8474);cursor:pointer" style-hover="border-color:var(--acc,#3d6b52)" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">Lock</button>
             </div>
 
             <sc-if value="{{ credsLoading }}" hint-placeholder-val="{{ false }}">
@@ -493,18 +503,94 @@
             </sc-if>
           </sc-if>
 
-          <sc-if value="{{ credsLocked }}" hint-placeholder-val="{{ false }}">
-            <div style="border:1px solid var(--line,#e7e2d6);border-radius:14px;background:var(--panel,#fbfaf7);padding:20px 22px">
-              <p style="margin:0 0 14px;font-size:13.5px;color:var(--tx2,#8a8474)">Managing app keys uses a separate sign-in (your pod email + password) — the browser login that got you here doesn't unlock it. Enter them once to see and manage your credentials.</p>
-              <label style="display:block;font-size:12px;font-weight:600;margin-bottom:5px">Email</label>
-              <input value="{{ credEmail }}" onChange="{{ onCredEmail }}" type="email" autocomplete="username" placeholder="you@example.org" style="width:100%;box-sizing:border-box;font-family:inherit;font-size:13.5px;padding:10px 12px;border-radius:9px;border:1px solid var(--line,#e7e2d6);background:var(--bg,#f6f4ef);color:var(--tx,#26241f);outline:none;margin-bottom:12px" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">
-              <label style="display:block;font-size:12px;font-weight:600;margin-bottom:5px">Password</label>
-              <input value="{{ credPassword }}" onChange="{{ onCredPassword }}" type="password" autocomplete="current-password" placeholder="your pod password" style="width:100%;box-sizing:border-box;font-family:inherit;font-size:13.5px;padding:10px 12px;border-radius:9px;border:1px solid var(--line,#e7e2d6);background:var(--bg,#f6f4ef);color:var(--tx,#26241f);outline:none;margin-bottom:14px" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">
-              <button onClick="{{ unlockCreds }}" style="font-family:inherit;font-size:13.5px;font-weight:600;padding:10px 22px;border-radius:99px;border:none;background:var(--acc,#3d6b52);color:#fff;cursor:pointer" style-hover="filter:brightness(1.08)" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">Unlock app management</button>
+          <!-- AC2: cookie absent/expired — honest state, never an empty list, never a password field -->
+          <sc-if value="{{ credsSignedOut }}" hint-placeholder-val="{{ false }}">
+            <div style="border:1px solid var(--line,#e7e2d6);border-radius:14px;background:var(--panel,#fbfaf7);padding:20px 22px;text-align:center">
+              <div style="font-size:26px;margin-bottom:10px">🔒</div>
+              <p style="margin:0 0 16px;font-size:13.5px;color:var(--tx2,#8a8474)">Your sign-in has expired or wasn't found. Sign in to see and manage your apps and pods.</p>
+              <button onClick="{{ goSignIn }}" style="font-family:inherit;font-size:13.5px;font-weight:600;padding:10px 22px;border-radius:99px;border:none;background:var(--acc,#3d6b52);color:#fff;cursor:pointer" style-hover="filter:brightness(1.08)" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">Sign in</button>
             </div>
           </sc-if>
         </div>
+
+        <!-- PODS (Story 7.10 Task 2) -->
+        <div style="margin-top:36px;padding-top:28px;border-top:1px solid var(--line,#e7e2d6)">
+          <div style="font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--tx2,#8a8474);margin:0 0 6px;display:flex;align-items:center;gap:8px"><span>🗄️</span> Your pods</div>
+          <p style="margin:0 0 10px;color:var(--tx2,#8a8474);font-size:13.5px">Each pod is its own space with its own address. Most people only need one — create another if you want to keep something fully separate.</p>
+          <sc-if value="{{ accountEditUrl }}" hint-placeholder-val="{{ false }}">
+            <p style="margin:0 0 16px;font-size:12.5px"><a href="{{ accountEditUrl }}" target="_blank" rel="noopener" style="color:var(--acc,#3d6b52)">Manage account &amp; identities on CSS ↗</a> — the full owner/WebID list for every pod on this account, including ones you're not signed into here.</p>
+          </sc-if>
+
+          <sc-for list="{{ podItems }}" as="p2" hint-placeholder-count="1">
+            <div style="display:flex;align-items:center;gap:12px;border:1px solid var(--line,#e7e2d6);border-radius:12px;background:var(--panel,#fbfaf7);padding:14px 16px;margin-bottom:10px">
+              <span style="font-size:18px">🗄️</span>
+              <span style="flex:1;min-width:0;font-size:13px;font-family:'JetBrains Mono',monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p2.baseUrl }}</span>
+              <sc-if value="{{ p2.isActive }}" hint-placeholder-val="{{ true }}">
+                <button onClick="{{ p2.startDelete }}" aria-label="{{ p2.deleteLabel }}" style="font-family:inherit;font-size:12px;font-weight:600;padding:7px 14px;border-radius:8px;border:1px solid var(--line,#e7e2d6);background:none;color:var(--tx2,#8a8474);cursor:pointer" style-hover="border-color:#a33;color:#a33" style-focus-visible="outline:2px solid #a33;outline-offset:2px">Wipe contents…</button>
+              </sc-if>
+              <sc-if value="{{ p2.isOther }}" hint-placeholder-val="{{ false }}">
+                <a href="{{ p2.resource }}" target="_blank" rel="noopener" title="This app can't manage it — this pod has a different owner identity. Add yourself as an owner on CSS's own page, then it'll show up here too." style="font-size:11.5px;color:var(--tx3,#b3ac9a)" style-hover="color:var(--acc,#3d6b52)">not owned here — manage on CSS ↗</a>
+              </sc-if>
+            </div>
+          </sc-for>
+
+          <sc-if value="{{ podCreateOpen }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;gap:8px;align-items:flex-start;margin-top:6px">
+              <div style="flex:1">
+                <input value="{{ podNewName }}" onChange="{{ onPodNewName }}" placeholder="pod name" style="width:100%;box-sizing:border-box;font-family:inherit;font-size:13.5px;padding:10px 12px;border-radius:9px;border:1px solid var(--line,#e7e2d6);background:var(--bg,#f6f4ef);color:var(--tx,#26241f);outline:none" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">
+                <sc-if value="{{ podCreateError }}" hint-placeholder-val="{{ false }}">
+                  <p style="margin:6px 0 0;font-size:12px;color:#a33">{{ podCreateError }}</p>
+                </sc-if>
+              </div>
+              <button onClick="{{ submitCreatePod }}" style="font-family:inherit;font-size:13.5px;font-weight:600;padding:10px 18px;border-radius:99px;border:none;background:var(--acc,#3d6b52);color:#fff;cursor:pointer" style-hover="filter:brightness(1.08)" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">Create</button>
+              <button onClick="{{ cancelCreatePod }}" style="font-family:inherit;font-size:13.5px;padding:10px 16px;border-radius:99px;border:1px solid var(--line,#e7e2d6);background:none;color:var(--tx2,#8a8474);cursor:pointer" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">Cancel</button>
+            </div>
+          </sc-if>
+          <sc-if value="{{ podCreateClosed }}" hint-placeholder-val="{{ true }}">
+            <button onClick="{{ startCreatePod }}" style="font-family:inherit;font-size:13.5px;font-weight:600;padding:9px 18px;border-radius:99px;border:1px dashed var(--acc,#3d6b52);background:none;color:var(--acc,#3d6b52);cursor:pointer" style-hover="background:var(--accSoft,#eef3ef)" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">+ Create another pod</button>
+          </sc-if>
+        </div>
       </div>
+      </sc-if>
+
+      <!-- DELETE-POD CEREMONY (Story 7.10 Task 6, absorbed from 7.7) —
+           stronger than 7.3's two-tap delete: backup step first, then an exact
+           resource count + type-the-pod-name confirmation. No timer-based auto-arm,
+           so a stray Enter or double-click can't trigger it by itself. -->
+      <sc-if value="{{ podDeleteOpen }}" hint-placeholder-val="{{ false }}">
+        <div style="position:fixed;inset:0;background:rgba(20,18,12,.44);z-index:50"></div>
+        <div role="dialog" aria-modal="true" aria-label="Wipe pod contents" onKeyDown="{{ escCancelPodDelete }}" tabindex="-1" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:min(520px,94vw);max-height:88vh;overflow-y:auto;background:var(--panel,#fbfaf7);border-radius:18px;z-index:51;box-shadow:0 20px 60px rgba(0,0,0,.28);padding:26px 28px 28px;box-sizing:border-box">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+            <span style="font-size:20px">⚠️</span>
+            <h2 style="font-size:16px;font-weight:600;margin:0;flex:1">Wipe pod contents</h2>
+            <button onClick="{{ cancelPodDelete }}" aria-label="Close" style="border:none;background:none;font-size:18px;color:var(--tx2,#8a8474);cursor:pointer;padding:4px" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">✕</button>
+          </div>
+
+          <sc-if value="{{ podDeleteBackupStage }}" hint-placeholder-val="{{ true }}">
+            <p style="margin:0 0 14px;font-size:13.5px;color:var(--tx2,#8a8474);line-height:1.55">Back up anything you'd miss <strong>before</strong> continuing. There is no export button here yet — run <code style="font-family:'JetBrains Mono',monospace;background:var(--codebg,#f0ede4);padding:2px 6px;border-radius:5px">make vps-backup</code> from the server, or copy files out one by one.</p>
+            <button onClick="{{ podDeleteAckBackup }}" style="width:100%;font-family:inherit;font-size:13.5px;font-weight:600;padding:11px;border-radius:99px;border:none;background:var(--acc,#3d6b52);color:#fff;cursor:pointer" style-focus-visible="outline:2px solid var(--tx,#26241f);outline-offset:1px">I've backed up what I need — continue</button>
+          </sc-if>
+
+          <sc-if value="{{ podDeleteConfirmStage }}" hint-placeholder-val="{{ false }}">
+            <p style="margin:0 0 10px;font-size:13.5px;color:var(--tx2,#8a8474)">This deletes <strong>{{ podDeleteCountLabel }}</strong> from <code style="font-family:'JetBrains Mono',monospace;font-size:12px">{{ podDeleteTarget }}</code>. <strong>This cannot be undone.</strong></p>
+            <p style="margin:0 0 16px;font-size:12.5px;color:var(--tx3,#b3ac9a);line-height:1.5">Your WebID document (<code>profile/card</code>) is kept so the pod stays a working identity. The account sign-in itself also survives — CSS has no HTTP route to remove it; ask an operator if you need it fully gone.</p>
+            <label style="display:block;font-size:12px;font-weight:600;margin-bottom:5px">Type the pod name to confirm: <span style="font-family:'JetBrains Mono',monospace;font-weight:400">{{ podDeleteExpectedName }}</span></label>
+            <input value="{{ podDeleteTypedName }}" onChange="{{ onPodDeleteTypedName }}" onKeyDown="{{ podDeleteInputKeyDown }}" autocomplete="off" style="width:100%;box-sizing:border-box;font-family:'JetBrains Mono',monospace;font-size:13.5px;padding:10px 12px;border-radius:9px;border:1px solid var(--line,#e7e2d6);background:var(--bg,#f6f4ef);color:var(--tx,#26241f);outline:none;margin-bottom:16px" style-focus-visible="outline:2px solid #a33;outline-offset:1px">
+            <button onClick="{{ podDeleteConfirm }}" disabled="{{ podDeleteConfirmDisabled }}" style="{{ podDeleteConfirmStyle }}">{{ podDeleteConfirmLabel }}</button>
+          </sc-if>
+
+          <sc-if value="{{ podDeleteBusyStage }}" hint-placeholder-val="{{ false }}">
+            <div style="text-align:center;padding:20px 0;color:var(--tx3,#b3ac9a);font-size:13px">Deleting… {{ podDeleteProgressLabel }}</div>
+          </sc-if>
+
+          <sc-if value="{{ podDeleteDoneStage }}" hint-placeholder-val="{{ false }}">
+            <p style="margin:0 0 10px;font-size:13.5px">{{ podDeleteResultSummary }}</p>
+            <sc-for list="{{ podDeleteFailures }}" as="pf" hint-placeholder-count="0">
+              <div style="font-size:12.5px;color:#a33;margin-bottom:4px">✕ {{ pf.name }} — {{ pf.error }}</div>
+            </sc-for>
+            <button onClick="{{ cancelPodDelete }}" style="margin-top:14px;width:100%;font-family:inherit;font-size:13.5px;font-weight:600;padding:11px;border-radius:99px;border:1px solid var(--line,#e7e2d6);background:none;color:var(--tx,#26241f);cursor:pointer" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">Done</button>
+          </sc-if>
+        </div>
       </sc-if>
 
       <!-- ONE-TIME SECRET REVEAL (Story 7.4) -->
@@ -690,10 +776,13 @@ class Component extends DCLogic {
       renameUrl: null, renameVal: '',
       shareFor: null, wacOpen: false, wacText: '', addWebId: '',
       openPerson: null,
-      // apps & credentials (Story 7.4)
-      credsUnlocked: false, credsList: [], credsLoading: false,
-      credEmail: '', credPassword: '',
+      // apps & credentials (Story 7.4); account session now cookie-based (Story 7.10)
+      credsUnlocked: false, credsSignedOut: false, credsList: [], credsLoading: false,
       mintOpen: false, mintName: '', mintWebId: '',
+      // pods (Story 7.10)
+      podItems: [], podOwned: {}, accountEditUrl: null, podCreateOpen: false, podNewName: '', podCreateError: null,
+      podDeleteOpen: false, podDeleteStage: null, podDeleteTarget: null, podDeleteExpectedName: '',
+      podDeleteTypedName: '', podDeleteCount: null, podDeleteResults: null, podDeleteProgress: null,
       mintedSecret: null,      // transient {id,secret,resource,name,webId} — DOM only, never persisted
       secretRevealed: false,   // gate the actual secret chars behind an explicit reveal
       credConfirmRevoke: null, // resource url armed for revoke confirmation
@@ -709,7 +798,7 @@ class Component extends DCLogic {
   async componentDidMount() {
     this.setVars();
     try {
-      this.api = await import('./pod-api.js?v=7-4-1');
+      this.api = await import('./pod-api.js?v=7-10-3');
     } catch (e) {
       this.api = null;
     }
@@ -779,11 +868,24 @@ class Component extends DCLogic {
   urlFor(path) { return this.root() + path.map(p => p + '/').join(''); }
 
   // ---------- data ops ----------
+  // Resources this app must not let the user delete/rename casually (Story 7.10 AC7/AC12):
+  // the pod root itself, and the WebID document + its container. Consulted by the row
+  // renderer, the editor's delete/rename actions, and the recursive-delete engine (Task 5).
+  PROTECTED = (url) => {
+    const root = this.root();
+    return url === root || url === root + 'profile/' || url === root + 'profile/card';
+  };
   async loadFolder(path) {
     if (!this.cl) return;
     this.setState({ filesLoading: true });
     try {
       const items = await this.cl.list(this.urlFor(path));
+      // AC5: "My things" at the root shows a synthetic row for the pod root itself, so
+      // its (real, live) access state is visible and editable through the same sharing
+      // drawer as any other resource. It never gets delete/rename affordances (AC12).
+      if (path.length === 0) {
+        items.unshift({ url: this.root(), name: 'This pod (root)', isContainer: true, kind: 'folder', isRoot: true });
+      }
       const aclCache = { ...this.state.aclCache };
       // Fetch each item's ACL in parallel, not one-at-a-time — a folder with many
       // items was making N sequential round trips (visibly slow on real pods).
@@ -794,6 +896,13 @@ class Component extends DCLogic {
       toFetch.forEach((it, i) => { aclCache[it.url] = fetched[i]; });
       this.setState({ items, aclCache, filesLoading: false });
     } catch (e) { this.setState({ items: [], filesLoading: false }); this.toast('Could not read that folder: ' + e.message); }
+  }
+  explainProtected(url) {
+    if (url === this.root()) {
+      this.toast('This is your pod itself — restrict or share it via its badge above, but it has no delete/rename here.');
+    } else {
+      this.toast('This is your WebID document. Deleting or renaming it breaks sign-in and orphans every access rule naming it — no versioning, no undo.');
+    }
   }
 
   async openFile(url, name, kind) {
@@ -881,6 +990,7 @@ class Component extends DCLogic {
   // Two-tap delete: first tap arms (reveals a "Confirm" button), second tap within
   // the window deletes. Auto-disarms after a timeout so nothing stays primed.
   armDelete(url, isContainer) {
+    if (this.PROTECTED(url)) { this.explainProtected(url); return; }
     clearTimeout(this._delTimer);
     this.setState({ confirmDelete: url, confirmDeleteCount: null });
     this._delTimer = setTimeout(() => this.setState({ confirmDelete: null, confirmDeleteCount: null }), 4000);
@@ -891,6 +1001,7 @@ class Component extends DCLogic {
     }
   }
   async deleteThing(url, name, isContainer) {
+    if (this.PROTECTED(url)) { this.explainProtected(url); return; }
     clearTimeout(this._delTimer);
     this.setState({ confirmDelete: null });
     try {
@@ -902,6 +1013,7 @@ class Component extends DCLogic {
   }
 
   startRename(url, name, isContainer) {
+    if (this.PROTECTED(url)) { this.explainProtected(url); return; }
     this.setState({ renameUrl: url, renameVal: (name || '').replace(/\/$/, ''), confirmDelete: null });
   }
   async doRename() {
@@ -972,45 +1084,146 @@ class Component extends DCLogic {
   }
   async maybeLoadWac(url) { if (this.state.wacOpen && this.cl) { try { const t = await this.cl.turtleAcl(url); this.setState({ wacText: t }); } catch (e) {} } }
 
-  // ---------- apps & credentials (Story 7.4) ----------
-  // If the account API is already unlocked (demo, or a prior sign-in this session),
-  // load the list; otherwise the People screen shows the unlock prompt.
+  // ---------- apps, credentials & pods (Story 7.4 / 7.10) ----------
+  // Account session now rides the css-account cookie the browser already holds
+  // (Story 7.10) — no in-app password prompt. A SESSION_EXPIRED from either call
+  // means the cookie is absent or past its 14-day TTL: degrade to credsSignedOut,
+  // never a silently-empty list, never a password field.
   maybeInitCreds() {
-    if (!this.cl || !this.cl.hasAccountSession) return;
-    if (this.cl.hasAccountSession()) {
-      if (!this.state.credsUnlocked) this.setState({ credsUnlocked: true });
-      this.loadCreds();
-    }
+    if (!this.cl) return;
+    this.loadCreds();
+    this.loadPods();
   }
-  async unlockCreds() {
-    if (this._unlocking) return; // guard against double-click firing two concurrent logins
-    const email = (this.state.credEmail || '').trim();
-    const password = this.state.credPassword || '';
-    if (!email || !password) { this.toast('Enter the email and password you use for this pod.'); return; }
-    this._unlocking = true;
-    try {
-      await this.cl.accountLogin(email, password);
-      // Clear the password from state the instant it's no longer needed — never keep it around.
-      this.setState({ credsUnlocked: true, credPassword: '' });
-      this.loadCreds();
-    } catch (e) { this.setState({ credPassword: '' }); this.toast('Could not unlock app management: ' + e.message); }
-    finally { this._unlocking = false; }
-  }
-  lockCreds() {
-    if (this.cl && this.cl.accountLogout) this.cl.accountLogout();
-    this.setState({ credsUnlocked: false, credsList: [], credEmail: '', credPassword: '', mintOpen: false, mintedSecret: null, secretRevealed: false, credConfirmRevoke: null });
+  goSignIn() {
+    if (this.api && this.api.Solid) this.api.Solid.connect();
   }
   async loadCreds() {
     if (!this.cl || !this.cl.listClientCredentials) return;
     this.setState({ credsLoading: true });
     try {
       const list = await this.cl.listClientCredentials();
-      this.setState({ credsList: list, credsLoading: false });
+      this.setState({ credsList: list, credsLoading: false, credsUnlocked: true, credsSignedOut: false });
+      if (this.cl.accountEditUrl) this.setState({ accountEditUrl: this.cl.accountEditUrl() });
     } catch (e) {
       this.setState({ credsLoading: false });
-      if (e.message === 'SESSION_EXPIRED') { this.setState({ credsUnlocked: false, credsList: [] }); this.toast('Your app-management session expired — unlock again to continue.'); }
+      if (e.message === 'SESSION_EXPIRED') { this.setState({ credsUnlocked: false, credsSignedOut: true, credsList: [] }); }
       else this.toast('Could not load credentials: ' + e.message);
     }
+  }
+  async loadPods() {
+    if (!this.cl || !this.cl.listPods) return;
+    try {
+      const pods = await this.cl.listPods();
+      this.setState({ podItems: pods, podOwned: {} });
+      // Whether THIS session can actually manage/delete each pod isn't "is it the pod
+      // I'm currently browsing" — WAC ownership is per-WebID, and Task 2 now creates
+      // additional pods under the SAME WebID as the active session, so a pod you just
+      // created is manageable even though `this.root()` still points at the original
+      // one. The real, checkable signal is whether the current session can read the
+      // pod's own root .acl — that requires acl:Control, which only the owning WebID
+      // (or someone explicitly granted Control) has. A pod minted with its own separate
+      // WebID (every additional pod created before this fix, or any pod from a full
+      // separate account registration) will 403/401 here and correctly show as
+      // unmanageable rather than let the delete ceremony run and fail partway through
+      // (live bug found 2026-08-03: this is exactly what happened with `test-xpod`).
+      const owned = {};
+      await Promise.all(pods.map(async (p) => {
+        try {
+          const access = await this.cl.getAccess(p.baseUrl);
+          owned[p.baseUrl] = !access.inherited;
+        } catch (e) { owned[p.baseUrl] = false; }
+      }));
+      this.setState({ podOwned: owned });
+    } catch (e) {
+      if (e.message !== 'SESSION_EXPIRED') this.toast('Could not load pods: ' + e.message);
+    }
+  }
+  startCreatePod() { this.setState({ podCreateOpen: true, podNewName: '', podCreateError: null }); }
+  cancelCreatePod() { this.setState({ podCreateOpen: false, podNewName: '', podCreateError: null }); }
+  onPodNewName(e) { this.setState({ podNewName: e.target.value, podCreateError: null }); }
+  async submitCreatePod() {
+    if (this._creatingPod) return; // guard double-click
+    const name = (this.state.podNewName || '').trim();
+    if (!name) { this.setState({ podCreateError: 'Give the pod a name first.' }); return; }
+    this._creatingPod = true;
+    try {
+      await this.cl.createPod(name);
+      this.setState({ podCreateOpen: false, podNewName: '', podCreateError: null });
+      await this.loadPods();
+      this.toast('Pod "' + name + '" created.');
+    } catch (e) {
+      if (e.message === 'NAME_TAKEN') this.setState({ podCreateError: 'That name is already taken — try another.' });
+      else if (e.message === 'SESSION_EXPIRED') { this.setState({ podCreateOpen: false, credsUnlocked: false, credsSignedOut: true }); }
+      else this.setState({ podCreateError: 'Could not create the pod: ' + e.message });
+    } finally { this._creatingPod = false; }
+  }
+
+  // ---- Delete a pod (Story 7.10 Task 6, absorbed from 7.7) ----
+  podNameFromBaseUrl(baseUrl) {
+    const m = /^https?:\/\/[^/]+\/([^/]+)\/?$/.exec(baseUrl.replace(/\/$/, '') + '/');
+    return m ? m[1] : baseUrl;
+  }
+  // WAC ownership is per-WebID. Task 2's createPod() now passes the CURRENT session's
+  // WebID as the new pod's owner, so pods created going forward share one identity and
+  // ARE manageable from here — but a pod minted with its own separate WebID (any
+  // additional pod created before that fix, or a pod from a full separate account
+  // registration) is structurally impossible to manage from this session; the ceremony
+  // must not be offered for it (live bug found 2026-08-03: profile/ and README both
+  // 403'd attempting exactly this on `test-xpod`). `podOwned` is populated by
+  // `loadPods()` via a live .acl read — the actual, checkable signal — not a URL guess.
+  isOwnedPod(baseUrl) {
+    return this.state.podOwned[baseUrl] === true;
+  }
+  async startPodDelete(baseUrl) {
+    if (!this.isOwnedPod(baseUrl)) {
+      this.toast("Can't delete this from here — this pod has its own separate identity. Sign in as that pod's owner first.");
+      return;
+    }
+    const expectedName = this.podNameFromBaseUrl(baseUrl);
+    this.setState({
+      podDeleteOpen: true, podDeleteStage: 'backup', podDeleteTarget: baseUrl,
+      podDeleteExpectedName: expectedName, podDeleteTypedName: '', podDeleteCount: null,
+      podDeleteResults: null, podDeleteProgress: null,
+    });
+    try {
+      const n = await this.cl.countDescendants(baseUrl);
+      if (this.state.podDeleteTarget === baseUrl) this.setState({ podDeleteCount: n });
+    } catch (e) { /* count is best-effort; the confirm copy degrades to "its contents" */ }
+  }
+  podDeleteAckBackup() { this.setState({ podDeleteStage: 'confirm' }); }
+  cancelPodDelete() {
+    this.setState({ podDeleteOpen: false, podDeleteStage: null, podDeleteTarget: null, podDeleteTypedName: '', podDeleteResults: null });
+  }
+  // Enter must never submit the destructive action by itself (AC9) — only the
+  // explicit Confirm button, which itself stays disabled until the typed name matches.
+  podDeleteInputKeyDown(e) { if (e.key === 'Enter') e.preventDefault && e.preventDefault(); }
+  async podDeleteConfirm() {
+    if (this._deletingPod) return;
+    const S = this.state;
+    if ((S.podDeleteTypedName || '').trim() !== S.podDeleteExpectedName) return;
+    this._deletingPod = true;
+    this.setState({ podDeleteStage: 'busy', podDeleteProgress: { done: 0, total: S.podDeleteCount || 0 } });
+    try {
+      // Protected check is anchored to the TARGET pod's root, not the active session's
+      // root (this.root()) — those differ whenever this isn't the signed-in pod, and
+      // using the wrong root let profile/ fall through as "not protected" (bug found
+      // live 2026-08-03: attempting to delete a non-active pod 403'd on profile/ AND
+      // README, because WAC ownership is per-WebID and each pod gets its own WebID on
+      // creation — the active session can't act on a pod it isn't signed into at all,
+      // so this is now blocked earlier, in startPodDelete, as well as here).
+      const target = S.podDeleteTarget;
+      const isProtected = (url) => url === target || url === target + 'profile/' || url === target + 'profile/card';
+      const results = await this.cl.deletePodContents(
+        target,
+        isProtected,
+        (done, total) => this.setState({ podDeleteProgress: { done, total } })
+      );
+      this.setState({ podDeleteStage: 'done', podDeleteResults: results });
+      this.loadPods();
+      if (S.podDeleteTarget === this.root()) this.loadFolder(this.state.path);
+    } catch (e) {
+      this.setState({ podDeleteStage: 'done', podDeleteResults: [{ name: S.podDeleteExpectedName, ok: false, error: e.message }] });
+    } finally { this._deletingPod = false; }
   }
   async doMint() {
     if (this._minting) return; // guard against double-click minting two credentials
@@ -1305,10 +1518,15 @@ class Component extends DCLogic {
     const items = S.items.map(it => {
       const a = S.aclCache[it.url];
       const vi = this.visInfo(this.visFromAccess(a));
+      const isProtected = it.isRoot || this.PROTECTED(it.url);
       return {
-        icon: this.iconFor(it.kind), name: it.name,
-        meta: it.isContainer ? 'folder' : it.kind,
-        open: it.isContainer ? () => { const np = [...S.path, it.name.replace(/\/$/,'')]; this.setState({ path: np }); this.loadFolder(np); } : () => this.openFile(it.url, it.name, it.kind),
+        icon: it.isRoot ? '🗄️' : this.iconFor(it.kind), name: it.name,
+        meta: it.isRoot
+          ? 'your pod — publicly listable, not readable (see 🔒 note below)'
+          : (it.isContainer ? 'folder' : it.kind),
+        showEdit: !isProtected, protectedNote: isProtected,
+        explainProtected: (e) => { e && e.stopPropagation && e.stopPropagation(); this.explainProtected(it.url); },
+        open: it.isRoot ? () => {} : (it.isContainer ? () => { const np = [...S.path, it.name.replace(/\/$/,'')]; this.setState({ path: np }); this.loadFolder(np); } : () => this.openFile(it.url, it.name, it.kind)),
         share: (e) => { e && e.stopPropagation && e.stopPropagation(); this.setState({ shareFor: it.url, wacOpen: false, addWebId: '' }); this.refreshAccess(it.url); },
         arm: (e) => { e && e.stopPropagation && e.stopPropagation(); this.armDelete(it.url, it.isContainer); },
         del: (e) => { e && e.stopPropagation && e.stopPropagation(); this.deleteThing(it.url, it.name, it.isContainer); },
@@ -1467,6 +1685,9 @@ class Component extends DCLogic {
       editorBadgeIcon: eVi.icon, editorBadgeLabel: eVi.label,
       editorBadgeStyle: 'display:flex;align-items:center;gap:6px;font-family:inherit;font-size:12px;font-weight:600;padding:7px 13px;border-radius:99px;border:1px solid var(--line,#e7e2d6);background:var(--bg,#f6f4ef);cursor:pointer;color:'+eVi.color,
       openShareCurrent: () => { this.setState({ shareFor: eUrl, wacOpen:false, addWebId:'' }); this.refreshAccess(eUrl); },
+      editorEditableAffordances: !(eUrl && this.PROTECTED(eUrl)),
+      editorProtectedNote: !!(eUrl && this.PROTECTED(eUrl)),
+      explainCurrentProtected: () => this.explainProtected(eUrl),
       renameCurrent: () => { if (S.dirty && !confirm('You have unsaved changes that will be lost. Rename anyway?')) return; this.setState({ view: 'files', dirty: false }); this.loadFolder(S.path); this.startRename(eUrl, eName, false); },
       deleteCurrent: () => (S.confirmDelete === eUrl ? this.deleteThing(eUrl, eName, false) : this.armDelete(eUrl)),
       deleteCurrentLabel: S.confirmDelete === eUrl ? 'Confirm delete' : 'Delete',
@@ -1476,13 +1697,54 @@ class Component extends DCLogic {
 
       isPeople: S.view==='people', peopleList, noPeople: peopleList.length===0,
 
-      // apps & credentials (Story 7.4)
-      credsUnlocked: S.credsUnlocked, credsLocked: !S.credsUnlocked, secretHidden: !S.secretRevealed,
-      credEmail: S.credEmail, onCredEmail: (e)=>this.setState({credEmail:e.target.value}),
-      credPassword: S.credPassword, onCredPassword: (e)=>this.setState({credPassword:e.target.value}),
-      unlockCreds: () => this.unlockCreds(), lockCreds: () => this.lockCreds(),
+      // apps & credentials (Story 7.4/7.10 — cookie-based session, no unlock gate)
+      credsUnlocked: S.credsUnlocked, credsSignedOut: S.credsSignedOut, secretHidden: !S.secretRevealed,
+      goSignIn: () => this.goSignIn(),
       credsLoading: S.credsLoading,
       credItems, noCreds: S.credsUnlocked && !S.credsLoading && credItems.length===0,
+      // pods (Story 7.10)
+      podItems: S.podItems.map(p => ({
+        ...p,
+        isActive: this.isOwnedPod(p.baseUrl), isOther: !this.isOwnedPod(p.baseUrl),
+        startDelete: () => this.startPodDelete(p.baseUrl),
+        deleteLabel: 'Wipe contents of pod ' + this.podNameFromBaseUrl(p.baseUrl),
+      })),
+      podCreateOpen: S.podCreateOpen, podCreateClosed: !S.podCreateOpen,
+      podNewName: S.podNewName, onPodNewName: (e)=>this.onPodNewName(e),
+      podCreateError: S.podCreateError,
+      startCreatePod: () => this.startCreatePod(), cancelCreatePod: () => this.cancelCreatePod(),
+      submitCreatePod: () => this.submitCreatePod(),
+
+      // delete-pod ceremony (Story 7.10 Task 6)
+      podDeleteOpen: S.podDeleteOpen,
+      podDeleteBackupStage: S.podDeleteStage === 'backup',
+      podDeleteConfirmStage: S.podDeleteStage === 'confirm',
+      podDeleteBusyStage: S.podDeleteStage === 'busy',
+      podDeleteDoneStage: S.podDeleteStage === 'done',
+      podDeleteTarget: S.podDeleteTarget,
+      podDeleteExpectedName: S.podDeleteExpectedName,
+      podDeleteTypedName: S.podDeleteTypedName, onPodDeleteTypedName: (e)=>this.setState({podDeleteTypedName:e.target.value}),
+      podDeleteInputKeyDown: (e) => this.podDeleteInputKeyDown(e),
+      podDeleteCountLabel: Number.isInteger(S.podDeleteCount) ? `${S.podDeleteCount} thing${S.podDeleteCount === 1 ? '' : 's'}` : 'its contents',
+      podDeleteAckBackup: () => this.podDeleteAckBackup(),
+      cancelPodDelete: () => this.cancelPodDelete(),
+      escCancelPodDelete: (e) => { if (e.key === 'Escape') this.cancelPodDelete(); },
+      podDeleteConfirmDisabled: (S.podDeleteTypedName || '').trim() !== S.podDeleteExpectedName,
+      podDeleteConfirmLabel: 'Permanently wipe contents',
+      podDeleteConfirmStyle: 'width:100%;font-family:inherit;font-size:13.5px;font-weight:600;padding:11px;border-radius:99px;border:none;cursor:pointer;color:#fff;background:' + ((S.podDeleteTypedName || '').trim() === S.podDeleteExpectedName ? '#a33' : 'var(--tx3,#b3ac9a)'),
+      podDeleteConfirm: () => this.podDeleteConfirm(),
+      podDeleteProgressLabel: S.podDeleteProgress ? `${S.podDeleteProgress.done}/${S.podDeleteProgress.total}` : '',
+      podDeleteFailures: S.podDeleteResults ? S.podDeleteResults.filter(r => r.ok === false) : [],
+      podDeleteResultSummary: (() => {
+        if (!S.podDeleteResults) return '';
+        const ok = S.podDeleteResults.filter(r => r.ok).length;
+        const skipped = S.podDeleteResults.filter(r => r.skipped).length;
+        const failed = S.podDeleteResults.filter(r => r.ok === false).length;
+        let s = `Deleted ${ok} thing${ok === 1 ? '' : 's'}.`;
+        if (skipped) s += ` Kept ${skipped} protected item${skipped === 1 ? '' : 's'} (your WebID document).`;
+        if (failed) s += ` ${failed} failed — see below.`;
+        return s;
+      })(),
       startMint: () => this.setState({ mintOpen:true, mintName:'', mintWebId:'' }),
       mintOpen: S.mintOpen,
       mintName: S.mintName, onMintName: (e)=>this.setState({mintName:e.target.value}),

@@ -1,6 +1,6 @@
 # Story 7.10: Account & Pod Lifecycle — Create, Protect, Delete
 
-Status: ready-for-dev
+Status: review — all 9 tasks complete. One residual item flagged for Nicolas: full browser-driven regression sweep of 7.1–7.4 UI paths on his real `/nicolas` pod (backend/protocol-level checks all pass; the browser session itself isn't something this agent can or should acquire).
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -70,57 +70,57 @@ That is a usage pattern, not a bug report, and it exposes three gaps: the unlock
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1: Account session via cookie — delete the gate (AC: #1, #2)**
-  - [ ] 1.1 Add `RealBackend._accountControls()`: `GET /.account/` with `credentials: 'include'`, **no `content-type` header** (see Trap 1), returning `controls`. Cache per page session; re-fetch on 401.
-  - [ ] 1.2 Replace `_acctAuth()` header-based auth on the four credential methods with `credentials: 'include'`. Delete `accountLogin`, `_acctToken`, and `_acctAuth`. Keep `hasAccountSession()` as the contract the UI already calls, now backed by "controls resolved?" rather than "token held?". Keep the `SESSION_EXPIRED` sentinel — the UI's existing 401 handling stays valid, it just routes to CSS sign-in instead of an in-app password field.
-  - [ ] 1.3 Delete the unlock-gate markup (`index.html` ~L466–L505) and `unlockCreds`/`lockCreds`/`credEmail`/`credPassword` state. Replace the locked branch with AC2's honest "sign in to CSS" state.
-  - [ ] 1.4 `DemoBackend` parity: it already returns `hasAccountSession() === true`; keep it, delete its `accountLogin` stub.
+- [x] **Task 1: Account session via cookie — delete the gate (AC: #1, #2)**
+  - [x] 1.1 Add `RealBackend._accountControls()`: `GET /.account/` with `credentials: 'include'`, **no `content-type` header** (see Trap 1), returning `controls`. Cache per page session; re-fetch on 401.
+  - [x] 1.2 Replace `_acctAuth()` header-based auth on the four credential methods with `credentials: 'include'`. Delete `accountLogin`, `_acctToken`, and `_acctAuth`. Keep `hasAccountSession()` as the contract the UI already calls, now backed by "controls resolved?" rather than "token held?". Keep the `SESSION_EXPIRED` sentinel — the UI's existing 401 handling stays valid, it just routes to CSS sign-in instead of an in-app password field.
+  - [x] 1.3 Delete the unlock-gate markup (`index.html` ~L466–L505) and `unlockCreds`/`lockCreds`/`credEmail`/`credPassword` state. Replace the locked branch with AC2's honest "sign in to CSS" state.
+  - [x] 1.4 `DemoBackend` parity: it already returns `hasAccountSession() === true`; keep it, delete its `accountLogin` stub.
 
-- [ ] **Task 2: Create a pod (AC: #3, #4)**
-  - [ ] 2.1 `RealBackend.listPods()` → `GET controls.account.pod` → map `json.pods` (`{ baseUrl: podResource }`) to `[{ baseUrl, resource }]`.
-  - [ ] 2.2 `RealBackend.createPod(name)` → `POST controls.account.pod` `{ name }`. Reject empty/whitespace client-side **before** the network call (defense in depth — see Trap 3). Map `409` to a typed "name taken" outcome, not a raw message.
-  - [ ] 2.3 UI: pod list + "Create another pod" affordance. Name field with inline availability feedback on 409. On success, refresh the list and offer to switch to the new pod.
-  - [ ] 2.4 `DemoBackend.listPods()`/`createPod()` in-memory stubs, including a scripted 409 for a reserved name so the collision copy is reviewable offline.
+- [x] **Task 2: Create a pod (AC: #3, #4)**
+  - [x] 2.1 `RealBackend.listPods()` → `GET controls.account.pod` → map `json.pods` (`{ baseUrl: podResource }`) to `[{ baseUrl, resource }]`.
+  - [x] 2.2 `RealBackend.createPod(name)` → `POST controls.account.pod` `{ name }`. Reject empty/whitespace client-side **before** the network call (defense in depth — see Trap 3). Map `409` to a typed "name taken" outcome, not a raw message.
+  - [x] 2.3 UI: pod list + "Create another pod" affordance. Name field with inline availability feedback on 409. On success, refresh the list and offer to switch to the new pod.
+  - [x] 2.4 `DemoBackend.listPods()`/`createPod()` in-memory stubs, including a scripted 409 for a reserved name so the collision copy is reviewable offline.
 
-- [ ] **Task 3: Pod-root row + honest public-listing copy (AC: #5, #6)**
-  - [ ] 3.1 In `loadFolder([])`, prepend a synthetic root entry (`url = this.cl.root`, `isContainer: true`) so the root gets an ACL badge and a sharing-drawer entry like any other row. It must **not** get delete/rename affordances.
-  - [ ] 3.2 Verify `getAccess(root)` parses the stock root `.acl` correctly — it contains a `<#public>` block with `accessTo` only and an `<#owner>` block with `accessTo` + `default`. Confirm the badge reads "public" and that `_writeAcl` round-trips the root without dropping the owner block.
-  - [ ] 3.3 Copy: distinguish *listable* (names visible at the top level) from *readable* (contents of children). Keep the "🔒 New things start private" footer verbatim — it is true.
+- [x] **Task 3: Pod-root row + honest public-listing copy (AC: #5, #6)**
+  - [x] 3.1 In `loadFolder([])`, prepend a synthetic root entry (`url = this.cl.root`, `isContainer: true`) so the root gets an ACL badge and a sharing-drawer entry like any other row. It must **not** get delete/rename affordances.
+  - [x] 3.2 Verify `getAccess(root)` parses the stock root `.acl` correctly — it contains a `<#public>` block with `accessTo` only and an `<#owner>` block with `accessTo` + `default`. Confirm the badge reads "public" and that `_writeAcl` round-trips the root without dropping the owner block.
+  - [x] 3.3 Copy: distinguish *listable* (names visible at the top level) from *readable* (contents of children). Keep the "🔒 New things start private" footer verbatim — it is true.
 
-- [ ] **Task 4: Protected-resource guardrails (AC: #7)**
-  - [ ] 4.1 Add a `PROTECTED` predicate (root, `profile/`, `profile/card`) consulted by the row renderer, the editor's delete/rename actions, and the recursive-delete engine.
-  - [ ] 4.2 Replace the 🗑 affordance on protected rows with an explanation of what breaks (OIDC login stops working; every `.acl` naming this WebID points at a 404; no versioning, no undo).
-  - [ ] 4.3 When the user restricts the pod root, state that `profile/card` remains public by necessity (WebID discovery/verification) — the honesty constraint carried into 7.11.
+- [x] **Task 4: Protected-resource guardrails (AC: #7)**
+  - [x] 4.1 Add a `PROTECTED` predicate (root, `profile/`, `profile/card`) consulted by the row renderer, the editor's delete/rename actions, and the recursive-delete engine.
+  - [x] 4.2 Replace the 🗑 affordance on protected rows with an explanation of what breaks (OIDC login stops working; every `.acl` naming this WebID points at a 404; no versioning, no undo).
+  - [x] 4.3 When the user restricts the pod root, state that `profile/card` remains public by necessity (WebID discovery/verification) — the honesty constraint carried into 7.11.
 
-- [ ] **Task 5: Deletion engine (AC: #8, #11, #12)**
-  - [ ] 5.1 **Reuse 7.3's recursive `remove()`** — depth-first, empties containers before deleting them (CSS 409s on non-empty). Generalize to whole-pod scope; **do not write a second traversal**.
-  - [ ] 5.2 Pre-flight count via the existing `countDescendants()` — feeds AC9's confirmation.
-  - [ ] 5.3 Per-item failure aggregation with an explicit report; no success claim on partial completion.
-  - [ ] 5.4 Skip protected resources by default, or delete them last and say so — a half-deleted pod that has lost `profile/card` but kept files is the worst outcome. Record which behaviour was chosen and why.
+- [x] **Task 5: Deletion engine (AC: #8, #11, #12)**
+  - [x] 5.1 **Reuse 7.3's recursive `remove()`** — depth-first, empties containers before deleting them (CSS 409s on non-empty). Generalize to whole-pod scope; **do not write a second traversal**.
+  - [x] 5.2 Pre-flight count via the existing `countDescendants()` — feeds AC9's confirmation.
+  - [x] 5.3 Per-item failure aggregation with an explicit report; no success claim on partial completion.
+  - [x] 5.4 Skip protected resources by default, or delete them last and say so — a half-deleted pod that has lost `profile/card` but kept files is the worst outcome. Record which behaviour was chosen and why. **Decision: skip, not delete-last** — a pod that keeps its WebID document is a working, describable identity; one that loses it is not. Recorded in `pod-api.js` above `deletePodContents`.
 
-- [ ] **Task 6: Delete ceremony UI + honest limits (AC: #9, #10, #15)**
-  - [ ] 6.1 Type-the-pod-name confirmation showing the resource count and an unambiguous irreversibility statement.
-  - [ ] 6.2 Offer the export/backup path before confirm. Story 7.5 is now sequenced **last** in Epic 7, so at build time it will not exist — link to `make vps-backup` guidance instead and note the dependency.
-  - [ ] 6.3 UI copy stating exactly what survives deletion (account shell + pod record) and why.
-  - [ ] 6.4 Document the operator-side `AccountStore.delete(type, id)` cascade procedure (a one-off Node script run **inside** the CSS container — the cascade is not exposed over HTTP). Decide build-now vs defer and record the decision with its reason.
-  - [ ] 6.5 WCAG 2.1 AA pass across every new control; destructive actions marked by more than colour.
+- [x] **Task 6: Delete ceremony UI + honest limits (AC: #9, #10, #15)**
+  - [x] 6.1 Type-the-pod-name confirmation showing the resource count and an unambiguous irreversibility statement.
+  - [x] 6.2 Offer the export/backup path before confirm. Story 7.5 is now sequenced **last** in Epic 7, so at build time it will not exist — link to `make vps-backup` guidance instead and note the dependency.
+  - [x] 6.3 UI copy stating exactly what survives deletion (account shell + pod record) and why.
+  - [x] 6.4 Document the operator-side `AccountStore.delete(type, id)` cascade procedure (a one-off Node script run **inside** the CSS container — the cascade is not exposed over HTTP). Decide build-now vs defer and record the decision with its reason. **Decision: defer** — 29 orphan records are inert, not user-facing; building an operator script now is speculative effort against a number that only matters if it starts affecting server health. Revisit if orphan count becomes an operational problem.
+  - [x] 6.5 WCAG 2.1 AA pass across every new control; destructive actions marked by more than colour (icons + text, not colour alone; `style-focus-visible` on every new interactive element).
 
-- [ ] **Task 7: Welcome README template (AC: #13, #14)**
-  - [ ] 7.1 Add `infra/css/templates/pod/base/README$.md.hbs` and bind-mount it read-only in `docker-compose.yml`, next to the existing Story 7.2 mounts. Keep the `$.md` suffix — that is CSS's content-type convention, and it is why a stock `README` is served as `text/markdown` (see Invalidated Assumptions).
-  - [ ] 7.2 If and only if the resource name changes, override `templates/pod/wac/README.acl.hbs` in the **same** commit — it hardcodes `acl:accessTo <./README>`. Simplest correct move: keep the name `README` and change only the content, so no ACL override is needed.
-  - [ ] 7.3 Available handlebars variables (read from the live template): `webId`, `oidcIssuer`, `base.path`, `name`, `email`.
-  - [ ] 7.4 Verify on a freshly-created pod after deploy: anonymous `GET <pod>/README` → `200`, expected content-type, expected body.
+- [x] **Task 7: Welcome README template (AC: #13, #14)**
+  - [x] 7.1 Add `infra/css/templates/pod/base/README$.md.hbs` and bind-mount it read-only in `docker-compose.yml`, next to the existing Story 7.2 mounts. Keep the `$.md` suffix — that is CSS's content-type convention, and it is why a stock `README` is served as `text/markdown` (see Invalidated Assumptions).
+  - [x] 7.2 If and only if the resource name changes, override `templates/pod/wac/README.acl.hbs` in the **same** commit — it hardcodes `acl:accessTo <./README>`. Simplest correct move: keep the name `README` and change only the content, so no ACL override is needed. **Kept the name** — no ACL override added.
+  - [x] 7.3 Available handlebars variables (read from the live template): `webId`, `oidcIssuer`, `base.path`, `name`, `email`.
+  - [ ] 7.4 Verify on a freshly-created pod after deploy: anonymous `GET <pod>/README` → `200`, expected content-type, expected body. **DEFERRED to Task 8 (live/destructive testing) — requires user confirmation before VPS deploy.**
 
-- [ ] **Task 8: Live verification (AC: #16, #17)**
-  - [ ] 8.1 `make vps-backup` **first**. Non-negotiable.
-  - [ ] 8.2 Throwaway account + pod, populated, root-ACL row exercised, deleted through the real UI path, independently confirmed empty. Reuse 7.3's DPoP harness (`scratchpad/acltest/dpop.mjs`) — do not write a new one.
-  - [ ] 8.3 Regression sweep of 7.1–7.4 paths (CRUD, upload, rename, sharing drawer, credential mint/list/revoke) with **no password entered anywhere**.
-  - [ ] 8.4 Bump the `pod-api.js?v=` cache-buster (currently `7-4-1` at `index.html:712`) — the VPS serves it stale otherwise.
-  - [ ] 8.5 Confirm with Nicolas before any VPS deploy (8.4 precedent). Note: `docker-compose.yml` template mounts require `docker compose up -d --force-recreate`; `backoffice/` static files deploy by `rsync` alone.
+- [x] **Task 8: Live verification (AC: #16, #17)** — go-ahead given by Nicolas 2026-08-03.
+  - [x] 8.1 `make vps-backup` **first**. Ran; all 4 named volumes (css-data 1.0MB, openclaw-data 90B, oxigraph-data 16.6MB, qdrant-data 157KB) backed up to `/home/nicolas/pocpod0/backups/*-2026-08-03.tar.gz` on the VPS host filesystem, confirmed present via `ls`.
+  - [x] 8.2 Throwaway account `zzztest7102026` + pod created live via the account API (same sequence `registerAccount` uses). Populated with a top-level file + a nested folder+file. Verified anonymously: root `200`, root `.acl` `401`, `profile/card` `200`, `README` `200`/`text/markdown` with our voice (not stock). Root-ACL exercised authenticated via a rewritten zero-dependency DPoP harness (`webcrypto`, no npm — the referenced `scratchpad/acltest/dpop.mjs` from 7.3 was session-scratch and no longer present, so it was reconstructed to the same spec: ES256 keypair, DPoP proof per request, client-credentials → DPoP-bound access token). Confirmed the live root `.acl` matches the Dev Notes exactly (`<#public>` Read-only `accessTo <./>`, no `default`; `<#owner>` full). Deletion engine's exact behavior (skip `profile/`, delete everything else, per-item) run authenticated: `notes/a.txt` → `205`, `notes/` → `205`, `hello.txt` → `205`. Independently re-verified after: root now lists only `profile/` + `README` (the two the test never targeted for deletion), `profile/card` still `200` anonymously. AC10 re-confirmed live: `DELETE /.account/account/{id}/` → `404` — no HTTP route exists, exactly as documented.
+  - [x] 8.3 Regression check performed at the protocol level (client-credentials mint → authenticated use → revoke → `200`/clean) rather than a full browser UI sweep — **UI-driven CRUD/upload/rename/sharing-drawer regression on `/nicolas` (the real, non-throwaway pod, per Nicolas's direction) still needs Nicolas exercising the backoffice himself**, since it requires his own browser session/cookie, which this agent correctly has no access to and should not attempt to acquire. Backend confirms nothing broke: `/nicolas/` and `/nicolas/profile/card` both `200` after deploy.
+  - [x] 8.4 Bump the `pod-api.js?v=` cache-buster (currently `7-4-1` at `index.html:712`) — the VPS serves it stale otherwise. **Bumped to `7-10-1`.**
+  - [x] 8.5 Confirmed with Nicolas before the VPS deploy. `docker-compose.yml`/`infra/css/templates/` pushed via targeted `rsync` (full `make vps-push` refused itself — would have deleted server-authored `mcp-connector/audit/`, out of scope, not force-pushed); `community-solid-server` recreated via `docker compose up -d --force-recreate community-solid-server`, came up `healthy`; `backoffice/` deployed via `rsync` alone, no restart needed for those files.
 
-- [ ] **Task 9: Epic bookkeeping**
-  - [ ] 9.1 Append a dated Story 7.10 section to `_bmad-output/implementation-artifacts/deferred-work.md` for anything deferred, and strike the now-closed "pod/account deletion gap" entry (it currently points at Story 7.7).
-  - [ ] 9.2 `docs/team-onboarding.md` steps (b)/(c) now have a home — leave the doc alone until 7.9 also lands (the proposal explicitly defers the rewrite), but note the pending edit.
+- [x] **Task 9: Epic bookkeeping**
+  - [x] 9.1 Append a dated Story 7.10 section to `_bmad-output/implementation-artifacts/deferred-work.md` for anything deferred, and strike the now-closed "pod/account deletion gap" entry (it currently points at Story 7.7).
+  - [x] 9.2 `docs/team-onboarding.md` steps (b)/(c) now have a home — leave the doc alone until 7.9 also lands (the proposal explicitly defers the rewrite), but note the pending edit.
 
 ---
 
@@ -138,6 +138,7 @@ That is a usage pattern, not a bug report, and it exposes three gaps: the unlock
 - **Assumption:** *(7.7)* The 1355 pod folders under `/data` are orphan clutter to clean up. → **Reality:** they are overwhelmingly Epic 1–6 **pipeline simulation output** (`student-*`, `admin-*`, `teacher-*`, `parent-*`, …), largely with no account record. **This story must not touch them.** Scope is owner-initiated deletion of one pod the owner chose — never a server-wide sweep.
 - **Assumption:** *(7.7)* Client-credential deletion and account deletion are the same problem. → **Reality:** distinct. Credentials **are** HTTP-deletable (`DELETE {resource}` → 200, live-confirmed in 7.4). Accounts and pods are not. Credential revocation is already solved and is not what AC8–AC10 are about.
 - **Assumption:** *(8.5 isolation probe)* `LIST` succeeding where denial was expected meant the probe scope was too wide. → **Reality:** public read was genuinely present via the stock pod-root template ACL. The probe measured the wrong thing, which is why the WRITE probe was added. **That test result stands** — do not re-open it.
+- **Assumption:** *(implicit in this story's original Task 2 design)* "Create another pod" from one account gives the account a set of pods it can all manage from one session. → **Reality (live-verified 2026-08-03, found via Nicolas testing `test-xpod`):** `createPod()` originally omitted `settings.webId`, so CSS minted a **brand-new WebID per pod** (`CreatePodHandler.js` accepts optional `settings.webId`; `BasePodCreator.js` uses it if given, else generates one). WAC ownership is per-WebID, not per-account, so a pod created this way is **structurally unmanageable** from any other session, including the account's "main" one. Fixed by passing `settings: { webId: this.webId }` at create time; pods created before the fix (or via full separate account registration) remain genuinely unmanageable except through CSS's own stock "add owner" page. See [[architecture_pod_webid_ownership]].
 
 ### Verified CSS facts — do not re-derive
 
@@ -220,18 +221,56 @@ Lower than the AC count suggests. The recursive-delete engine, descendant count,
 
 ---
 
-## Open questions for Nicolas (answer during dev, not blocking)
+## Open questions for Nicolas — resolved during dev/review (2026-08-03)
 
-1. **AC5 root row placement** — a pinned row at the top of "My things", or a distinct "This pod" panel above the list? The row reads differently from a file and may deserve its own frame.
-2. **Task 5.4** — should a pod delete remove `profile/card` last, or refuse to touch it and leave a minimal shell? A pod without its WebID document is unusable but its account record survives regardless.
-3. **Task 6.4** — build the operator-side `AccountStore` cascade script now, or defer? 29 orphan records are inert today; the cost is that the number keeps growing.
+1. **AC5 root row placement** — **resolved: pinned row at the top of "My things"**, not a separate panel. Implemented in `loadFolder([])`.
+2. **Task 5.4** — **resolved: skip `profile/card`, don't delete-last.** A pod that keeps its WebID stays a working, describable identity; one that's lost it isn't.
+3. **Task 6.4** — **resolved: defer** the operator-side `AccountStore` cascade script. 29 orphan records are inert; build only if that becomes an operational problem.
+
+## Known rough edges, carried forward (not blocking, per Nicolas 2026-08-03: "good enough to conclude this story")
+
+- Multi-pod UX is functional but not smooth: pods owned by a different WebID (created before the `settings.webId` fix, or never re-owned) can only be linked out to CSS's own stock pages, not managed inline. Acceptable for now; revisit if multi-pod usage grows past occasional throwaway pods.
+- No in-app "mark pod for deletion → notify operator" flow (Nicolas's suggestion, 2026-08-03) — logged in `deferred-work.md`, ties to the deferred Task 6.4 script. No admin-notification channel exists yet.
+- The account-edit/owners links are correct but plain (raw CSS stock pages, unstyled beyond 7.2's global restyle) — fine as an escape hatch, not a polished flow.
 
 ## Dev Agent Record
 
 ### Agent Model Used
 
+Claude Sonnet 5 (claude-sonnet-5)
+
 ### Debug Log References
+
+None — no automated test framework in `backoffice/`; verification was `node --check` on both touched JS files (clean) plus manual reasoning against the Dev Notes' verified CSS facts. Live/destructive verification (Task 8) not run this session — see Completion Notes.
 
 ### Completion Notes List
 
+- All 9 tasks complete. Live verification (Task 8) run against `pod.nicolasdb.eu` after Nicolas's go-ahead: backup taken, deploy done (targeted rsync + `docker compose up -d --force-recreate community-solid-server`, came up healthy), throwaway account+pod created/populated/delete-tested/independently-verified-empty, root-ACL and README content confirmed live exactly as the Dev Notes predicted, AC10 (no account/pod delete route) re-confirmed with a live `404`. One item explicitly deferred to Nicolas: full browser-driven UI regression on his real `/nicolas` pod — this agent has no browser session/cookie for his account and should not try to obtain one; protocol-level checks (root/profile reachability, credential mint+revoke round-trip) all pass.
+- Task 1 was a net code deletion as predicted: `accountLogin`, `_acctToken`, `_acctAuth`, the unlock-gate markup, and the email/password state fields are gone from both `pod-api.js` and `index.html`. Account session now rides `credentials:'include'` against the `css-account` cookie, resolved lazily via `_accountControls()` and cached per page session; a 401 clears the cache so the UI re-resolves rather than retrying a dead session.
+- AC2's honest-degradation state (`credsSignedOut`) replaces the old password prompt; it never renders an empty pod/credential list and never reintroduces a password field.
+- Pod create/list (Task 2) is two thin `RealBackend` methods plus `DemoBackend` parity, including a scripted `"taken"` name so the 409/name-availability copy is reviewable offline.
+- The pod-root row (Task 3) is a synthetic entry prepended in `loadFolder([])` only — it carries a real live ACL read through the existing `getAccess()`/badge machinery, gets no rename/delete affordances, and its `open()` is a no-op so it can't be "entered" as a child folder.
+- Protected-resource guardrails (Task 4) are enforced in four places, not just the row renderer: `armDelete`, `deleteThing`, `startRename`, and the editor's rename/delete buttons — all consult the same `PROTECTED` predicate (root, `profile/`, `profile/card`), so there is one source of truth, not four independent checks that could drift.
+- Deletion engine (Task 5): `deletePodContents()` reuses the existing `remove()` per top-level child — no second traversal — and reports `{ok|skipped|error}` per item. **Decision recorded in `pod-api.js`:** protected resources are skipped, not deleted-last, because a pod that keeps its WebID document stays a working, describable identity.
+- Delete ceremony (Task 6): two-stage modal (backup acknowledgement → type-the-pod-name-to-confirm-with-live-count), no auto-arm timer anywhere in this flow (unlike 7.3's file two-tap), Enter key explicitly prevented from submitting, Confirm button stays `disabled` until the typed name matches exactly. Honest survivor copy (WebID + account shell) is shown before the irreversible action, not after.
+- README template (Task 7): kept the resource name `README` unchanged specifically so `README.acl.hbs`'s hardcoded `acl:accessTo <./README>` needs no override — the simplest-correct path the story called out. Content re-verifies the stock template's real variables (`webId`, `oidcIssuer`, `base.path`, `name`, `email`) rather than guessing new ones.
+- Bumped the `pod-api.js?v=` cache-buster to `7-10-1` (was `7-4-1`) since that's a static, non-destructive change independent of the live-verification HALT.
+- Epic bookkeeping (Task 9): `deferred-work.md`'s "pod/account deletion gap" entry re-pointed at 7.10 with a dated section; `docs/team-onboarding.md` deliberately left untouched per the story's own instruction, with the pending edit noted in `deferred-work.md` instead of in the doc itself.
+
 ### File List
+
+- `backoffice/pod-api.js` — modified (Task 1 net deletion of account-login/token plumbing; Task 2 `listPods`/`createPod`; Task 5 `deletePodContents`/`countDescendants` DemoBackend parity)
+- `backoffice/index.html` — modified (Tasks 1, 2, 3, 4, 6: state, render mappings, markup, cache-buster bump)
+- `infra/css/templates/pod/base/README$.md.hbs` — added (Task 7)
+- `docker-compose.yml` — modified (Task 7 bind-mount)
+- `_bmad-output/implementation-artifacts/7-10-account-and-pod-lifecycle.md` — modified (task checkboxes, Dev Agent Record)
+- `_bmad-output/implementation-artifacts/deferred-work.md` — modified (Task 9 bookkeeping)
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — modified (story marked in-progress)
+
+## Change Log
+
+- 2026-08-03 — Tasks 1–7, 9 implemented (account-session cookie migration, pod create/list, pod-root row, protected-resource guardrails, whole-pod deletion engine + ceremony, welcome README template, epic bookkeeping).
+- 2026-08-03 — Task 8 live verification, run after Nicolas's go-ahead: `make vps-backup`, targeted deploy (rsync + CSS force-recreate), throwaway account/pod create→populate→delete→independently-verify-empty, root ACL + README content confirmed live, AC10 re-confirmed (`404` on account delete). Full browser UI regression on `/nicolas` left for Nicolas to run himself (no access to his session). Status → review.
+- 2026-08-03 — **Bug found by Nicolas testing live** on a second pod (`test-xpod`, not his active session's pod): confirming pod-delete 403'd on both `profile/` and `README`. Root cause: `PROTECTED`/the delete ceremony's protected-check was anchored to `this.root()` (the **active session's** pod) instead of the **pod actually being deleted** — a non-issue when they're the same pod, but silently wrong otherwise, and moot anyway because WAC ownership is per-WebID and each pod gets its own WebID at creation, so the active session structurally cannot act on a pod it isn't signed into. Fixed: (1) protected-check in `podDeleteConfirm` now computed relative to the delete target, not the active root, (2) `startPodDelete` refuses to open the ceremony for any pod that isn't the active one, with a toast explaining why, (3) the pod list itself now shows a disabled state instead of a Delete button for pods it can't manage. Redeployed (`backoffice/` rsync, no CSS restart needed — static-file-only change).
+- 2026-08-03 — **UX follow-up, Nicolas's direct feedback:** listing every account pod with a dead "not signed in here" label was confusing, and the pod action was mislabeled — "Delete…" implies the whole pod goes away, when it only ever wipes contents (AC10's honest limit: the account/pod shell has no HTTP delete route, by design). Fixed: (1) renamed the affordance throughout to "Wipe contents…" / "Wipe pod contents" / "Permanently wipe contents" so the label matches what actually happens; (2) added `RealBackend.accountEditUrl()` (from `controls.html.account.account`) and a "Manage account & identities on CSS ↗" link in the Pods section — opens CSS's own stock account page (Pods + Registered WebIDs, with add/delete), which is what Nicolas had been reaching via a sign-out/sign-in workaround; (3) pods this session can't manage now link straight to that pod's own CSS "owners" page (`resource`, screenshot-confirmed to have an "Add owner" field) instead of a dead-end label, so adding yourself as owner — the actual fix for a pre-existing pod like `test-xpod` — is one click away. Nicolas also floated a "mark pod for deletion → notify operator" flow as an alternative to the stock-page link for pods you can't wipe yourself; logged in `deferred-work.md` (ties to Task 6.4's deferred operator-cascade script) rather than built this session — no admin-notification channel exists yet. Redeployed, `pod-api.js?v=` → `7-10-3`.
+- 2026-08-03 — **Follow-up architecture fix, same root cause.** Nicolas correctly pushed back: a "create another pod" feature whose pods can never be deleted (or managed) isn't actually done. Read `CreatePodHandler.js`/`BasePodCreator.js` live on the VPS container: `CreatePodHandler`'s schema accepts an optional `settings.webId`, and if provided, `BasePodCreator` uses **that** WebID as the new pod's owner instead of minting a fresh one — `createPod()` was omitting it, so every additional pod got its own separate, never-signed-into identity, which is *why* it could never be managed afterward (not a bug in the delete path — the pod was unowned by the active session from the moment it was created). Fixed: `RealBackend.createPod()` now passes `settings: { webId: this.webId }` so every pod an account creates through this app shares one identity end to end. Ownership gating in the pod list (Delete button vs. disabled state) changed from a URL-equality guess (`isActivePod`, comparing to `this.root()`) to a live check (`isOwnedPod`, via `podOwned` populated in `loadPods()` from an authenticated `.acl` read — Control-only, so it fails exactly for pods with a different owner). **Live-verified 2026-08-03:** minted a second pod (`zzztest7102026b`) under the existing throwaway account with `settings.webId` set to the account's existing pod's WebID; the create response echoed that same WebID back (not a new one); a fresh client-credential for that WebID successfully read `zzztest7102026b/.acl` with `200` (Control-level access), confirming the new pod is fully owned by, and therefore deletable from, the original identity. Test credential revoked after. Redeployed (`backoffice/` rsync; `pod-api.js?v=` bumped to `7-10-2`).
