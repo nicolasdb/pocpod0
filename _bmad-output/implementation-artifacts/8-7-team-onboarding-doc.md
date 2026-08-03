@@ -85,34 +85,34 @@ Walked as a concrete multi-layer scenario (student → course → school → reg
 
 10. **The uniqueness guard is exercised for real, not asserted.** With two identities configured, confirm the boot-time refusal of a duplicate `webId` across slugs still fires (8.5 Task 6.1 was unit-checked at N=1; this is the first configuration where it protects something real).
 
-11. **No regression at N=2**: `scripts/verify-http.js` passes against the live public URL, `/healthz` reports **2** identities healthy, the audit journal attributes actions to the correct label per person, and greps clean of every slug and secret term. Rate-limiting and unknown-slug 404 behaviour unchanged.
+11. **No regression at N=2**: `scripts/verify-http.js` passes against the live public URL; `/healthz` still returns its aggregate-only `{"ok":true}` (per 8.6.1 AC7 — it must never leak a count, WebID, or per-identity breakdown, so do NOT check for a "2" anywhere in its response) while boot logs / journal confirm 2 identities are actually configured; the audit journal attributes actions to the correct label per person; greps clean of every slug and secret term. Rate-limiting and unknown-slug 404 behaviour unchanged.
 
 12. **Epic 8 convention**: dated "Story 8.7" section **appended** to `epic-8-action-log.md` using `solid_append_resource` (verified by byte-length growth), and a Story 8.7 proof-table section added to `epic-8-progress-report.md`.
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Write the conceptual frame (AC: 1, 2, 3)**
-  - [ ] 1.1 Lead with the invariant in plain language. Not "single-writer semantics" — something a teacher or a parent reads once and retains.
-  - [ ] 1.2 Name the three identity classes, one line each. Scope the walkthrough to personal explicitly, so nobody wonders where the collective steps went.
-  - [ ] 1.3 Answer the shared-login question head-on. Give the concrete failure (skeleton key, no attribution, rotate-on-departure), then the alternative.
-  - [ ] 1.4 One paragraph on collectives: a school/team/family account, Control held by a role, roles as grant bundles. Enough that the model is legible; not a setup guide.
-  - [ ] 1.5 One paragraph on the ownership boundary for aggregates — why a collective can answer a region without exposing anyone (PRD Journey 4, amended).
-  - [ ] 1.6 Keep it under 400 words. If it needs more, the frame is wrong, not the budget.
+- [x] **Task 1 — Write the conceptual frame (AC: 1, 2, 3)**
+  - [x] 1.1 Lead with the invariant in plain language. Not "single-writer semantics" — something a teacher or a parent reads once and retains.
+  - [x] 1.2 Name the three identity classes, one line each. Scope the walkthrough to personal explicitly, so nobody wonders where the collective steps went.
+  - [x] 1.3 Answer the shared-login question head-on. Give the concrete failure (skeleton key, no attribution, rotate-on-departure), then the alternative.
+  - [x] 1.4 One paragraph on collectives: a school/team/family account, Control held by a role, roles as grant bundles. Enough that the model is legible; not a setup guide.
+  - [x] 1.5 One paragraph on the ownership boundary for aggregates — why a collective can answer a region without exposing anyone (PRD Journey 4, amended).
+  - [x] 1.6 Keep it under 400 words. If it needs more, the frame is wrong, not the budget.
 
-- [ ] **Task 2 — Write the walkthrough (AC: 4, 5)**
-  - [ ] 2.1 Steps (a)–(g) as literal, followable instructions with real URLs — no placeholders a reader has to resolve.
-  - [ ] 2.2 Make the **OWNER boundary explicit at the moment it matters**: you mint your own credentials, you grant your own access, your OWNER credential never leaves your machine and the operator never sees it. This is 8.5's corrected-scope lesson stated to a human.
-  - [ ] 2.3 Be honest about the operator-in-the-middle step (e): what you hand over, what you do not, that it takes effect on your next request with no restart (8.6.1), and that Story 7.9 will make this a button.
-  - [ ] 2.4 State the pod root URL prominently and tell the reader to give it to Claude on first use.
-  - [ ] 2.5 Say plainly that the slug is a credential — treat the connector URL like a password.
-  - [ ] 2.6 Suggest which containers to grant first, and why starting narrow is the right default.
-  - [ ] 2.7 Add the hand-create-the-container step before the `access-log/` grant — CSS 404s a grant against a non-existent container, and this bit the author during 8.6.
-  - [ ] 2.8 Word the `access-log/` grant step as **RW**, not Append-only, and say why (backoffice gap, closes with 7.6/7.8) — do not let the walkthrough imply a guarantee the current UI can't produce.
+- [x] **Task 2 — Write the walkthrough (AC: 4, 5)**
+  - [x] 2.1 Steps (a)–(g) as literal, followable instructions with real URLs — no placeholders a reader has to resolve.
+  - [x] 2.2 Make the **OWNER boundary explicit at the moment it matters**: you mint your own credentials, you grant your own access, your OWNER credential never leaves your machine and the operator never sees it. This is 8.5's corrected-scope lesson stated to a human.
+  - [x] 2.3 Be honest about the operator-in-the-middle step (e): what you hand over, what you do not, that it takes effect on your next request with no restart (8.6.1), and that Story 7.9 will make this a button.
+  - [x] 2.4 State the pod root URL prominently and tell the reader to give it to Claude on first use.
+  - [x] 2.5 Say plainly that the slug is a credential — treat the connector URL like a password.
+  - [x] 2.6 Suggest which folders to grant first, and why starting narrow is the right default.
+  - [x] 2.7 Add the hand-create-the-folder step before the `access-log/` grant — CSS 404s a grant against a non-existent folder, and this bit the author during 8.6. Generalized to every folder being granted, not just `access-log/` (review catch during drafting).
+  - [x] 2.8 Word the `access-log/` grant step as **RW**, not Append-only, and say why (backoffice gap, closes with 7.6/7.8) — do not let the walkthrough imply a guarantee the current UI can't produce.
 
-- [ ] **Task 3 — Day-to-day usage + honest limits (AC: 6, 7)**
-  - [ ] 3.1 Concrete first actions: capture a note, find it in a later conversation, extend it. Point at 8.6's capture skill rather than restating it.
-  - [ ] 3.2 Write the limits section: hints-not-guarantees (with 8.5's actual result), receipts-are-voluntary, no-versioning, slug-is-a-credential, RW-not-Append-only-yet.
-  - [ ] 3.3 Frame limits as *how to work with the system*, not as disclaimers — a person who knows append is the safe path behaves differently from one who has been warned about overwrites.
+- [x] **Task 3 — Day-to-day usage + honest limits (AC: 6, 7)**
+  - [x] 3.1 Concrete first actions: capture a note, find it in a later conversation, extend it. Point at 8.6's capture skill rather than restating it.
+  - [x] 3.2 Write the limits section: hints-not-guarantees (with 8.5's actual result), receipts-are-voluntary, no-versioning, slug-is-a-credential, RW-not-Append-only-yet.
+  - [x] 3.3 Frame limits as *how to work with the system*, not as disclaimers — a person who knows append is the safe path behaves differently from one who has been warned about overwrites.
 
 - [ ] **Task 4 — Onboard the second person for real (AC: 8, 9)**
   - [ ] 4.1 Pick the person and confirm with Nicolas before creating anything. **This creates a real CSS account** — Epic 7 already accumulated orphan accounts and there is still no HTTP delete path for accounts or pods.
@@ -124,7 +124,7 @@ Walked as a concrete multi-layer scenario (student → course → school → reg
 
 - [ ] **Task 5 — N=2 verification (AC: 10, 11)**
   - [ ] 5.1 Exercise the duplicate-`webId` guard against the real two-identity config; confirm the boot refusal fires and its message is actionable.
-  - [ ] 5.2 `verify-http.js` against the live public URL; `/healthz` reports 2 identities healthy.
+  - [ ] 5.2 `verify-http.js` against the live public URL; `/healthz` still `{"ok":true}` aggregate-only (no count leak, per 8.6.1 AC7); confirm 2 identities configured via boot logs/journal instead.
   - [ ] 5.3 Journal attributes actions to the correct label per person — the first configuration where mis-attribution is even possible.
   - [ ] 5.4 Grep the journal for both slugs and every secret term → 0 hits.
   - [ ] 5.5 Confirm unknown-slug 404 and rate-limiting unchanged (both were built to be indistinguishable per-slug; N=2 is the first chance to check they still are).
@@ -209,11 +209,20 @@ Primary artifact is documentation, most likely under `docs/` following 8.4's Div
 
 ### Agent Model Used
 
+Claude Sonnet 5
+
 ### Debug Log References
 
 ### Completion Notes List
 
+- Task 1-3 drafted as `docs/team-onboarding.md`. Verified backoffice/credential-minting UI is served from `pod.nicolasdb.eu` root (not a separate hostname — `infra/css/config.json` StaticAssetHandler override, Story 7.1), so steps (a)/(d) share one real URL, no placeholder.
+- "The model" section: 283 words, under the 400-word budget (AC1/1.6).
+- User review caught two gaps in the draft, both fixed before proceeding: (1) the container/folder-must-exist-before-grant trap (2.7) was only worded for `access-log/`, generalized to any folder including the notes folder; (2) "container" is Solid/LDP jargon that reads as Docker jargon to this audience — replaced with "folder" throughout the user-facing prose (code paths/tech references unaffected).
+- Task 4 (onboard a real second person) is a genuine blocker on this agent's own execution: it requires a live human walking the page with Nicolas present-but-silent, which cannot be simulated or asserted. Tasks 5 and 6 depend on Task 4's live identity. Halting here per workflow step 5's HALT conditions rather than fabricating a session.
+
 ### File List
+
+- `docs/team-onboarding.md` (new)
 
 ## Change Log
 
