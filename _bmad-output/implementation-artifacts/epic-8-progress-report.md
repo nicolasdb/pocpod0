@@ -207,3 +207,68 @@ Code built and `node --check`-verified in this session, then deployed live to th
 - 8.7 Team onboarding doc — ready-for-dev
 - 7.6/7.8 Backoffice grant-scope UI (Append-only, inherit-reset) — flagged by 8.6, not yet drafted as scoped subtasks
 - 7.7 Delete pod with ceremony — drafted, closes the no-HTTP-delete gap noted above
+
+---
+
+## Story 8.9 — Access Journal Tamper-Evidence Spike (2026-08-11)
+
+A timeboxed spike, not a feature: one question, answered with live evidence, then applied.
+
+**Question:** can the agent that writes read-receipts into a pod's `access-log/` also rewrite them — and if so, is Append-only even reachable, given the receipt write path?
+
+### What was already believed, and what was actually true
+
+Story 8.6 recorded the grant as RW and attributed the absence of Append-only to the Epic 7 backoffice offering no such toggle. Both halves needed checking, and one was wrong.
+
+| Belief | Verified outcome |
+|---|---|
+| The `access-log/` grant might cascade Write from pod root | **No cascade.** `access-log/` carries its **own** `.acl`; pod root grants the agent nothing. The RW was an explicit leaf grant. |
+| The journal is rewritable by its own writer | **Confirmed.** `PUT` of the file's own bytes → **205**, file mtime moved. Not a theoretical hole. |
+| Append-only is blocked by the backoffice UI gap | **Wrong.** `wacManager.grantAccess({append:true})` authored a clean Append-only ACL end-to-end. The gap blocks *self-service*, not the capability — which downgrades the 7.6/7.11b deferral from "blocks Append-only" to "makes it a scripted step, not a UI step." |
+| Path A diverges from Epic 5's JSONL convention | **Backwards.** Epic 5's `receipt.py:271` already writes one Turtle resource per receipt. Path A *converges* with it. |
+
+### Evidence
+
+| Check | Where | What it proves |
+|---|---|---|
+| `scripts/probe-access-log-acl.js` | Live, AGENT credential, `hyperscope_ndb/` | AC1/AC2 ground truth: `WAC-Allow: user="append read write"`, `PUT` → 205, `.acl` 403 to the agent (Control required). Governing Turtle read host-side and recorded verbatim in the story file. |
+| `scripts/probe-append-only.js` | Live, scratch container in the agent's **own** pod | 8/8. Path A: `POST` → 201, `PUT`/`GET`/`DELETE` on an existing child denied. Path B: insert-only N3 `PATCH` → 205, `deletes`-bearing PATCH denied. Append-only is real and CSS evaluates it per-mode. |
+| `scripts/verify-receipt-appendonly.js` | Live, real `access-log/`, before **and** after tightening | AC8 to Story 8.6's standard. Before: receipt POST 201, container listing grew, receipt read back and parsed. After: POST still 201, and the agent is **denied** listing, read-back, overwrite and delete of its own receipt — 403 on all four. |
+
+The scratch container lived in the agent's own pod precisely so the agent's **lack** of Control on a data pod (Story 8.1 AC4) was never weakened to make the spike easier.
+
+### Decision — Path A, with its cost stated
+
+POST one resource per receipt; tighten the grant to `acl:Append`.
+
+Chosen because **format is the reversible part and the tamper property is not**. A weekly consolidation job can fold JSON receipts into triples, SQLite, or one rolled-up file later. What no later job can recover is a receipt written while its writer held Write — that entry is untrustworthy forever — or a receipt's link to the grant it was made under, which timestamp correlation can only guess at.
+
+- **Cost:** the journal is many small resources, so reading it means listing a container rather than reading one file.
+- **Side effect, deliberate:** the agent loses **Read** on `access-log/`. It can no longer see other readers' entries — a privacy gain that forecloses any future design needing the agent to read receipts back.
+- **Does not solve:** (1) still a voluntary convention — CSS surfaces no server-side read log, so a reader that writes no receipt leaves no trace; Append-only makes the cooperative path trustworthy without making the record complete. (2) It constrains the **reader**, not the pod owner, who holds Control over their own `access-log/` — inherent to BP-1, and the price of putting evidence where the audited party cannot retract it. (3) A receipt records that a read happened, never what was done with the data afterwards.
+
+### Applied
+
+- `podClient.postResource()` — the write an `acl:Append` grant actually permits. `appendFile` is a read-then-overwrite and cannot be used under such a grant; both now coexist, with the constraint documented at both call sites.
+- `receipt.js` — POSTs one JSON receipt per read, and reserves an `underGrant` field (explicitly `null` today, so "no grant recorded" is distinguishable from "predates the field").
+- Live `access-log/` grant tightened to `acl:Append` only. Previous ACL preserved at `.acl.bak-8-9`; the pre-existing `receipts.jsonl` left in place as history.
+
+### Reframing surfaced during the spike — carried to a change proposal
+
+Nicolas's framing, which the story did not anticipate: **receipts exist to inform a permission decision.** They are the audit half of a consent loop — request → review → grant → audit → revoke — not a standalone log. The interesting UX inversion is that access is *requested with justification* (who, what, why, what if refused) and reviewed, rather than granted preemptively.
+
+`poc:ConsentGrant` already ships exactly that vocabulary (Story 5.5: `requestedBy`, `purpose`, `scope`, `excluded`, `consequenceOfRefusal`, `revokedAt` tombstone, `expiresAt`) — but only in the pipeline. The connector knows nothing of it, and request intake does not exist: the backoffice "Requests" tab is a hardcoded stub, known since 7.2. This reframes Story 7.9, which owns the grant table.
+
+Deliberately **not** built here — it is larger than a spike and larger than a backlog line. A sprint change proposal follows.
+
+### Documentation corrected (AC6, AC7)
+
+`docs/team-onboarding.md` and `mcp-connector/SKILL.md` promised Append-only "once 7.6/7.8 lands"; both stories were deferred post-PoC on 2026-08-11, making that a promise against unscheduled work on the one page whose purpose is honesty. Both now describe shipped behaviour with both limits attached. `epics.md` Story 8.7's honest-boundaries bullet now states the property as **verified**, not assumed.
+
+### Deployed and verified in production
+
+`make vps-deploy` refused on Story 8.4's guard (`deleting mcp-connector/audit/`). Investigated rather than forced: the live journal is in the `mcp-audit` named volume and the host path is an empty leftover, so forcing would have been harmless — but the path was excluded in the Makefile anyway, because a guard that cries wolf on a known-safe path every deploy is one that gets `FORCE`d reflexively, and the next thing it refuses might be `identities.json`.
+
+Post-deploy, a real `tools/call solid_read_resource` on a foreign resource through the deployed endpoint: read OK (1196 chars), receipt `2026-08-11T16-35-31-868Z-aonuvr.json` created in `access-log/` under the Append-only grant, and **no** `read_receipt` error in the connector's own journal — which is how a receipt failure surfaces. AC8 now holds against production, not only against the library.
+
+**Incidental, logged not fixed:** `scripts/verify-http.js` defaults to `http://127.0.0.1:3939/mcp` and its docstring instructs exactly that, but Story 8.4's `ALLOWED_HOSTS` now rejects it (`Invalid Host: 127.0.0.1`). In-container the working URL is `http://mcp-connector:3939/…`. A stale runbook whose failure mode looks like a protocol error.

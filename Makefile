@@ -130,6 +130,7 @@ RSYNC_EXCLUDES = \
 	--exclude="*.bak" \
 	--exclude="mcp-connector/node_modules/" \
 	--exclude="mcp-connector/identities.json" \
+	--exclude="mcp-connector/audit/" \
 	--exclude="backups/"
 
 # `--delete-after` deletes anything present on the VPS but not in this local
@@ -138,6 +139,13 @@ RSYNC_EXCLUDES = \
 # unguarded push deleted a secrets file on the exact pattern hetzner-gateway
 # hit first, see its Makefile). The dry-run refusal is the actual guard;
 # the exclude list is defense in depth, not a substitute for it.
+#
+# mcp-connector/audit/ is VPS-side only and was excluded on 2026-08-11, when
+# the guard refused a Story 8.9 deploy over it. The live journal is in the
+# `mcp-audit` named volume, not this path — the host directory is an empty
+# leftover, so deleting it would have been harmless. Excluded anyway: a guard
+# that cries wolf on a known-safe path every deploy is a guard people learn to
+# FORCE past, and the next thing it refuses might be identities.json.
 vps-push:
 	@dels=$$(rsync -avzn --delete-after $(RSYNC_EXCLUDES) ./ $(VPS_REMOTE):$(VPS_PATH)/ \
 		| grep '^deleting' || true); \

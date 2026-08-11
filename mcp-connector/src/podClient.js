@@ -89,6 +89,56 @@ async function appendFile(url, content, contentType, session) {
   };
 }
 
+/**
+ * Create a NEW resource inside a container, letting the server assign the URL.
+ * Story 8.9: this is the write primitive that an `acl:Append`-only grant
+ * actually permits. `appendFile` above cannot be used under such a grant — it
+ * is a read-then-overwrite, so it needs Read + Write, and Write is exactly what
+ * an append-only journal must withhold from its own writer.
+ *
+ * Verified live 2026-08-11 against CSS 7.x with a container carrying only
+ * `acl:Append` (accessTo + default): POST -> 201, while PUT/GET/DELETE against
+ * an existing child are all denied. That asymmetry is the whole point — the
+ * writer can add entries and cannot alter the ones already there.
+ *
+ * `slug` is a HINT. The server may ignore it or disambiguate a collision, so
+ * the authoritative URL is the returned one, never one the caller composed.
+ *
+ * @param {string} containerUrl must end with '/'
+ * @param {string|Buffer} content
+ * @param {string} contentType
+ * @param {import('@inrupt/solid-client-authn-node').Session} session
+ * @param {{slug?: string}} [options]
+ * @returns {Promise<{url: string, status: number}>}
+ */
+async function postResource(containerUrl, content, contentType, session, options = {}) {
+  if (!containerUrl.endsWith("/")) {
+    throw new Error(`postResource expects a container URL ending in "/", got "${containerUrl}"`);
+  }
+  const headers = { "content-type": contentType };
+  if (options.slug) headers.slug = options.slug;
+
+  const res = await session.fetch(containerUrl, {
+    method: "POST",
+    headers,
+    body: typeof content === "string" ? Buffer.from(content, "utf-8") : content,
+  });
+
+  if (!res.ok) {
+    const err = new Error(`POST ${containerUrl} failed [${res.status}]: ${await res.text().catch(() => "")}`);
+    err.statusCode = res.status;
+    throw err;
+  }
+
+  const location = res.headers.get("location");
+  return {
+    // A 201 without Location would leave the caller unable to name what it
+    // just created; surface that rather than silently returning undefined.
+    url: location ? new URL(location, containerUrl).href : null,
+    status: res.status,
+  };
+}
+
 function _is404(err) {
   const status = err && (err.statusCode || err.status || (err.response && err.response.status));
   if (status) return status === 404;
@@ -145,6 +195,7 @@ module.exports = {
   readFile,
   writeFile,
   appendFile,
+  postResource,
   deleteResource,
   confirmGone,
   createContainer,

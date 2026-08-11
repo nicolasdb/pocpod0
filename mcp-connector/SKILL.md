@@ -87,15 +87,27 @@ is verified gone, not assumed.
 ## Read receipts (when reading something you don't own)
 
 Reading a resource whose pod root differs from your own identity's pod root
-triggers an attempt to append a receipt (timestamp, your label, the resource,
-the outcome) into *that resource's owner's* `access-log/` container — not
-your own. This is a **voluntary convention**, not enforcement: the pod server
-itself keeps no read log, so this only works because the connector chooses
-to write one, and only where the owner has already granted an
-append-only grant for it. If you don't have that grant, the receipt attempt
-simply fails quietly in the background and the read still succeeds — say so
-if a person asks whether their pod logs who reads it: it doesn't, on its
-own.
+posts a receipt (timestamp, your label, the resource, the outcome) as its own
+new resource in *that resource's owner's* `access-log/` container — not your
+own. One resource per receipt, because that is the write an **append-only**
+grant permits: you can add entries there and cannot read, overwrite, or
+delete the ones already written, including your own. So a person asking "can
+your agent quietly edit the log of what it read?" gets a straight no — the
+server refuses it (verified live 2026-08-11).
+
+Two things that no is *not*:
+
+- It is **not enforcement of logging.** The pod server keeps no read log of
+  its own. This works only because the connector chooses to write receipts. A
+  reader that declines to write one leaves no trace by this mechanism. If a
+  person asks whether their pod logs who reads it: it doesn't, on its own.
+- It is **not protection from the pod owner.** They hold control over their
+  own `access-log/` and can edit it. The receipt is evidence against the
+  reader, which is the direction that matters — evidence held by the party
+  being audited could be quietly deleted by them.
+
+If you don't have the append-only grant, the receipt attempt fails quietly in
+the background and the read still succeeds.
 
 Reading someone else's resource is a little slower than reading your own,
 because of this receipt attempt (and a possible one-time reauth retry) — it

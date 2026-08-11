@@ -21,11 +21,12 @@ Everything else you'll hear about — someone else's agent reading your
 same idea: a grant *you* hold on *someone else's* pod, or someone else holds
 on yours. You can see every grant and revoke it. The one exception is an
 **append-only mailbox**: some folders (like `access-log/`) only accept new
-entries — a grant there lets someone add a line, never read, edit, or delete
-what's already in it. That's what makes an access log trustworthy: even the
-account that owns the log can't quietly edit it, once true Append-only
-grants exist (see the limits section — today it's not quite that strong
-yet).
+entries — a grant there lets someone add an entry, never read, edit, or
+delete what's already in it. That's what makes an access log trustworthy:
+the agent writing entries about its own reads cannot go back and remove one.
+This is live as of 2026-08-11, verified against the real server. It has one
+honest edge, spelled out in the limits section: it constrains the *reader*,
+not you — the log lives in your pod and you hold full control over it.
 
 **Why isn't there just one shared agent login for the team?** Because a
 shared secret is a skeleton key: whoever holds it can act as *everyone* it
@@ -94,10 +95,14 @@ grant, not just `access-log/`: create your notes folder (e.g.
 
 **(h) Grant your agent access, by hand, as OWNER.** Start narrow: grant your
 agent read+write on the notes folder you just created, and grant it
-access to `access-log/` — today that grant is **RW, not Append-only** (the
-minting UI doesn't offer the stronger option yet — see limits below). Add
-more grants later as you need them; you can always audit and revoke what
-you've granted.
+**Append-only** on `access-log/` — add-entries-only, so it can record its
+reads and cannot revise that record. Add more grants later as you need them;
+you can always audit and revoke what you've granted.
+
+> **Append-only is not in the minting UI yet.** It is a real grant the server
+> enforces, but today it has to be set for you rather than clicked — ask the
+> operator. Everything else on this page is self-service; this one step is
+> not, and that is a UI gap, not a limitation of what your pod can do.
 
 **State your pod's own root URL to Claude on first use** — something like
 `https://pod.nicolasdb.eu/<your-account-name>/`. Claude cannot guess it and
@@ -125,11 +130,16 @@ for the actual commands.
   data permanently. When in doubt, append.
 - **Your connector URL *is* a credential.** Anyone holding it is you, as far
   as the connector is concerned.
-- **Your `access-log/` grant is RW today, not Append-only.** The minting UI
-  doesn't offer an Append-only option yet, so your agent can technically
-  edit or delete entries in a log that's supposed to be tamper-evident. That
-  gap closes once the stronger grant type ships — until then, RW is the
-  honest description of what you actually have.
+- **Append-only constrains the reader, not you.** Your agent — and anyone
+  else's agent writing receipts into your `access-log/` — can add entries and
+  cannot read, edit, or delete them. You can: it is your pod and you hold
+  full control over every folder in it. So the log is evidence against *them*,
+  not against you. That follows from where the log lives, and the log has to
+  live in your pod — a receipt held by the party being audited could be
+  quietly deleted by them.
+- **A receipt records a read; it doesn't record what was done next.** Once a
+  reader has your file, the receipt says they took it. It cannot say what
+  they did with it afterwards.
 
 Knowing these isn't a reason to distrust the system — it's how to work with
 it correctly: append rather than overwrite, treat your URL as a secret, and
