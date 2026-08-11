@@ -151,11 +151,20 @@ mkdir -p pocpod0/{infra,pipeline,agents,dashboard,scripts,data/{synthetic,schema
 
 ### Authentication & Security
 
-**Decision SEC-1: No User Authentication in PoC**
-- PoC uses synthetic data and simulated agents — no real users
-- Agent identity is configured, not authenticated: each OpenClaw agent has a fixed identity and ACL token
-- CSS ACLs enforced via WebACL resources on pods
-- **Rationale:** Real Solid-OIDC is a pilot-phase concern. PoC validates ACL enforcement, not authentication flow.
+**Decision SEC-1: Authentication — Superseded 2026-08-11**
+
+The original decision ("no user authentication in PoC — synthetic data, simulated agents, Solid-OIDC is a pilot concern") held through Epic 6 and is now false. Epic 7 ships real CSS accounts with real passwords; Epic 8 ships real client-credentials AGENT identities acting on a public internet-facing pod. Superseded rather than deleted: Epics 1–6 were built under it.
+
+**Current model (verified live 2026-08-11, `security-hardening-brief-2026-08-09`):**
+
+- **Humans → CSS:** real Solid-OIDC. Account cookie and `CSS-Account-Token` are the same value (`ResolveLoginHandler.js:35-36`); backoffice is same-origin, so it needs no separate login. CSS 7.1.9 — the `.account/` API, not 6.x `/idp/credentials/`.
+- **Agents → CSS:** per-person client-credentials bound to a personal AGENT WebID, DPoP-bound access tokens. The OWNER credential is never deployed.
+- **MCP clients → connector:** a 22-char base64url capability URL (`/mcp/<slug>`), CSPRNG 16 bytes (`gen-slug.js:14`) = 128 bits, above the W3C TAG 120-bit floor. It is a bearer credential: no expiry, no rotation, no audience binding, no proof-of-possession. Compensating controls are container-scoped WAC grants, server-scope `access_log off`, an IP allowlist, and rate limiting — not the token's own properties.
+- **Authorization:** WAC throughout. Container layout *is* the scoping mechanism (`acl:default` cascade). ACP is available in CSS ≥6.0.0 but unadopted; whether its `AcpReader` actually evaluates `acp:client` matchers is unconfirmed and must be tested before any policy relies on it.
+
+**Structural guarantee (verified, not conventional):** an AGENT WebID holds `acl:Control` only on its own workspace pod, never on data pods. CSS's `OwnerPermissionReader` makes owner Control unremovable — so the guarantee is that the agent was *never* an owner of the pods that matter. Proved live: `grantAccess` on `hyperscope_ndb/` returns 403 (Story 8.1 AC4).
+
+**Not decided here:** credential-at-rest (see SEC-4) and OAuth 2.1 migration (see Epic 8 header — externally blocked for claude.ai).
 
 **Decision SEC-2: ACL Enforcement Strategy**
 - **Pod level:** CSS native WebACL — the ground truth for who can access what
@@ -175,6 +184,35 @@ mkdir -p pocpod0/{infra,pipeline,agents,dashboard,scripts,data/{synthetic,schema
   - Path traversal blocked via `resolve().is_relative_to(templates_dir)`
   - Parameter names capped at 128 characters
 - **Rationale:** FR29 requires injection resistance. Parameterized templates are the simplest defense that's also testable.
+
+**Decision SEC-4: Credential-at-Rest — Risk Accepted for the PoC, with a Trigger** _(added 2026-08-11, resolved 2026-08-11)_
+
+CSS client-credentials secrets are stored in plaintext, on an unencrypted disk. Two independent layers, neither mitigating the other:
+
+- **Application:** `BaseClientCredentialsStore.js` declares its storage schema as `secret: 'string'`. No hash field, no digest, no bcrypt/argon2 import. `create()` generates `randomBytes(64).toString('hex')` and hands it to `storage.create(...)` verbatim. This is the upstream OIDC library convention CSS builds on, so it is CSS's behaviour — not a pocpod0 deployment defect.
+- **Disk:** VPS `sda1` is plain ext4. `cryptsetup status` shows no mapped device — no LUKS.
+
+**Consequence:** host/root access, or a volume snapshot, yields live client-credential secrets directly. No cracking, no cryptographic work.
+
+**Scope — this outlives the current design.** The exposure is not a property of the slug scheme. Any CSS client-credentials token inherits it, including the server-side DPoP-bound token that the OAuth 2.1 target (Epic 8 header) would hold. Migrating to OAuth does not close this; it moves the same plaintext secret behind a better front door.
+
+**Decision: risk accepted for the PoC** _(Nicolas, 2026-08-11)_.
+
+The exposure requires host/root access or a volume snapshot. For the PoC deployment that reduces to a single condition: who can reach the VPS.
+
+- **VPS access is SSH-key only, and Nicolas holds the sole key.** No password authentication, no other key holder, no shared operator account.
+- **The data at risk is Nicolas's own.** No third party's production data is on the host today.
+- **Remediation cost is disproportionate at this stage.** Disk-level LUKS on a running Hetzner root filesystem means a rebuild-and-migrate, not a config change. App-level hash/KDF breaks the upstream library's contract, may require a fork or patch, and its compatibility with CSS's client-credentials flow is an **open unknown** — a spike in its own right.
+
+This is an explicit acceptance, not an oversight. It is recorded here so that the next person to read this document finds a dated decision with a rationale rather than an unexplained gap.
+
+**Trigger that reopens this decision:** the first non-Nicolas person's real data lands on the VPS — i.e. a second team member's pod holds content they would not want a host compromise to expose. At that point the risk calculus changes from "my own data, my own key" to "someone else's data under my custody", and the layer decision (LUKS vs app-side hash) must be made rather than deferred. **Story 8.8 is the pre-pilot gate that owns it**, deliberately not scheduled in the PoC.
+
+**Not decided, and deliberately so:** which layer to fix, when the trigger fires. Both options stay open; the compatibility unknown must be closed first because its cost is the deciding input.
+
+**Rationale for recording it as a decision rather than a defect:** it is a standing property of the deployment that every future credential inherits — including the server-side DPoP token an OAuth 2.1 migration would hold. A deferred-work line would make it invisible to anyone designing the next auth surface.
+
+**Honest boundary:** accepting this risk means the PoC's "the agent cannot self-elevate" guarantee holds against the *network*, not against the host. Anyone who can reach the disk reads live credentials. Say so plainly wherever the system's guarantees are described to a user — see Story 8.7's honest-boundaries section.
 
 ### API & Communication Patterns
 

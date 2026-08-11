@@ -216,6 +216,22 @@ A self-hosted MCP server lets Claude.ai (or any MCP client) read/write pod resou
 **Identity & role model (settled 2026-08-02, see architecture.md BP-6):** only your own AGENT writes your pod; everything else is a grant you hold on someone else's pod. Three identity classes — personal agent (one human, conscious capture), collective service agent (nobody holds it, runs as cron), role-assigned control (`directeur` held by whoever is currently assigned). Roles are named grant bundles applied to personal-agent WebIDs, not identities in themselves — so succession reassigns Control without moving any credential. `identityRegistry.js`'s one-WebID-one-slug guard was validated against this model, not merely assumed. **What scales is grants, not credentials.**
 **Positioning:** this connector is the **first line of conscious input** — a person deliberately externalizing their own thinking into their own pod — as distinct from the ambient/observed input the xAPI pipeline (Epic 2) ingests. Different provenance class, different consent texture.
 
+**Auth posture — amended 2026-08-11** _(source: `security-hardening-brief-2026-08-09.md` §11, §16; live verification 2026-07-30→08-05)_
+
+The slug is not a stopgap. It was adopted believing Anthropic's connector surface blocked OAuth; that diagnosis was half wrong and the correction cuts the other way. Claude's remote connectors *do* support OAuth 2.1 at the product level (DCR, CIMD, PKCE S256, RFC 9728 discovery) — but **those fields are not exposed on this account**, verified absent, and the connector was accepted by claude.ai with no OAuth configuration at all (`8-5-live-verification.md:141,143`; `8-4-vps-deploy-hardening.md:315`).
+
+**Consequence for this epic:** the URL-slug is the load-bearing auth mechanism for the claude.ai path **for an indefinite period**, not a transitional one. Every hardening item around it — non-owner AGENT WebID, container-scoped grants, log suppression, IP allowlist, rate limiting, the access journal — is the **actual security posture**, not interim scaffolding to be thrown away at migration. Budget and review them accordingly.
+
+**The OAuth target splits in two:**
+- **claude.ai path — blocked externally.** No work here closes it. Removed from the roadmap; re-enters only on the trigger below.
+- **Self-hosted path (Hermes, any self-hosted MCP client) — available now.** These clients support OAuth and arbitrary headers independently of claude.ai. Recorded in `post-poc-backlog.md`, not scheduled in the PoC.
+
+**Trigger to re-evaluate:** Anthropic exposes connector OAuth fields on this account → immediately reassess a resource-server migration (RFC 9728 PRM, 401 discovery, audience validation per RFC 8707, CSS DPoP token server-side only, no token passthrough).
+
+**Open, unowned:** does CSS's `AcpReader` actually evaluate `acp:client` matchers? CSS's own `access-token-verifier` lists client-id application as future work. Must be tested on a toy policy before any authorization design depends on it.
+
+**Scope note:** credential-at-rest (architecture.md SEC-4) is *not* solved by the OAuth target — the DPoP token would sit in the same plaintext store. SEC-4 records an explicit PoC **risk acceptance** (2026-08-11: SSH-key-only access, sole key holder, own data); Story 8.8 is the pre-pilot gate that revisits it when someone else's data lands on the host.
+
 _Story list added 2026-08-02 — Epic 8 executed with only this header in epics.md; the entries below are reconciled from `sprint-status.yaml` and the story files, which remain authoritative for detail._
 
 ### Story 8.1: WAC Hardening & Verification
@@ -248,6 +264,37 @@ As the operator, I want a newly-configured person to work without restarting the
 As a teammate told "you should put your notes in a pod", I want a short page explaining what I actually own, walking me from zero to a working connector, and stating honestly what the system does and does not guarantee — so I can start without a call, and without mistaking a convention for an enforcement.
 - Leads with the model (BP-6), walkthrough scoped to **personal** accounts, slug minting documented as manual (Story 7.9 automates it)
 - Central claim: a real second person completes it following **only the page** — every operator intervention is logged as a page defect
+- **Honest-boundaries section must state SEC-4** _(added 2026-08-11, party-mode review)_: credentials are stored in plaintext on an unencrypted disk, so the guarantee is "the agent cannot self-elevate over the network", not "over the host". Say who holds host access (SSH-key only, Nicolas sole key holder) and what would change that. A page that tells a second person what the system does and does not guarantee cannot omit a known exposure — the project's whole claim is that it names its limits before a user finds them.
+- **State the `access-log/` tamper property as verified or as assumed, per Story 8.9's spike result** — never as a bare assertion.
+
+### Story 8.8: Credential-at-Rest Hardening _(ADDED 2026-08-11 — security brief §16; **DEFERRED to pre-pilot gate 2026-08-11**, party-mode review)_
+
+**Status: not scheduled in the PoC. Risk accepted — see architecture.md SEC-4.**
+
+Deferred on a risk-based call, not dropped. The threat requires host/root access or a snapshot; VPS access is SSH-key only with Nicolas as sole key holder, and the only data at risk today is his own. Remediation is disproportionate at this stage — LUKS on a running root filesystem is a rebuild-and-migrate, and the app-side alternative may need an upstream fork whose feasibility is itself unknown. Contribution to the newcomer journey: none.
+
+**Gate — this story is drafted when, and only when:** the first non-Nicolas person's real data lands on the VPS. Custody of someone else's data is what changes the calculus.
+
+As the operator, I want the CSS client-credentials secrets on the VPS to survive a stolen disk image or a snapshot leak, so that "the agent can't self-elevate" stops being undermined by "anyone with the volume reads its credential in plaintext."
+- **The finding, both layers, both verified in source on the live host (2026-08-11):** `BaseClientCredentialsStore.js` declares `secret: 'string'` with no hash/digest field and no KDF import — `create()` hands `randomBytes(64).toString('hex')` straight to `storage.create(...)`. And `sda1` is plain ext4 with no LUKS device mapped (`cryptsetup status`). Neither layer mitigates the other.
+- **Not a pocpod0 defect:** the plaintext store is the upstream OIDC library's convention, inherited by CSS. This story does not "fix a bug we wrote" — it decides what pocpod0 does about a property of its dependency.
+- **Open unknown this story must close first (do not skip to implementation):** is an application-side hash/KDF even compatible with the CSS client-credentials flow as implemented, or does verification require the plaintext secret on hand? If it requires a fork/patch of the upstream library, that cost is the deciding input, not a detail.
+- **Decide and record the layer:** disk-level LUKS (deployment-only, no library contract broken, protects a stolen image but not a live root) vs. application-side hash (protects against live root too, breaks the library contract). Not necessarily either/or. The decision updates **architecture.md SEC-4**, which currently records an explicit PoC risk acceptance — this story replaces that acceptance with a remediation, and is not done while SEC-4 still reads "risk accepted."
+- **Scope is wider than the slug scheme.** Any CSS client-credentials secret inherits this, including the server-side DPoP token an OAuth 2.1 migration would hold. Do not scope this as slug-era cleanup.
+- **Honest boundary:** this protects credentials at rest. It does not protect them from a live compromised host, and the story must say so rather than implying encryption-at-rest means the secrets are safe.
+
+### Story 8.9: Access Journal — Tamper-Evidence Spike _(ADDED 2026-08-11 — security brief §4.4; **SPLIT 2026-08-11**, party-mode review)_
+
+Originally drafted as a full journal-as-control story. Split on a value-per-effort call: the tamper-evidence question is minutes of work and closes a possible real hole, while the detection half is a SIEM for a two-user system and its signal-to-noise at current volume (≈10 entries/week) is unusable. **The spike stays here and runs first. Attribution moved into Story 7.9. Detection, alerting and identity-level rate limiting moved to `post-poc-backlog.md`.**
+
+As a pod owner, I want to know whether the agent that writes to my `access-log/` can also rewrite it — because a journal the audited party can edit is not a journal.
+
+- **What exists (Story 8.6):** `receipt.js` appends JSONL to the *data subject's* `access-log/receipts.jsonl` via `acl:Append`, correctly located per BP-1. That is the honest half.
+- **The one question, and it is a hypothesis not a finding:** is the agent WebID's *effective* grant on `access-log/` genuinely Append-without-Write? Brief §15 verified leaf-container scoping on `shared/`; `access-log/` sits at pod root and was **not** covered by that check.
+- **Shape of the work:** a live probe with the AGENT credential — attempt `PUT`/overwrite on an existing `receipts.jsonl`, expect 403; confirm `PATCH`/append still succeeds. Minutes, not days.
+- **Two outcomes, both cheap.** Append-only holds → record the evidence, close the item, and the honest-limits text in Story 8.7 can state it as verified rather than assumed. Write cascades → fix the grant to Append-only and re-probe. Either way this is a grant correction, not a feature.
+- **Run before Story 7.9.** 7.9 rewrites the grant model; verifying the current one first means 7.9 does not inherit an unexamined assumption.
+- **Honest limit carries forward (BP-1, FR42):** this remains a voluntary convention either way. CSS surfaces no server-side per-resource read log, so a reader that declines to write receipts leaves no trace. The spike makes the cooperative path trustworthy; it does not make it enforcement, and must not be described as if it does.
 
 ### Story 7.1: Backoffice Deploy & Real Account Registration
 As a new user, I can reach the pod backoffice at `https://pod.nicolasdb.eu/` (replacing the CSS default welcome page), create a real CSS account + pod from the onboarding flow, and manage my files and sharing against my live pod.
@@ -288,9 +335,12 @@ As a pod owner, I can download my pod as an archive and understand how portabili
 - Honest portability explainer: no standard pod archive / no CSS export endpoint; cross-provider move breaks `.acl` agent URIs (WebID changes) — needs re-applying permissions
 - Distinct from operator-level `make vps-backup` (whole-server volume tar). Cross-provider import/restore (WebID/ACL rebinding) deferred to a follow-on
 - WCAG 2.1 AA
-- **Sequencing (2026-08-03): runs LAST in Epic 7.** The per-resource access-metadata sidecars depend on Story 7.11's effective-access resolver. Shipping before it would emit `inherited` for most resources — technically true, operationally useless, and permanently baked into an archive users keep.
+- **Sequencing (2026-08-03, amended 2026-08-11): runs LAST in Epic 7.** The per-resource access-metadata sidecars depend on the effective-access resolver, now scoped to **Story 7.11a**. Shipping before it would emit `inherited` for most resources — technically true, operationally useless, and permanently baked into an archive users keep. The 7.11 split moves this story earlier in wall-clock terms without changing its position in the order.
 
-### Story 7.6: My Things — File-Manager Hardening
+### Story 7.6: My Things — File-Manager Hardening _(**DEFERRED to post-PoC — 2026-08-11**, party-mode review)_
+
+**Deferred on its own premise.** The story opens "as a pod owner with a real, growing pod" — nobody in the PoC has one. Bulk multi-select, cross-folder move and transfer progress are for a pod with enough files that single-item operations hurt; a newcomer's first hour never reaches that. The 7.3 CRUD/ACL spine already covers create, upload, read, overwrite, delete, rename. Re-enters when a real pod's file count makes single-item operations the complaint. Recorded in `post-poc-backlog.md`.
+
 As a pod owner with a real, growing pod, file operations are as robust as a dedicated Solid file manager — without losing our ACL UI, inline edit, or reversibility.
 - Cross-folder **move** (generalize 7.3 `rename`: copy bytes+content-type+explicit-ACL, recurse, collision-confirm, copy-verify-delete ordering so a partial move never loses data)
 - **Bulk** multi-select delete/move with count-aware confirm + per-item graceful failure
@@ -313,6 +363,10 @@ As a person onboarding, I click one button in the backoffice and receive my read
 - Show the person's **pod root URL** next to the connector URL — closes the live-verified gap where the agent cannot guess it and has to ask cold (8.5 finding)
 - ~~Blocker: boot-time singletons~~ **RESOLVED by Story 8.6.1** (2026-08-02): lazy login on cache miss means a new identity works on its first request. **Do not build a reload path; do not add a restart step.**
 - Collapses onboarding steps 4–6 of Story 8.7 into a single action
+- **Redraft input, added 2026-08-11** _(security brief §5)_: the grant record this endpoint writes is the same persistence layer a future OAuth grant store needs — so give it that shape now rather than a bare `{webId, slug}` pair. Target: `slug → { credentialRef, webId, containers[], createdAt, expiresAt, lastUsedAt, revoked }`. `lastUsedAt` and `revoked` are what turn Story 8.9's journal into an actionable revocation decision; `expiresAt` is the only mechanism by which a slug ever stops being valid, since the token itself carries no expiry. This is explicitly **not** throwaway work, and the redraft should say why.
+- **Revocation UI is the open question the redraft must answer** (brief, Known unknowns, still open): minting a slug is one button, but killing a leaked one has no surface at all today. Minimum shape — list of live grants (identity, scope, last used, revoke) — mints and revokes being the same screen. A mint button without a revoke path ships the leak with no exit.
+- **Expiry needs a legible failure path, or it is a UX regression** _(added 2026-08-11, party-mode review)_. Today's slug never expires, so this cliff does not exist; `expiresAt` creates it. When a slug lapses, the person's connector stops answering inside claude.ai with an opaque MCP error on a surface we do not own and cannot style. She cannot read it, cannot self-serve, and what she remembers is that the pod thing broke. Required: the grants list shows remaining validity and warns *before* the wall (e.g. "expires in 4 days — renew"), renewal is one action from that same screen, and the onboarding page names the expiry so it is never a surprise. **Do not ship `expiresAt` without this.**
+- **Carry the slug into the receipt entry** _(moved here from Story 8.9, 2026-08-11)_: each journal entry records which slug acted, not only the WebID. One WebID with two live slugs is currently indistinguishable in the journal — and per-slug revocation is undecidable without it. Cheap here because this story already owns the slug↔identity table; expensive anywhere else.
 
 ### Story 7.10: Account & Pod Lifecycle — Create, Protect, Delete _(ADDED 2026-08-03 — absorbs 7.7)_
 As a pod owner, I can create a pod, see and set its top-level permissions, and delete it — all without leaving the backoffice or re-typing my password — so that the lifecycle of the thing I own is managed where I own it.
@@ -324,17 +378,23 @@ As a pod owner, I can create a pod, see and set its top-level permissions, and d
 - **Welcoming README template.** Override CSS's stock `README` (no extension, reads as `text`, says nothing) with a `README.md` that explains ownership, what is public by default, and where the identity document lives. **Lockstep requirement:** `README.acl.hbs` hardcodes `acl:accessTo <./README>` — rename without overriding it in the same change and the welcome file loses its public ACL. Same bind-mount mechanism as Story 7.2.
 - WCAG 2.1 AA
 
-### Story 7.11: Effective Access & Roles _(ADDED 2026-08-03 — absorbs 7.8)_
-As a pod owner, I can see what access actually applies to a resource — not just that it "inherits from parent" — and manage that access as named roles rather than raw WebID rows.
-- **Effective-access resolver.** `pod-api.js:253` returns `inherited: true` with empty agents/public when no standalone `.acl` exists, and nothing ever walks upward to resolve what the parent's `acl:default` actually grants. Build that walk once. Consumed here, by Story 7.5's export sidecars, and by the badge fix below.
+### Story 7.11: Effective Access & Roles _(ADDED 2026-08-03 — absorbs 7.8; **SPLIT into 7.11a / 7.11b 2026-08-11**, party-mode review)_
+
+Split on scope: the resolver and the badge fix are load-bearing for the PoC (7.5 depends on the resolver, and the badge currently tells users something unanswerable). Roles-as-grant-bundles is a *team* concern — a newcomer has one pod and one agent, and nothing in the newcomer journey exercises a role. Shipping them together put the MVP's critical path behind a collective-access UI nobody in the PoC uses.
+
+### Story 7.11a: Effective Access — Resolver & Badge Truth _(IN SCOPE)_
+As a pod owner, I can see what access actually applies to a resource — not just that it "inherits from parent".
+- **Effective-access resolver.** `pod-api.js:253` returns `inherited: true` with empty agents/public when no standalone `.acl` exists, and nothing ever walks upward to resolve what the parent's `acl:default` actually grants. Build that walk once. Consumed here and by Story 7.5's export sidecars.
 - **Finish the sentence the badge starts.** "Inherits from parent" is accurate but unanswerable — it must state what the parent grants, or link to the row that does.
-- Role = named grant bundle (absorbed from 7.8): define once (containers + modes), assign/unassign personal-agent WebIDs, revoke an assignment without touching the underlying identity
-- Surface the **single-writer invariant** visibly: "my pod, my agent writes" vs "someone else's pod, I hold a grant" are different mental objects that currently render identically
-- Collective-account view: which role holds `acl:Control`, who is assigned, how succession reassigns it
-- Read receipts (FR42, built in Story 8.6) surfaced to the data subject — what makes revocation an informed decision rather than a theoretical right
+- Surface the **single-writer invariant** visibly: "my pod, my agent writes" vs "someone else's pod, I hold a grant" are different mental objects that currently render identically. Kept in scope because it is the mental model a *single* newcomer needs, not a team feature.
 - **Honesty constraint:** never offer an "only me" control at pod scope that the protocol will not honour. `profile/card` stays public by necessity (WebID discovery). If a user restricts the pod root, tell them why that one resource remains public rather than letting them find the inconsistency later.
-- **Sequencing:** depends on 8.6 (receipts) and 8.7 (model documented). Runs before Story 7.5.
+- **Sequencing:** runs after 7.9, before 7.5.
 - WCAG 2.1 AA
+
+### Story 7.11b: Roles & Collective Access _(DEFERRED to post-PoC — 2026-08-11)_
+Role = named grant bundle (absorbed from 7.8): define once (containers + modes), assign/unassign personal-agent WebIDs, revoke an assignment without touching the underlying identity. Collective-account view: which role holds `acl:Control`, who is assigned, how succession reassigns it. Read receipts (FR42, built in Story 8.6) surfaced to the data subject.
+
+**Why deferred, not dropped:** roles are how the model scales to Singelijn and partner orgs — architecture.md BP-6 is written and the invariant is real. But no PoC journey has two people sharing a pod, so the UI would ship untested against its own use case. Recorded in `post-poc-backlog.md`; re-enters at the first multi-person pod. The receipt-surfacing bullet travels with it — a receipts view for a pod nobody else reads shows an empty list.
 
 ## Epic 1: Pod Sovereignty & Access Control
 

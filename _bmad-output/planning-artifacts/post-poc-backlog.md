@@ -390,3 +390,76 @@ A true simulation system where agents act autonomously over simulated time perio
 - The two-terminal model (TUI + OpenClaw) scales directly: TUI shows simulation progress, OpenClaw allows intervention at any point
 - Could be the research tool that makes the POC investable: "we built a system that can simulate a semester of educational data flow in 5 minutes"
 - Connects to the consortium pitch (Syntonie/OpenFab/Politype): each partner could run their own simulation with domain-specific agents
+
+---
+
+## Security: OAuth 2.1 Resource Server — Self-Hosted MCP Clients Only
+
+_Added 2026-08-11 — sprint-change-proposal-2026-08-11.md, from `security-hardening-brief-2026-08-09.md` §7/§11/§17._
+
+### Why this is here and not in Epic 8
+
+The connector's OAuth target was planned as one migration. Live verification split it in two, and only one half is blocked.
+
+- **claude.ai path — externally blocked.** Anthropic does not expose connector OAuth fields on this account (verified absent, `8-4-vps-deploy-hardening.md:315`); the connector was accepted with no OAuth configuration at all. No work on our side closes this. It is a waiting item with a trigger, recorded in the Epic 8 header — not backlog.
+- **Self-hosted path — available today.** Hermes and any self-hosted MCP client support OAuth and arbitrary request headers independently of what claude.ai exposes. Nothing external blocks this work. It is out of PoC scope by choice, not by constraint — which is what makes it a backlog item rather than a story.
+
+### Concept
+
+Make the MCP server a proper OAuth 2.1 resource server for the clients that can speak it:
+
+- RFC 9728 Protected Resource Metadata, discovered via a `401 WWW-Authenticate` challenge
+- PKCE `S256` on the authorization request
+- **Audience validation per RFC 8707** — the server MUST reject any token not issued explicitly for it. The MCP spec forbids token passthrough; relaying a Claude-issued token to CSS is the confused-deputy failure and must be impossible by construction
+- The CSS client-credentials DPoP-bound token stays **server-side only**, never reaching a client
+- Second factor in a request header for the Claude Code / Desktop / Hermes paths (brief §4.5) — these clients accept arbitrary headers, so a header secret can sit *in addition to* the slug. This is the cheap subset and can land well before the full resource server
+
+### Open design question, unresolved
+
+Does the MCP server run its own authorization server, or delegate to CSS? CSS is a conforming Solid-OIDC OP for human authentication, but whether it can issue a token carrying the MCP server as audience (RFC 8707) is **unverified**. Likely shape: a thin AS in front of the MCP server, using CSS as the upstream IdP for the human, holding the DPoP client-credentials token behind it. This determines the consent-UI shape and is settled before code, not during.
+
+### What this does NOT fix
+
+Credential-at-rest (architecture.md SEC-4, Story 8.8). The server-side DPoP token would live in the same plaintext store on the same unencrypted disk. OAuth is a better front door on the same unlocked safe.
+
+### Reuse from PoC
+
+- Story 7.9's grant table (`slug → { credentialRef, webId, containers[], createdAt, expiresAt, lastUsedAt, revoked }`) is already the shape an OAuth grant store needs — built once, used by both
+- Story 8.9's access journal (attribution, rate limiting, alerting) is needed *more* under OAuth, where several grants must each be attributable
+- `wacManager.js` stays behind a stable interface; the authorization swap does not reach into it
+
+### Adjacent, also unresolved
+
+Whether CSS's `AcpReader` actually evaluates `acp:client` matchers — CSS's own `access-token-verifier` lists client-id application as future work. ACP is the only path to per-application scoping (a CSS client-credential otherwise acts with the owner's full identity). Test on a toy policy before any design leans on it.
+
+---
+
+## Deferred from Epic 7/8 — PoC Scope Cut
+
+_Added 2026-08-11 — party-mode review of `sprint-change-proposal-2026-08-11.md`. Three items pulled out of the PoC critical path on a value-per-effort call. None was dropped; each has a named re-entry condition._
+
+### Story 7.11b: Roles & Collective Access
+
+Role as a named grant bundle — define once (containers + modes), assign and unassign personal-agent WebIDs, revoke an assignment without touching the underlying identity. Collective-account view: which role holds `acl:Control`, who is assigned, how succession reassigns it. Read receipts (FR42) surfaced to the data subject.
+
+**Why deferred:** no PoC journey has two people sharing a pod. A newcomer has one pod and one agent. The UI would ship untested against its own use case, and the receipts view would render an empty list because nobody else has read anything.
+
+**Re-entry:** the first multi-person pod — Singelijn or a partner org. The model itself is settled (architecture.md BP-6, single-writer invariant, roles as grant bundles); this is the surface for it, not the thinking behind it.
+
+### Story 7.6: File-Manager Hardening
+
+Cross-folder move (generalised rename with copy-verify-delete ordering), bulk multi-select delete/move, transfer progress for many or large files, large-folder listing robustness. Reference patterns from `solid-contrib/solid-file-manager` and `solid-file-client`, deliberately not adopted.
+
+**Why deferred:** the story's own premise is "a pod owner with a real, growing pod". Nobody has one. Story 7.3's CRUD/ACL spine already covers create, upload, read, overwrite, delete and rename — enough for a newcomer's first hour and well beyond it.
+
+**Re-entry:** when a real pod's file count makes single-item operations the actual complaint. That is a measurable trigger, not a guess.
+
+### Story 8.9 (detection half): Journal Anomaly Detection, Alerting & Identity Rate Limiting
+
+Volume-spike detection, previously-unseen source IPs, requests outside the granted subtree, operator alerting, and rate limiting at the identity level (distinct from nginx's per-IP `limit_req`, which cannot tell two identities behind one address apart).
+
+**Why deferred:** signal-to-noise. At roughly ten journal entries per week across two users, anomaly detection is theatre — every entry is an outlier and every alert is noise, which trains the operator to ignore the channel before it ever carries a real signal. Building a SIEM for a two-user system spends the effort where it produces no decisions.
+
+**What stayed in the PoC:** the tamper-evidence spike (Story 8.9 — is the agent's grant on `access-log/` genuinely Append-without-Write?) and per-slug attribution in each entry (moved into Story 7.9, where the slug↔identity table already lives).
+
+**Re-entry:** whichever comes first — enough traffic that a spike is distinguishable from normal use, or an OAuth resource-server migration, where several grants per identity must each be attributable and the brief notes this is needed *more*, not less.
