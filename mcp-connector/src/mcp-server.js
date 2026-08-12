@@ -273,8 +273,9 @@ function buildMcpServer(identity) {
     "solid_read_resource",
     {
       description:
-        "Read a Solid Pod resource. Returns text content. Works for RDF " +
-        "documents (Turtle/JSON-LD) and text-based files. When the resource " +
+        "Read a single Solid Pod file. Returns text content. Works for RDF " +
+        "documents (Turtle/JSON-LD) and text-based files. NOT for containers " +
+        "(URLs ending in \"/\") — use solid_list_container for those. When the resource " +
         "belongs to a different pod than this identity's own, reading it " +
         "attempts a best-effort receipt write into the owner's access-log/ " +
         "(never blocks or fails the read, but adds a round trip — and a " +
@@ -282,6 +283,23 @@ function buildMcpServer(identity) {
       inputSchema: { url: z.string().url() },
     },
     safeHandler("solid_read_resource", identity, "url", async ({ url }) => {
+      // A container is not a file, and getFile() on one gets a bare 403 from
+      // CSS even when the agent plainly has Read — a raw authenticated GET of
+      // the same URL returns 200 text/turtle (live-proved 2026-08-12). That
+      // 403 then maps to "Access denied — lacks the required WAC permission",
+      // which sends the reader off auditing ACLs that were never wrong. In
+      // Solid a container URL always ends in "/", so this is decidable
+      // up-front, without a probe request. Point at the tool that works
+      // rather than reporting a permission problem that does not exist.
+      if (url.endsWith("/")) {
+        const err = new Error(
+          "That URL is a container (it ends in \"/\"), not a file. Use " +
+            "solid_list_container with containerUrl to list what's inside it, " +
+            "then solid_read_resource on one of the resources it returns."
+        );
+        err.statusCode = 400;
+        throw err;
+      }
       const file = await podClient.readFile(url, identity.session);
       const text = await file.text();
       let foreign;
