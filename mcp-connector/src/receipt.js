@@ -96,7 +96,7 @@ async function writeReadReceipt({ resourceUrl, readerLabel, readerWebId, outcome
       // Reserved — see honest limit 3 in this file's header. Explicitly null
       // rather than omitted, so a later reader can tell "no grant was recorded"
       // apart from "this receipt predates the field".
-      underGrant: underGrant || null,
+      underGrant: underGrant === undefined ? null : underGrant,
     },
     null,
     2

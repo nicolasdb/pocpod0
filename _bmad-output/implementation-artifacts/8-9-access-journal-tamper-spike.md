@@ -1,6 +1,6 @@
 # Story 8.9: Access Journal — Tamper-Evidence Spike
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -400,6 +400,24 @@ The receipt landed under the tightened grant, through the deployed code, via the
 **Changed live (not in git)**
 - `hyperscope_ndb/access-log/.acl` on `pod.nicolasdb.eu` — tightened to `acl:Append` for the agent; previous version preserved as `.acl.bak-8-9`
 - `nicolas_claude/epic-8-action-log.md` — Story 8.9 section appended (Task 5.6, Epic 8 convention)
+
+### Review Findings
+
+- [x] [Review][Decision] AC7 violation: `8-7-team-onboarding-doc.md` still forward-looking — the 8.7 story artifact (not just epics.md's summary bullet) still said "RW today... once 7.6/7.8 lands", contradicting the now-corrected `docs/team-onboarding.md`. **Fixed**: honest-boundaries table row, walkthrough step (h)/(e), and Dev Notes bullet in `8-7-team-onboarding-doc.md` rewritten to state Append-only as verified live, self-service gap only.
+
+- [x] [Review][Patch] `postResource` null-Location crashes caller [mcp-connector/src/podClient.js:137] — `verify-receipt-appendonly.js` now throws a clear error instead of crashing on `.split(null)`
+- [x] [Review][Patch] `postResource` Location not validated / malformed Location throws uncaught upstream [mcp-connector/src/podClient.js:135] — now validates resolved origin matches the pod, wraps parse failure as a clear 502 error
+- [x] [Review][Patch] `postResource` slug header unsanitized, raw TypeError on control chars [mcp-connector/src/podClient.js:119] — now throws the module's own error shape on `\r\n` in slug
+- [x] [Review][Patch] `postResource` error body unbounded in thrown message [mcp-connector/src/podClient.js:128] — truncated to 500 chars
+- [x] [Review][Patch] `underGrant || null` coerces falsy-but-meaningful values to null [mcp-connector/src/receipt.js] — now `undefined`-only check
+- [x] [Review][Patch] `postResource` 404 vs 403 not distinguished [mcp-connector/src/podClient.js:127] — no change needed: `err.statusCode` already carries the real status for callers to branch on
+- [x] [Review][Patch] `probe-append-only.js` podRoot derivation has no fallback for pod-root WebIDs [mcp-connector/scripts/probe-append-only.js] — now throws instead of silently probing `.../undefined/...`
+
+- [x] [Review][Defer] `receiptSlug()` collision window overstated as "collision-resistant" [mcp-connector/src/receipt.js] — deferred, low risk at current volume
+- [x] [Review][Defer] `probe-append-only.js` teardown is best-effort, can leak scratch containers [mcp-connector/scripts/probe-append-only.js] — deferred, probe-script only
+- [x] [Review][Defer] `postResource` doesn't assert inherited ACL on created resource [mcp-connector/src/podClient.js] — deferred, speculative/future-misconfiguration concern
+- [x] [Review][Defer] Makefile `mcp-connector/audit/` exclude lacks live evidence for its claim [Makefile] — deferred, low risk
+- [x] [Review][Defer] Production `access-log/.acl` tightening path (wacManager vs direct file edit) unclear [Dev Agent Record] — deferred, disclosed spike shortcut not a code defect
 
 ### Change Log
 

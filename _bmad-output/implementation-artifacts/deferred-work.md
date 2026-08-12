@@ -1,5 +1,13 @@
 # Deferred Work
 
+## Deferred from: code review of story-8.9-access-journal-tamper-spike (2026-08-12)
+
+- `receiptSlug()` collision window overstated as "collision-resistant" — ~31 bits (6-char random + second-truncated timestamp), real collision probability at any meaningful volume; low risk given current ~10 receipts/week [mcp-connector/src/receipt.js]
+- `probe-append-only.js` scratch-container teardown is best-effort (no retry/assert on DELETE failures) — can leak scratch containers into the agent's own pod across repeated runs; probe-script only, not production path [mcp-connector/scripts/probe-append-only.js]
+- `postResource` doesn't assert the ACL a newly-created resource inherits — speculative concern (a future misconfigured `access-log/` `acl:default` would silently leak); current single container already probed and confirmed correct [mcp-connector/src/podClient.js]
+- Makefile `mcp-connector/audit/` rsync exclude asserts the host path is "an empty leftover" with no live evidence shown, unlike every other claim in this story's Dev Agent Record [Makefile]
+- Production `hyperscope_ndb/access-log/.acl` tightening path is unclear — whether done via `wacManager.grantAccess()` (the owner path this story validates) or a direct file-backend edit; disclosed spike shortcut, not a code defect, but leaves the "agent never self-grants" constraint asserted rather than evidenced for the real pod
+
 ## Deferred from: code review of story-8-4-vps-deploy-hardening (2026-08-01)
 
 - Journal rotation (`renameSync` → `appendFileSync`) isn't crash-atomic — entry that triggered rotation can be lost on a kill between the two calls [mcp-connector/src/journal.js]

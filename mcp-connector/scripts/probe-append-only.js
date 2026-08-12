@@ -76,7 +76,10 @@ async function main() {
   const session = await getAgentSession({ keepAlive: false });
   if (!session.info.isLoggedIn) throw new Error("Agent session not logged in — check .env.");
   const webId = session.info.webId;
-  const podRoot = `${new URL(webId).origin}/${new URL(webId).pathname.split("/").filter(Boolean)[0]}/`;
+  const webIdUrl = new URL(webId);
+  const podName = webIdUrl.pathname.split("/").filter(Boolean)[0];
+  if (!podName) throw new Error(`WebID has no pod-name path segment: "${webId}"`);
+  const podRoot = `${webIdUrl.origin}/${podName}/`;
   const scratch = `${podRoot}scratch-8-9-append/`;
 
   line("=== Story 8.9 Tasks 2+3 — is Append-only reachable? (live) ===");

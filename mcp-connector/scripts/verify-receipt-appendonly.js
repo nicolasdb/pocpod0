@@ -75,6 +75,7 @@ async function main() {
     session
   );
   record("receipt POST accepted", written.status === 201, `status ${written.status}, url ${written.url}`);
+  if (!written.url) throw new Error("POST succeeded but server returned no Location header — cannot verify a receipt with no URL");
 
   const after = await listRaw(accessLog, session);
   line(`  GET ${accessLog} (after)  -> ${after.status}, ${Buffer.byteLength(after.text)} bytes`);

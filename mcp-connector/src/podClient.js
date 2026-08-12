@@ -115,6 +115,9 @@ async function postResource(containerUrl, content, contentType, session, options
   if (!containerUrl.endsWith("/")) {
     throw new Error(`postResource expects a container URL ending in "/", got "${containerUrl}"`);
   }
+  if (options.slug && /[\r\n]/.test(options.slug)) {
+    throw new Error(`postResource slug must not contain control characters: "${options.slug}"`);
+  }
   const headers = { "content-type": contentType };
   if (options.slug) headers.slug = options.slug;
 
@@ -125,16 +128,31 @@ async function postResource(containerUrl, content, contentType, session, options
   });
 
   if (!res.ok) {
-    const err = new Error(`POST ${containerUrl} failed [${res.status}]: ${await res.text().catch(() => "")}`);
+    const body = (await res.text().catch(() => "")).slice(0, 500);
+    const err = new Error(`POST ${containerUrl} failed [${res.status}]: ${body}`);
     err.statusCode = res.status;
     throw err;
   }
 
   const location = res.headers.get("location");
+  let url = null;
+  if (location) {
+    try {
+      const resolved = new URL(location, containerUrl);
+      if (resolved.origin !== new URL(containerUrl).origin) {
+        throw new Error(`Location header resolved outside the pod origin: "${location}"`);
+      }
+      url = resolved.href;
+    } catch (e) {
+      const err = new Error(`POST ${containerUrl} returned an unusable Location header "${location}": ${e.message}`);
+      err.statusCode = 502;
+      throw err;
+    }
+  }
   return {
     // A 201 without Location would leave the caller unable to name what it
     // just created; surface that rather than silently returning undefined.
-    url: location ? new URL(location, containerUrl).href : null,
+    url,
     status: res.status,
   };
 }
