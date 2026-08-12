@@ -506,6 +506,49 @@
           </sc-if>
         </div>
 
+        <!-- CLAUDE CONNECTOR ACCESS (Story 7.9) — one button, one result: mint
+             a ready-to-paste MCP connector URL, see every grant in your name,
+             kill any of them. Same account-session gating as credentials above. -->
+        <div style="margin-top:36px;padding-top:28px;border-top:1px solid var(--line,#e7e2d6)">
+          <div style="font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--tx2,#8a8474);margin:0 0 6px;display:flex;align-items:center;gap:8px"><span>🌐</span> Claude connector access</div>
+          <p style="margin:0 0 16px;color:var(--tx2,#8a8474);font-size:13.5px">A connector URL is a bearer key — anyone holding it can act as you against your pod, no separate login required. Give it only to Claude, and only to yourself.</p>
+
+          <sc-if value="{{ credsUnlocked }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+              <button onClick="{{ startMintConnector }}" style="font-family:inherit;font-size:13.5px;font-weight:600;padding:10px 20px;border-radius:99px;border:none;background:var(--acc,#3d6b52);color:#fff;cursor:pointer" style-hover="filter:brightness(1.08)" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">+ Get connector URL for Claude</button>
+            </div>
+
+            <sc-if value="{{ grantsLoading }}" hint-placeholder-val="{{ false }}">
+              <div style="text-align:center;padding:24px 0;color:var(--tx3,#b3ac9a);font-size:13px">Loading connector access…</div>
+            </sc-if>
+
+            <sc-for list="{{ grantItems }}" as="g" hint-placeholder-count="1">
+              <div style="display:flex;align-items:center;gap:12px;border:1px solid var(--line,#e7e2d6);border-radius:12px;background:var(--panel,#fbfaf7);padding:14px 16px;margin-bottom:10px;opacity:{{ g.rowOpacity }}">
+                <span style="font-size:18px">{{ g.icon }}</span>
+                <span style="flex:1;min-width:0"><span style="display:block;font-size:14px;font-weight:600">{{ g.label }}</span><span style="display:block;font-size:11.5px;color:var(--tx3,#b3ac9a)">{{ g.statusLine }}</span></span>
+                <sc-if value="{{ g.notArmed }}" hint-placeholder-val="{{ true }}">
+                  <button onClick="{{ g.arm }}" aria-label="{{ g.revokeLabel }}" style="font-family:inherit;font-size:12px;font-weight:600;padding:7px 14px;border-radius:8px;border:1px solid var(--line,#e7e2d6);background:none;color:var(--tx2,#8a8474);cursor:pointer" style-hover="border-color:#a33;color:#a33" style-focus-visible="outline:2px solid #a33;outline-offset:1px">Revoke</button>
+                </sc-if>
+                <sc-if value="{{ g.armed }}" hint-placeholder-val="{{ false }}">
+                  <button onClick="{{ g.confirmRevoke }}" aria-label="{{ g.confirmLabel }}" style="font-family:inherit;font-size:12px;font-weight:600;padding:7px 14px;border-radius:8px;border:1px solid #a33;background:#a33;color:#fff;cursor:pointer" style-focus-visible="outline:2px solid var(--tx,#26241f);outline-offset:1px">Confirm revoke</button>
+                </sc-if>
+              </div>
+            </sc-for>
+
+            <sc-if value="{{ noGrants }}" hint-placeholder-val="{{ false }}">
+              <div style="text-align:center;padding:28px 0;color:var(--tx3,#b3ac9a)"><div style="font-size:26px;margin-bottom:8px">🔌</div><div style="font-size:13.5px">No connector access yet. "Get connector URL" mints a key Claude can use to reach your pod.</div></div>
+            </sc-if>
+          </sc-if>
+
+          <sc-if value="{{ credsSignedOut }}" hint-placeholder-val="{{ false }}">
+            <div style="border:1px solid var(--line,#e7e2d6);border-radius:14px;background:var(--panel,#fbfaf7);padding:20px 22px;text-align:center">
+              <div style="font-size:26px;margin-bottom:10px">🔒</div>
+              <p style="margin:0 0 16px;font-size:13.5px;color:var(--tx2,#8a8474)">Your sign-in has expired or wasn't found. Sign in to see and manage Claude's access.</p>
+              <button onClick="{{ goSignIn }}" style="font-family:inherit;font-size:13.5px;font-weight:600;padding:10px 22px;border-radius:99px;border:none;background:var(--acc,#3d6b52);color:#fff;cursor:pointer" style-hover="filter:brightness(1.08)" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">Sign in</button>
+            </div>
+          </sc-if>
+        </div>
+
         <!-- PODS (Story 7.10 Task 2) — gated on the same account-session state as
              credentials above (AC2): a stale/absent cookie must never render an
              empty pod list, it must show the same honest sign-in state. -->
@@ -661,6 +704,69 @@
         </div>
       </sc-if>
 
+      <!-- MINT CONNECTOR DIALOG (Story 7.9) -->
+      <sc-if value="{{ connectorMintOpen }}" hint-placeholder-val="{{ false }}">
+        <div onClick="{{ cancelMintConnector }}" style="position:fixed;inset:0;background:rgba(20,18,12,.44);z-index:50"></div>
+        <div role="dialog" aria-modal="true" aria-label="Get connector URL for Claude" onKeyDown="{{ escCancelMintConnector }}" tabindex="-1" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:min(480px,94vw);background:var(--panel,#fbfaf7);border-radius:18px;z-index:51;box-shadow:0 20px 60px rgba(0,0,0,.28);padding:26px 28px 28px;box-sizing:border-box">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+            <span style="font-size:20px">🌐</span>
+            <h2 style="font-size:16px;font-weight:600;margin:0;flex:1">Get connector URL for Claude</h2>
+            <button onClick="{{ cancelMintConnector }}" aria-label="Close" style="border:none;background:none;font-size:18px;color:var(--tx2,#8a8474);cursor:pointer;padding:4px" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">✕</button>
+          </div>
+          <label style="display:block;font-size:12px;font-weight:600;margin-bottom:5px">Label <span style="font-weight:400;color:var(--tx3,#b3ac9a)">— so you recognise it later</span></label>
+          <input value="{{ connectorMintLabel }}" onChange="{{ onConnectorMintLabel }}" placeholder="e.g. my laptop" style="width:100%;box-sizing:border-box;font-family:inherit;font-size:13.5px;padding:10px 12px;border-radius:9px;border:1px solid var(--line,#e7e2d6);background:var(--bg,#f6f4ef);color:var(--tx,#26241f);outline:none;margin-bottom:14px" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">
+          <div style="font-size:12.5px;color:var(--tx2,#8a8474);background:var(--warnBg,#faf3e6);border:1px solid var(--warnLine,#e3c9a3);border-radius:11px;padding:12px 14px;margin-bottom:18px;line-height:1.55">⚠︎ <strong>For the length of this request, our server can do anything your account can do</strong> — it uses your sign-in for exactly one mint sequence, never logs it, never stores it. Acts as <code style="font-family:'JetBrains Mono',monospace;font-size:11.5px">{{ connectorMintWebIdDisplay }}</code>. The connector URL itself is a key — it's shown once, on the next screen.</div>
+          <!-- Story 7.9 follow-up (2026-08-12): the WebID picked at sign-in decides
+               the credential's power, and picking the pod that HOLDS your data (rather
+               than the agent identity) silently yields a connector with full Control
+               over it — it works perfectly, so nothing surfaces the mistake. This
+               states the consequence before the button. It cannot restrict anything:
+               CSS client credentials carry the full authority of their WebID, with no
+               scope parameter. WAC on the target is the only real boundary. -->
+          <div style="font-size:12.5px;color:var(--tx2,#8a8474);background:var(--codebg,#f0ede4);border:1px solid var(--line,#e7e2d6);border-radius:11px;padding:12px 14px;margin-bottom:18px;line-height:1.55">
+            This connector will hold <strong>full control of {{ connectorMintPodDisplay }}</strong>, the pod that identity owns.
+            <span style="display:block;margin-top:7px;color:var(--tx3,#b3ac9a)">Minting from a dedicated agent identity keeps that blast radius small — the agent then reaches other pods only where they've granted it access. If this names the pod holding your real data, sign in as the agent instead.</span>
+          </div>
+          <div style="display:flex;gap:10px">
+            <button onClick="{{ confirmMintConnector }}" style="flex:1;font-family:inherit;font-size:13.5px;font-weight:600;padding:11px;border-radius:99px;border:none;background:var(--acc,#3d6b52);color:#fff;cursor:pointer" style-hover="filter:brightness(1.08)" style-focus-visible="outline:2px solid var(--tx,#26241f);outline-offset:1px">Create connector URL</button>
+            <button onClick="{{ cancelMintConnector }}" style="font-family:inherit;font-size:13.5px;padding:11px 18px;border-radius:99px;border:1px solid var(--line,#e7e2d6);background:none;color:var(--tx,#26241f);cursor:pointer" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">Cancel</button>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ONE-TIME CONNECTOR URL REVEAL (Story 7.9, AC3 — reuses 7.4's one-time-secret idiom) -->
+      <sc-if value="{{ mintedConnectorOpen }}" hint-placeholder-val="{{ false }}">
+        <div onClick="{{ closeMintedConnector }}" style="position:fixed;inset:0;background:rgba(20,18,12,.44);z-index:50"></div>
+        <div role="dialog" aria-modal="true" aria-label="Connector URL ready" onKeyDown="{{ escCloseMintedConnector }}" tabindex="-1" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:min(560px,94vw);max-height:88vh;overflow-y:auto;background:var(--panel,#fbfaf7);border-radius:18px;z-index:51;box-shadow:0 20px 60px rgba(0,0,0,.28);padding:26px 28px 30px;box-sizing:border-box">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+            <span style="font-size:22px">🌐</span>
+            <h2 style="font-size:17px;font-weight:600;margin:0;flex:1">Claude connector is ready</h2>
+            <button onClick="{{ closeMintedConnector }}" aria-label="Close" style="border:none;background:none;font-size:18px;color:var(--tx2,#8a8474);cursor:pointer;padding:4px" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">✕</button>
+          </div>
+          <div style="font-size:13px;color:var(--warn,#b5722a);background:var(--warnBg,#faf3e6);border:1px solid var(--warnLine,#e3c9a3);border-radius:11px;padding:12px 14px;margin:6px 0 18px;line-height:1.5"><strong>Copy this now — you will never see it again.</strong> This URL <em>is</em> the credential: anyone holding it can act as you against your pod. Give it only to Claude.</div>
+
+          <div style="font-size:12px;font-weight:600;color:var(--tx2,#8a8474);margin-bottom:5px">Connector URL — paste this into claude.ai's connector setup</div>
+          <div style="display:flex;gap:8px;margin-bottom:16px">
+            <code style="flex:1;min-width:0;font-family:'JetBrains Mono',monospace;font-size:12px;padding:10px 12px;border-radius:9px;border:1px solid var(--acc,#3d6b52);background:var(--codebg,#f0ede4);overflow-x:auto;white-space:nowrap">{{ connectorUrl }}</code>
+            <button onClick="{{ copyConnectorUrl }}" style="font-family:inherit;font-size:12.5px;font-weight:600;padding:0 14px;border-radius:9px;border:1px solid var(--acc,#3d6b52);background:var(--acc,#3d6b52);color:#fff;cursor:pointer" style-focus-visible="outline:2px solid var(--tx,#26241f);outline-offset:1px">Copy</button>
+          </div>
+
+          <!-- Story 7.9 follow-up (2026-08-12): this slot used to show a "your pod
+               root — tell Claude this" field derived from the minting WebID. It was
+               removed because it was actively misleading: it names the pod the AGENT
+               owns, which is not where the data lives. WAC has no reverse index, so
+               the connector structurally cannot know which pods a credential can
+               reach — only a human can say. The same derived value is now used for
+               what it can honestly state: which pod this credential controls. -->
+          <div style="font-size:12.5px;color:var(--tx2,#8a8474);background:var(--codebg,#f0ede4);border:1px solid var(--line,#e7e2d6);border-radius:11px;padding:12px 14px;margin-bottom:18px;line-height:1.55">
+            Acting as <code style="font-family:'JetBrains Mono',monospace;font-size:11.5px">{{ mintedWebIdShort }}</code> — this connector has <strong>full control of {{ mintedPodShort }}</strong>, plus whatever other pods have granted that identity access.
+            <span style="display:block;margin-top:7px;color:var(--tx3,#b3ac9a)">Tell Claude which pod to work on in your project instructions or prompt — it can't discover that on its own.</span>
+          </div>
+
+          <button onClick="{{ closeMintedConnector }}" style="width:100%;font-family:inherit;font-size:13.5px;font-weight:600;padding:11px;border-radius:99px;border:1px solid var(--line,#e7e2d6);background:none;color:var(--tx,#26241f);cursor:pointer" style-hover="border-color:var(--acc,#3d6b52)" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">I've stored the URL — done</button>
+        </div>
+      </sc-if>
+
     </main>
 
     <!-- SHARE / ACL DRAWER -->
@@ -769,6 +875,11 @@ class Component extends DCLogic {
       mintedSecret: null,      // transient {id,secret,resource,name,webId} — DOM only, never persisted
       secretRevealed: false,   // gate the actual secret chars behind an explicit reveal
       credConfirmRevoke: null, // resource url armed for revoke confirmation
+      // connector onboarding (Story 7.9) — the button that removes the operator
+      grantsList: [], grantsLoading: false,
+      connectorMintOpen: false, connectorMintLabel: '',
+      mintedConnector: null,   // transient {connectorUrl, podRootUrl} — DOM only, shown once (AC3)
+      grantConfirmRevoke: null, // grantId armed for revoke confirmation
       toast: null, undoFn: null, canUndo: false
     };
     this.chapters = ['intro', 'box', 'webid', 'keys', 'checkpoint', 'create', 'folders', 'file', 'share', 'recap'];
@@ -777,7 +888,7 @@ class Component extends DCLogic {
   async componentDidMount() {
     this.setVars();
     try {
-      this.api = await import('./pod-api.js?v=7-10-3');
+      this.api = await import('./pod-api.js?v=7-9-1');
     } catch (e) {
       this.api = null;
     }
@@ -1072,6 +1183,7 @@ class Component extends DCLogic {
     if (!this.cl) return;
     this.loadCreds();
     this.loadPods();
+    this.loadGrants();
   }
   goSignIn() {
     if (this.api && this.api.Solid) this.api.Solid.connect();
@@ -1246,6 +1358,56 @@ class Component extends DCLogic {
   async copyText(text, label) {
     try { await navigator.clipboard.writeText(text); this.toast((label || 'Copied') + ' — paste it somewhere safe now.'); }
     catch (e) { this.toast('Copy failed — select the text and copy it manually.'); }
+  }
+
+  // ---------- Claude connector onboarding (Story 7.9) ----------
+  // One button, one result: mint a slug server-side (mcp-connector owns
+  // identities.json), never a password, never a secret through this
+  // browser (AC1/AC2). Revocation lives on the same screen (AC10).
+  async loadGrants() {
+    if (!this.cl || !this.cl.listGrants) return;
+    this.setState({ grantsLoading: true });
+    try {
+      const list = await this.cl.listGrants();
+      this.setState({ grantsList: list, grantsLoading: false });
+    } catch (e) {
+      this.setState({ grantsLoading: false });
+      if (e.message === 'SESSION_EXPIRED') this.setState({ credsUnlocked: false, credsSignedOut: true });
+      else this.toast('Could not load connector access: ' + e.message);
+    }
+  }
+  startMintConnector() { this.setState({ connectorMintOpen: true, connectorMintLabel: '' }); }
+  cancelMintConnector() { this.setState({ connectorMintOpen: false, connectorMintLabel: '' }); }
+  onConnectorMintLabel(e) { this.setState({ connectorMintLabel: e.target.value }); }
+  async confirmMintConnector() {
+    if (this._mintingConnector) return; // guard double-click
+    const webId = this.state.webId || (this.cl && this.cl.webId);
+    if (!webId) { this.toast('No signed-in WebID to mint against.'); return; }
+    this._mintingConnector = true;
+    try {
+      const r = await this.cl.mintConnector(webId, this.state.connectorMintLabel);
+      // Same one-time-secret idiom as Story 7.4's mintedSecret: transient state
+      // only, cleared on nav away, never persisted (AC3).
+      this.setState({ mintedConnector: r, connectorMintOpen: false, connectorMintLabel: '' });
+      this.loadGrants();
+    } catch (e) {
+      if (e.message === 'SESSION_EXPIRED') { this.setState({ credsUnlocked: false, credsSignedOut: true }); this.toast('Session expired — sign in again to connect Claude.'); }
+      else this.toast('Could not create a connector URL: ' + e.message);
+    } finally { this._mintingConnector = false; }
+  }
+  closeMintedConnector() { this.setState({ mintedConnector: null }); }
+  armGrantRevoke(grantId) { this.setState({ grantConfirmRevoke: grantId }); }
+  cancelGrantRevoke() { this.setState({ grantConfirmRevoke: null }); }
+  async doRevokeGrant(grantId, label) {
+    try {
+      await this.cl.revokeGrant(grantId);
+      this.setState({ grantConfirmRevoke: null });
+      this.toast(`Revoked "${label}" — access ends now. (The key itself can stay technically valid up to an hour longer; it just can't reach anything.)`);
+      this.loadGrants();
+    } catch (e) {
+      if (e.message === 'SESSION_EXPIRED') { this.setState({ credsUnlocked: false, credsSignedOut: true, grantConfirmRevoke: null }); this.toast('Session expired — sign in again to revoke.'); }
+      else this.toast('Could not revoke: ' + e.message);
+    }
   }
 
   // ---------- onboarding provisioning ----------
@@ -1473,8 +1635,8 @@ class Component extends DCLogic {
     const nav = (view) => () => {
       // Leaving People & apps: clear any one-time secret still on screen/in state —
       // it must not linger visible (or in memory) once the user has navigated away.
-      const leavingPeopleWithSecret = S.view === 'people' && view !== 'people' && S.mintedSecret;
-      this.setState({ view, editing: null, path: view === 'files' ? [] : S.path, ...(leavingPeopleWithSecret ? { mintedSecret: null, secretRevealed: false, mintOpen: false } : {}) });
+      const leavingPeopleWithSecret = S.view === 'people' && view !== 'people' && (S.mintedSecret || S.mintedConnector);
+      this.setState({ view, editing: null, path: view === 'files' ? [] : S.path, ...(leavingPeopleWithSecret ? { mintedSecret: null, secretRevealed: false, mintOpen: false, mintedConnector: null, connectorMintOpen: false } : {}) });
       if (view === 'files') this.loadFolder([]);
       if (view === 'people') this.maybeInitCreds();
     };
@@ -1585,6 +1747,24 @@ class Component extends DCLogic {
       confirmRevoke: () => { clearTimeout(this._credRevTimer); this.doRevokeCred(c.resource, c.name); },
       revokeLabel: 'Revoke ' + c.name, confirmLabel: 'Confirm revoke ' + c.name
     }));
+    // connector access (Story 7.9) — same revoke idiom as credItems above.
+    // AC10: revoked grants stay visible (never disappear), just inert —
+    // no colour-only signal (WCAG), the status text itself says "revoked".
+    const grantItems = (S.grantsList || []).map(g => ({
+      grantId: g.grantId, label: g.label,
+      icon: g.revoked ? '🚫' : '🔌',
+      statusLine: g.revoked
+        ? 'revoked'
+        : 'connected ' + (g.createdAt ? new Date(g.createdAt).toLocaleDateString() : ''),
+      armed: !g.revoked && S.grantConfirmRevoke === g.grantId,
+      notArmed: !g.revoked && S.grantConfirmRevoke !== g.grantId,
+      revoked: g.revoked,
+      rowOpacity: g.revoked ? '.55' : '1',
+      arm: () => { clearTimeout(this._grantRevTimer); this.setState({ grantConfirmRevoke: g.grantId }); this._grantRevTimer = setTimeout(() => this.setState({ grantConfirmRevoke: null }), 4000); },
+      confirmRevoke: () => { clearTimeout(this._grantRevTimer); this.doRevokeGrant(g.grantId, g.label); },
+      revokeLabel: 'Revoke ' + g.label, confirmLabel: 'Confirm revoke ' + g.label,
+    }));
+    const mc = S.mintedConnector;
     const ms = S.mintedSecret;
     const recipe = ms ? [
       'Token endpoint : ' + (this.api ? this.api.TOKEN_ENDPOINT : 'https://pod.nicolasdb.eu/.oidc/token'),
@@ -1679,6 +1859,31 @@ class Component extends DCLogic {
       goSignIn: () => this.goSignIn(),
       credsLoading: S.credsLoading,
       credItems, noCreds: S.credsUnlocked && !S.credsLoading && credItems.length===0,
+      // connector access (Story 7.9)
+      grantsLoading: S.grantsLoading,
+      grantItems, noGrants: S.credsUnlocked && !S.grantsLoading && grantItems.length===0,
+      startMintConnector: () => this.startMintConnector(),
+      connectorMintOpen: S.connectorMintOpen, cancelMintConnector: () => this.cancelMintConnector(),
+      escCancelMintConnector: (e) => { if (e.key==='Escape') this.cancelMintConnector(); },
+      connectorMintLabel: S.connectorMintLabel, onConnectorMintLabel: (e)=>this.onConnectorMintLabel(e),
+      connectorMintWebIdDisplay: selfWebId,
+      // Derived the same way the server derives podRootUrl (onboardRouter.js): the
+      // pod a WebID owns is its first path segment. Display-only.
+      connectorMintPodDisplay: (() => {
+        try { const u = new URL(selfWebId); return (u.host + '/' + u.pathname.split('/')[1] + '/'); }
+        catch (_) { return 'its own pod'; }
+      })(),
+      confirmMintConnector: () => this.confirmMintConnector(),
+      mintedConnectorOpen: !!mc,
+      closeMintedConnector: () => this.closeMintedConnector(),
+      escCloseMintedConnector: (e) => { if (e.key==='Escape') this.closeMintedConnector(); },
+      connectorUrl: mc ? mc.connectorUrl : '',
+      // Scope disclosure, not a target hint — see the modal comment. podRootUrl is
+      // derived server-side from the minting WebID, so it names the pod that WebID
+      // owns, i.e. exactly what this credential holds Control over.
+      mintedWebIdShort: ((mc && mc.webId) || selfWebId || 'this identity').replace(/^https?:\/\//, ''),
+      mintedPodShort: mc && mc.podRootUrl ? mc.podRootUrl.replace(/^https?:\/\//, '') : 'its own pod',
+      copyConnectorUrl: () => this.copyText(mc ? mc.connectorUrl : '', 'Connector URL copied'),
       // pods (Story 7.10)
       podItems: S.podItems.map(p => ({
         ...p,

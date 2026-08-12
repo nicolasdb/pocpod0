@@ -50,9 +50,8 @@ identity per person, each individually granted into only what it needs.
 ## Walkthrough: from zero to capturing
 
 Your OWNER credential (the email + password you register with) **never
-leaves your machine** and the person running the connector never asks for
-it. Everything below except step (e) you do yourself, logged in as
-yourself.
+leaves your machine**, and no operator is involved anywhere in this
+walkthrough. Everything below you do yourself, logged in as yourself.
 
 **(a) Create your account** at `https://pod.nicolasdb.eu/` → "Sign up." This
 account is yours; you are OWNER of it.
@@ -69,40 +68,73 @@ you, it is not your login. Same uniqueness rule applies: name it something
 like `yourname-agent/`, not a generic `agent/` — that name is only free for
 the first person who claims it.
 
-**(d) Mint AGENT client-credentials.** Still at `https://pod.nicolasdb.eu/`,
-sign in, open **Apps & credentials**, and mint a client-credentials pair for
-your *agent's* WebID (not your own). Copy the `clientId` and `clientSecret`
-now — the one-time reveal won't show the secret again.
+**(d) Get your connector URL.** In the backoffice, open **People & apps**
+and find **Claude connector access**. Click **"Get connector URL for
+Claude,"** give it a label (your name is fine). One click, and you're handed
+your connector URL, shown once. No password re-entry, no client-credentials
+step, no message to anyone — the server mints the credential on your
+account's behalf and never lets the secret reach this browser at all.
 
-**(e) Hand the operator four things**: your agent's `clientId`,
-`clientSecret`, `webId`, and a short `label` (your name is fine). They add
-one entry to the connector's identity map and run its slug generator for
-you. This takes effect on your very next request — no restart, nothing else
-to wait for. (A later story will turn this into a button; today it's a
-short message to the operator.)
+> **Sign in as your *agent* WebID (step c), not your data pod.** When the
+> server asks which WebID to authorize, the one you pick decides what the
+> connector can do — a credential carries the full authority of its WebID,
+> and a WebID has full control of the pod it owns. Pick the pod holding your
+> real notes and the connector gets total control of it, silently: everything
+> works, nothing warns you afterwards. Pick the agent, and it reaches your
+> data only where you've granted it access. The mint screen states which pod
+> it will control before you confirm — read that line.
 
-**(f) Add the connector in Claude.** The operator gives you your URL:
-`https://solid-mcp.nicolasdb.eu/mcp/<your-slug>`. In Claude, add it as a
-custom connector using that exact URL. **Treat this URL like a password** —
-whoever holds it acts as you to the connector. Don't paste it into a shared
-channel.
+**Copy the connector URL now — it will not be shown again.** If you lose
+it, mint another and revoke the old one from the same screen.
 
-**(g) Create every folder you're about to grant, before granting it.**
+**The connector can't guess which pod to work on.** It authenticates as your
+agent and goes wherever permissions allow, but there's no way to ask a Solid
+server "what can this identity reach" — so tell Claude the pod address
+yourself, in your project instructions or in the conversation.
+
+**One connector URL per harness.** Running Claude and another agent? Mint
+twice against the *same* agent WebID. That's two independently revocable
+URLs sharing one identity — no extra pod, no extra grants, and each action
+is traceable to its own grant in the access journal. Mint a second WebID
+only if the two need *different* permissions, since access control sees the
+WebID, not the URL.
+
+**(e) Add the connector in Claude.** In Claude, add a custom connector
+using the URL you were just given:
+`https://solid-mcp.nicolasdb.eu/mcp/<your-slug>`. **Treat this URL like a
+password** — whoever holds it acts as you to the connector. Don't paste it
+into a shared channel.
+
+**Revoking is on the same screen.** If a device is lost, or you just want
+to rotate, revoke the grant from **Claude connector access** — it's a
+one-click action, and you can always mint a fresh one afterwards. Revoking
+removes the underlying access immediately; the honest caveat is that the
+*key itself* can stay cryptographically valid for up to an hour afterward
+(CSS doesn't check a deleted credential against issued tokens) — it just
+can't reach anything once revoked, so what you'll see in that window, if
+anything, is denied requests, not successful ones.
+
+**(f) Create every folder you're about to grant, before granting it.**
 The pod server does not auto-create a missing folder — granting access
 to one that doesn't exist yet fails. This applies to any folder you
 grant, not just `access-log/`: create your notes folder (e.g.
-`notes/`) **and** `access-log/` in your pod first, before step (h).
+`notes/`) **and** `access-log/` in your pod first, before step (g).
 
-**(h) Grant your agent access, by hand, as OWNER.** Start narrow: grant your
+**(g) Grant your agent access, by hand, as OWNER.** Start narrow: grant your
 agent read+write on the notes folder you just created, and grant it
 **Append-only** on `access-log/` — add-entries-only, so it can record its
 reads and cannot revise that record. Add more grants later as you need them;
-you can always audit and revoke what you've granted.
+you can always audit and revoke what you've granted. Note that this is
+*applying* a grant, which stays your own manual, owner-driven act — distinct
+from step (d) above, which only *mints an identity and records* an intended
+scope. The two are related but not the same thing: minting a connector URL
+does not itself hand your agent access to anything.
 
-> **Append-only is not in the minting UI yet.** It is a real grant the server
-> enforces, but today it has to be set for you rather than clicked — ask the
-> operator. Everything else on this page is self-service; this one step is
-> not, and that is a UI gap, not a limitation of what your pod can do.
+> **Append-only is not in the minting/granting UI yet.** It is a real grant
+> the server enforces, but today it has to be set by someone with direct
+> API/server access rather than clicked here — this is unrelated to the
+> operator-free connector minting above (step d), and remains a real UI gap,
+> not a limitation of what your pod can do.
 
 **State your pod's own root URL to Claude on first use** — something like
 `https://pod.nicolasdb.eu/<your-account-name>/`. Claude cannot guess it and

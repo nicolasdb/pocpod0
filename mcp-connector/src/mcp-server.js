@@ -43,6 +43,7 @@ const podClient = require("./podClient");
 const wacManager = require("./wacManager");
 const { appendAuditEntry } = require("./journal");
 const { isForeignResource, writeReadReceipt } = require("./receipt");
+const { buildOnboardRouter } = require("./onboardRouter");
 
 const PORT = parsePort(process.env.PORT);
 const HOST = process.env.HOST || "127.0.0.1";
@@ -298,7 +299,7 @@ function buildMcpServer(identity) {
         try {
           try {
             await writeReadReceipt(
-              { resourceUrl: url, readerLabel: identity.label, readerWebId: identity.webId, outcome: "read" },
+              { resourceUrl: url, readerLabel: identity.label, readerWebId: identity.webId, outcome: "read", grantId: identity.grantId },
               identity.session
             );
           } catch (err) {
@@ -313,7 +314,7 @@ function buildMcpServer(identity) {
             if (status === 401) {
               await reauthIdentity(identity);
               await writeReadReceipt(
-                { resourceUrl: url, readerLabel: identity.label, readerWebId: identity.webId, outcome: "read" },
+                { resourceUrl: url, readerLabel: identity.label, readerWebId: identity.webId, outcome: "read", grantId: identity.grantId },
                 identity.session
               );
             } else {
@@ -629,6 +630,10 @@ async function loginIdentity(id) {
     webId: session.info.webId,
     clientId: id.clientId,
     clientSecret: id.clientSecret,
+    // Story 7.9 AC13: non-secret, safe to write into another person's pod
+    // via a receipt. null for identities that predate 7.9 (loadIdentities
+    // defaults it there).
+    grantId: id.grantId || null,
   };
 }
 
@@ -666,6 +671,18 @@ async function bootIdentities() {
       process.exit(1);
     }
     identities.set(slug, entry);
+  }
+
+  if (identities.size === 0) {
+    // Legitimate since Story 7.9: every identity may be revoked. Boot anyway
+    // so /onboard/ stays reachable and a replacement can be minted — refusing
+    // to start here would be a deadlock, since the mint endpoint is served by
+    // this same process (live outage, 2026-08-12).
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[solid-pod-agent mcp-server] no active identities configured — serving /onboard/ only. " +
+        "Mint one from the backoffice (People & apps -> Claude connector access)."
+    );
   }
 
   return identities;
@@ -772,6 +789,32 @@ async function resolveIdentity(identities, slug) {
   }
 }
 
+// Story 7.9 AC14: lastUsedAt is maintained through the same validated
+// atomic write path as everything else, coalesced to at most one write per
+// identity per LAST_USED_FLUSH_MS, and never blocking a request — a failed
+// bookkeeping write is logged and swallowed, exactly as receipt writing is
+// best-effort today. A bookkeeping write may never be the reason
+// identities.json becomes unloadable, so failures here never propagate.
+const LAST_USED_FLUSH_MS = 5 * 60 * 1000;
+const dirtySlugs = new Map(); // slug -> most recent Date.now() seen since last flush
+
+function markSlugUsed(slug) {
+  dirtySlugs.set(slug, Date.now());
+}
+
+setInterval(() => {
+  if (dirtySlugs.size === 0) return;
+  const { updateIdentity } = require("./identityRegistry");
+  const batch = [...dirtySlugs.entries()];
+  dirtySlugs.clear();
+  for (const [slug, seenAt] of batch) {
+    updateIdentity(slug, { lastUsedAt: new Date(seenAt).toISOString() }).catch((err) => {
+      // eslint-disable-next-line no-console
+      console.error(`[solid-pod-agent mcp-server] lastUsedAt write failed for a slug (non-fatal):`, err.message);
+    });
+  }
+}, LAST_USED_FLUSH_MS).unref();
+
 /**
  * Story 8.5 Task 4: on a 401 that indicates the process-lifetime Solid
  * session has died (token revoked/expired despite `keepAlive`), re-login
@@ -871,6 +914,12 @@ async function main() {
 
   app.use("/mcp", mcpLimiter);
 
+  // Story 7.9: mounted OUTSIDE the /mcp router so its rate limiter and auth
+  // model are independent (AC2.1). Shares the SAME `identities` Map instance
+  // bootIdentities() returned, so a revoke's cache eviction (AC11c) and a
+  // mint's lazy pickup (AC15) are visible to /mcp/:slug without a restart.
+  app.use("/onboard", buildOnboardRouter(identities));
+
   const handleMcpRequest = async (req, res, identity) => {
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     const server = buildMcpServer(identity);
@@ -903,6 +952,7 @@ async function main() {
     // the limiter entirely, same as before.
     const cached = identities.get(slug);
     if (cached) {
+      markSlugUsed(slug);
       await handleMcpRequest(req, res, cached);
       return;
     }
@@ -919,6 +969,7 @@ async function main() {
         notFound(req, res);
         return;
       }
+      markSlugUsed(slug);
       await handleMcpRequest(req, res, identity);
     });
   });
@@ -981,12 +1032,17 @@ async function main() {
   app.get("/healthz", (req, res) => {
     let allSessionsAlive;
     try {
-      // No identities configured is not healthy — .every() on an empty map
-      // vacuously returns true, which would hide the exact failure this AC
-      // exists to catch (e.g. identities.json missing or unreadable).
-      allSessionsAlive =
-        identities.size > 0 &&
-        [...identities.values()].every((identity) => identity.session.info.isLoggedIn);
+      // Story 8.4 originally treated "zero identities" as unhealthy, to catch
+      // a missing/unreadable identities.json. Since Story 7.9 that check
+      // would also mark a legitimately all-revoked deployment permanently
+      // unhealthy while it is running perfectly well and serving /onboard/
+      // so a replacement can be minted. The missing/unreadable-file cases
+      // still fail loudly at boot (loadIdentities throws), so nothing is
+      // hidden by dropping the size check here: this endpoint's job is
+      // "are the sessions I hold alive", and holding none is a true answer.
+      allSessionsAlive = [...identities.values()].every(
+        (identity) => identity.session.info.isLoggedIn
+      );
     } catch (err) {
       // Any unexpected shape (session field missing, SDK throw) means we
       // can't confirm liveness — treat as unhealthy rather than 500ing.

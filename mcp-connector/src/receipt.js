@@ -83,7 +83,7 @@ function receiptSlug(ts) {
  *
  * @returns {Promise<{url: string, status: number}>} the created receipt's URL
  */
-async function writeReadReceipt({ resourceUrl, readerLabel, readerWebId, outcome, underGrant }, session) {
+async function writeReadReceipt({ resourceUrl, readerLabel, readerWebId, outcome, underGrant, grantId }, session) {
   const accessLogUrl = `${podRootOf(resourceUrl)}access-log/`;
   const ts = new Date().toISOString();
   const body = JSON.stringify(
@@ -93,6 +93,14 @@ async function writeReadReceipt({ resourceUrl, readerLabel, readerWebId, outcome
       readerWebId,
       resource: resourceUrl,
       outcome,
+      // Story 7.9 AC13: per-grant attribution. The RAW SLUG must never appear
+      // here — receipts land in the DATA SUBJECT's own pod (BP-1), and the
+      // slug is a bearer credential; writing it there hands a third party a
+      // working key in the exact artifact meant to be shown to third
+      // parties. grantId is the non-secret stand-in, meaningless without the
+      // identities.json table that maps it back. null when the identity
+      // predates 7.9 or was never re-minted through it.
+      grantId: grantId === undefined ? null : grantId,
       // Reserved — see honest limit 3 in this file's header. Explicitly null
       // rather than omitted, so a later reader can tell "no grant was recorded"
       // apart from "this receipt predates the field".

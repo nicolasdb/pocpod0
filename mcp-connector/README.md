@@ -113,13 +113,39 @@ at boot with `keepAlive: true`; if **any** fails, the whole process refuses
 to start and names the failing identity's *label* (never its slug or secret)
 in the error.
 
-**Adding, removing, or rotating a person** is a config edit + restart:
+**Adding a person (primary route, Story 7.9):** they sign in to the backoffice
+themselves, open **People & apps → Claude connector access**, and click
+**"Get connector URL for Claude."** No config edit, no restart, no operator —
+the backoffice's `/onboard/mint` endpoint (mounted here, proxied in via
+`pod.nicolasdb.eu/onboard/`, `hetzner-gateway` repo) mints the CSS credential,
+generates the slug, and writes `identities.json` itself, atomically and
+validated against the same rules boot uses. Picked up by the lazy identity
+path (8.6.1) on that person's very next request — no restart.
+
+**Revoking a person (primary route, Story 7.9):** same screen, "Revoke" — a
+UI action, not a file edit. Removes the WAC grant, deletes the CSS
+credential, evicts the in-memory session, and tombstones the row (kept, not
+deleted, so the record that a grant existed is never lost). See
+`src/onboardRouter.js` for the three-step ordering and why it's ordered that
+way (revocation is an *authorization* act, not a credential-deletion act —
+see the story's Dev Notes on why deleting a CSS credential does not kill an
+already-issued token).
+
+**The manual path still works** (config edit + restart) for anything the UI
+doesn't cover yet, or when you'd rather not go through a browser:
 - *Add*: mint a client-credentials token for their WebID, generate a slug
   (`npm run slug`), add an entry, restart.
 - *Remove*: delete their entry, restart.
 - *Rotate (a slug leaked)*: generate a new slug, move the same
   `clientId`/`clientSecret`/`webId`/`label` under it, delete the old entry,
   restart, and tell the person their connector URL changed.
+
+`identities.json` is now a **read-write** bind mount in `docker-compose.yml`
+(it was read-only through Story 8.6.1) — the mint/revoke endpoints write it
+in place. If you're editing it by hand while the connector is running,
+prefer the UI path where possible; a hand-edit racing an in-flight
+mint/revoke is not covered by `identityRegistry.js`'s in-process write
+serialization (that only serializes writes *within this process*).
 
 Startup logs one line per identity with the authenticated WebID — never a
 slug, client id, or secret. Grep a boot log to confirm this yourself,

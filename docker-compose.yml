@@ -83,12 +83,23 @@ services:
     environment:
       - PORT=3939
       - HOST=0.0.0.0
-      - ALLOWED_HOSTS=${MCP_ALLOWED_HOSTS:-solid-mcp.nicolasdb.eu}
+      # Story 7.9: /onboard/ is reached via the pod.nicolasdb.eu vhost (nginx
+      # proxy_pass, hetzner-gateway repo), NOT solid-mcp.nicolasdb.eu — so
+      # the SDK's DNS-rebinding Host check needs that hostname allowlisted
+      # too, or every /onboard/* request 403s with "Invalid Host" before it
+      # reaches onboardRouter.js at all (found live, 2026-08-12).
+      - ALLOWED_HOSTS=${MCP_ALLOWED_HOSTS:-solid-mcp.nicolasdb.eu,pod.nicolasdb.eu}
     volumes:
-      # Secrets stay VPS-side, read-only, never baked into the image layer
-      # (Task 1.5). rsync --delete-after has no exclusion for these paths by
-      # accident; the Makefile guard (Task 1.4) is the actual protection.
-      - ./mcp-connector/identities.json:/app/identities.json:ro${VOLUME_FLAGS:-}
+      # Secrets stay VPS-side, never baked into the image layer (Task 1.5).
+      # rsync --delete-after has no exclusion for these paths by accident;
+      # the Makefile guard (Task 1.4) is the actual protection.
+      #
+      # identities.json is now READ-WRITE (Story 7.9): the /onboard/ mint and
+      # revoke endpoints write this file in place via identityRegistry.js's
+      # atomic temp+rename path. It was read-only through Story 8.6.1 because
+      # nothing but a human editor ever touched it; that invariant ends here.
+      # .env stays read-only — nothing in this story writes it.
+      - ./mcp-connector/identities.json:/app/identities.json${VOLUME_FLAGS:-}
       - ./mcp-connector/.env:/app/.env:ro${VOLUME_FLAGS:-}
       - mcp-audit:/app/audit
     healthcheck:

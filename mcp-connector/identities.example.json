@@ -1,9 +1,21 @@
 {
-  "_comment": "Copy to identities.json (gitignored), fill in real values, chmod 600. Never commit the real file.",
+  "_comment": "Copy to identities.json (gitignored), fill in real values, chmod 600. Never commit the real file. Fields below grantId..consequenceOfRefusal were added by Story 7.9 and are optional — a pre-7.9 entry with just the first 4 fields still loads clean.",
   "example-slug-replace-me": {
     "label": "Example Person",
     "webId": "https://pod.example.org/example-person/profile/card#me",
     "clientId": "example-person-CLIENT_ID_FROM_ACCOUNT_PAGE",
-    "clientSecret": "example-secret-FROM_ACCOUNT_PAGE_SHOWN_ONCE"
+    "clientSecret": "example-secret-FROM_ACCOUNT_PAGE_SHOWN_ONCE",
+    "grantId": "non-secret-id-safe-to-write-into-another-persons-pod",
+    "credentialRef": "https://pod.example.org/.account/account/xyz/client-credentials/abc/",
+    "containers": [],
+    "createdAt": "2026-08-12T00:00:00.000Z",
+    "expiresAt": null,
+    "lastUsedAt": null,
+    "revoked": false,
+    "grantUri": null,
+    "purpose": null,
+    "scope": null,
+    "excluded": null,
+    "consequenceOfRefusal": null
   }
 }

@@ -548,6 +548,44 @@ class RealBackend {
     if (!res.ok) throw new Error(`Could not create pod (${await _errDetail(res)}).`);
     return await res.json();
   }
+
+  // ---- Connector onboarding (Story 7.9) ----
+  // Talks to mcp-connector's /onboard/ endpoint, proxied same-origin via
+  // pod.nicolasdb.eu (see hetzner-gateway's 04-pocpod0.conf) — no CORS, and
+  // the css-account cookie rides along automatically with credentials:
+  // 'include', same as every other account-scoped call in this file. The
+  // server does the actual CSS credential mint; the secret it produces
+  // never reaches this browser at all — only { connectorUrl, podRootUrl }
+  // ever comes back (AC2).
+  async mintConnector(webId, label) {
+    const res = await fetch("/onboard/mint", {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ webId, label }),
+    });
+    if (res.status === 401) throw new Error("SESSION_EXPIRED");
+    if (!res.ok) throw new Error(`Could not create a connector URL (${await _errDetail(res)}).`);
+    return await res.json(); // { connectorUrl, podRootUrl }
+  }
+  async listGrants() {
+    const res = await fetch("/onboard/grants", { credentials: "include" });
+    if (res.status === 401) throw new Error("SESSION_EXPIRED");
+    if (!res.ok) throw new Error(`Could not list connector grants (HTTP ${res.status}).`);
+    const { grants } = await res.json();
+    return grants || [];
+  }
+  async revokeGrant(grantId) {
+    const res = await fetch("/onboard/revoke", {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ grantId }),
+    });
+    if (res.status === 401) throw new Error("SESSION_EXPIRED");
+    if (!res.ok) throw new Error(`Could not revoke (${await _errDetail(res)}).`);
+    return true;
+  }
 }
 
 // =====================================================================
@@ -736,6 +774,28 @@ class DemoBackend {
     const resource = DEMO_ROOT + ".account/pod/" + trimmed + "/";
     this._demoPods.push({ baseUrl, resource });
     return { baseUrl };
+  }
+
+  // ---- Connector onboarding (Story 7.9 demo parity) ----
+  _demoGrants = [];
+  async mintConnector(webId, label) {
+    const grantId = "demo-grant-" + Math.random().toString(16).slice(2, 10);
+    this._demoGrants.push({
+      grantId, label: label || "Unlabeled", webId, containers: [],
+      createdAt: new Date().toISOString(), lastUsedAt: null, expiresAt: null, revoked: false,
+    });
+    return {
+      connectorUrl: `https://solid-mcp.nicolasdb.eu/mcp/demo-${grantId}`,
+      podRootUrl: DEMO_ROOT,
+    };
+  }
+  async listGrants() {
+    return this._demoGrants.map((g) => ({ ...g }));
+  }
+  async revokeGrant(grantId) {
+    const g = this._demoGrants.find((g) => g.grantId === grantId);
+    if (g) g.revoked = true;
+    return true;
   }
   async turtleAcl(url) {
     const n = this._node(url); if (!n) return "# resource not found";
