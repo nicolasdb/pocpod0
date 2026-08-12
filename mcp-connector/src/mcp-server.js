@@ -525,7 +525,11 @@ function buildMcpServer(identity) {
   server.registerTool(
     "solid_list_container",
     {
-      description: "List the resources directly inside a Pod container (folder URL).",
+      description:
+        "List the resources directly inside a Pod container (folder URL — one " +
+        "ending in '/'). This is the ONLY way to read a folder: solid_read_resource " +
+        "cannot, and fails on one in a way that looks like a permission problem. " +
+        "Lists one level, not recursively. Takes containerUrl, not url.",
       inputSchema: { containerUrl: z.string().url() },
     },
     safeHandler("solid_list_container", identity, "containerUrl", async ({ containerUrl }) => {
@@ -538,7 +542,15 @@ function buildMcpServer(identity) {
     "solid_get_permissions",
     {
       description:
-        "List which agents (WebIDs) currently have explicit WAC access to a resource, and what modes.",
+        "List which agents (WebIDs) have access EXPLICITLY GRANTED ON THIS EXACT " +
+        "resource, and what modes. Two limits worth stating before you rely on it: " +
+        "it does not show access inherited from a parent container (WAC's " +
+        "acl:default), so an empty or short result does NOT mean nobody has access " +
+        "— a resource with no ACL of its own is usually governed entirely by its " +
+        "parent; and reading permissions needs Control access, which an agent " +
+        "identity often does not have, so a denial here says nothing about whether " +
+        "it can read or write the resource itself. To find out whether an operation " +
+        "is permitted, attempt it — do not infer it from this tool.",
       inputSchema: { resourceUrl: z.string().url() },
     },
     safeHandler("solid_get_permissions", identity, "resourceUrl", async ({ resourceUrl }) => {
@@ -600,7 +612,15 @@ function buildMcpServer(identity) {
   server.registerTool(
     "solid_revoke_access",
     {
-      description: "Revoke all WAC access for a specific WebID on a resource.",
+      description:
+        "Revoke all WAC access for a specific WebID on a resource. Takes effect " +
+        "immediately, including for a session already authenticated — access is " +
+        "checked per request, so there is no propagation delay to wait out. Only " +
+        "removes grants written on THIS resource: if access also comes from a " +
+        "parent container's acl:default, it survives this call and must be revoked " +
+        "there. For a container, use scope 'both' (see solid_grant_access). " +
+        "High-stakes — the calling agent should confirm this with the human before " +
+        "invoking it.",
       inputSchema: {
         resourceUrl: z.string().url(),
         agentWebId: z.string().url(),
