@@ -575,6 +575,10 @@ function buildMcpServer(identity) {
     {
       description:
         "Grant WAC access modes (read/write/append/control) to a specific WebID on a resource. " +
+        "Works only where this identity holds Control, which in practice means its OWN pod — " +
+        "granting on someone else's pod fails by design, and that refusal is a security " +
+        "property, not a problem to work around. Typical use: publishing something this " +
+        "identity created in its own pod so a named person can read it. " +
         "For a container, use scope 'both' so the grant covers both the container itself and " +
         "its children (scope 'resource' alone lets the agent list the folder but not touch " +
         "what's inside it). High-stakes — the calling agent should confirm this with the human " +
@@ -613,7 +617,9 @@ function buildMcpServer(identity) {
     "solid_revoke_access",
     {
       description:
-        "Revoke all WAC access for a specific WebID on a resource. Takes effect " +
+        "Revoke all WAC access for a specific WebID on a resource. Works only where this " +
+        "identity holds Control, in practice its OWN pod — it cannot revoke anyone's access " +
+        "to someone else's data, including its own. Takes effect " +
         "immediately, including for a session already authenticated — access is " +
         "checked per request, so there is no propagation delay to wait out. Only " +
         "removes grants written on THIS resource: if access also comes from a " +
@@ -639,7 +645,11 @@ function buildMcpServer(identity) {
     "solid_set_public_access",
     {
       description:
-        "Set (or remove) PUBLIC access to a resource — anyone, logged in or not. Use sparingly. " +
+        "Set (or remove) PUBLIC access to a resource — anyone on the web, logged in or not, " +
+        "with no way to know who read it. Works only where this identity holds Control, in " +
+        "practice its OWN pod — which is also where its own notes and memory may live, so " +
+        "this can expose them. Never make something public because it seemed convenient, and " +
+        "never without asking first. " +
         "For a container, use scope 'both' (see solid_grant_access). High-stakes — the calling " +
         "agent should confirm this with the human before invoking it.",
       inputSchema: {
