@@ -266,8 +266,50 @@ function safeHandler(toolName, identity, resourceKey, fn) {
  * `identity` — not module-level global wiring — so Story 8.3 can call this
  * per identity/token without a rewrite.
  */
+/**
+ * Server-level guidance, handed to the model once at connect time (MCP's
+ * `instructions`, part of the initialize result) rather than repeated in
+ * every tool description.
+ *
+ * This exists because the person on the other end is not expected to know
+ * anything about Solid, WAC, or which tool reads a folder. Live 2026-08-12:
+ * asked to read a container, the model reached for solid_read_resource,
+ * CSS answered 403, and the resulting "access denied" sent everyone off
+ * auditing ACLs that were correct — a whole evening lost to a wrong tool
+ * choice that no user could have been expected to prevent. Tool
+ * descriptions alone did not carry enough of the model to avoid it.
+ *
+ * Keep this short and behavioural. It is prompt context on every session:
+ * facts that change what the model DOES, not a tutorial.
+ */
+const SERVER_INSTRUCTIONS = [
+  "You are connected to a Solid pod through a dedicated agent identity.",
+  "",
+  "WHICH POD. This connector cannot discover which pod to work on: Solid has",
+  "no way to ask 'what may this identity reach'. If no pod URL has been given",
+  "to you, ask for one — do not guess hostnames or pod names.",
+  "",
+  "FOLDERS VS FILES. A URL ending in '/' is a container (folder): list it with",
+  "solid_list_container (argument: containerUrl). Anything else is a file: read",
+  "it with solid_read_resource (argument: url). Using the file tool on a folder",
+  "fails in a way that looks like a permission problem but is not.",
+  "",
+  "ACCESS. This identity is not the pod owner. It reaches only what the owner",
+  "has granted it, usually one folder rather than the whole pod, so a denial on",
+  "one path says nothing about another — a parent folder can be unreadable while",
+  "a folder inside it is readable. Report a denial plainly and move on; do not",
+  "retry it, and do not conclude the connector or the credential is broken.",
+  "",
+  "READS ARE LOGGED. Reading someone else's pod writes a receipt into their",
+  "access log. That is intended and visible to them. Read what you were asked",
+  "to read; do not crawl a pod to see what is there.",
+].join("\n");
+
 function buildMcpServer(identity) {
-  const server = new McpServer({ name: "solid-pod-agent", version: "0.1.0" });
+  const server = new McpServer(
+    { name: "solid-pod-agent", version: "0.1.0" },
+    { instructions: SERVER_INSTRUCTIONS }
+  );
 
   server.registerTool(
     "solid_read_resource",
