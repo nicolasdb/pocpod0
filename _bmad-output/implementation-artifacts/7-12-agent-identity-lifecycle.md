@@ -18,7 +18,7 @@ Not a hypothesis — this already happened. Nicolas informally guided Alex (an o
 
 This is exactly AC1's failure mode with a name attached. **A pod owner who already has a pod will default to minting off their own root WebID unless the flow makes "create an agent identity first" the obvious, faster path** — not a side door they'd have to already know to look for. Design the create-identity action to appear *before* the mint action is reachable for someone who owns the target pod, not as a peer option next to it.
 
-Open, logged in Story 8.7's Task 4.0: whether to remediate Alex's connector (revoke + re-mint against a proper agent identity) now or after this story ships.
+**Not our call to fix.** Alex's pod, Alex's connector, Alex's decision — nobody but Alex acts on it. The obligation this story carries is to make the frontend legible enough that he (or anyone in his position) can see the difference between "minted off my root WebID" and "minted off a scoped agent identity" and choose for himself, including choosing to leave it as-is. AC7's grant list already shows which WebID a connector was minted against — worth confirming in this story that it's legible enough for a non-operator to read that distinction unassisted.
 
 The fix is not a cleanup tool. It is removing the reason the mess is created.
 
