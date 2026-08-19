@@ -1,6 +1,6 @@
 # Story 7.12: Agent Identity Lifecycle
 
-Status: drafted — not yet ready-for-dev (needs sprint sequencing decision, see Context)
+Status: drafted — not yet ready-for-dev. **Live evidence this is blocking, not speculative:** see Context, "The Alex proof case."
 
 ## Story
 
@@ -11,6 +11,14 @@ so that every agent has its own revocable identity and its own attributable trai
 ## Context — read this before planning any work
 
 **This story closes the gap that makes throwaway pods accumulate.** Pod creation is currently the *only* path in either UI that mints a WebID. So every time Nicolas wanted a second agent identity he created a pod, and CSS has no pod deletion — the pods are still there (`nicolas/`, `agent/`, `test-xpod/`), unremovable through any HTTP surface.
+
+### The Alex proof case (2026-08-19)
+
+Not a hypothesis — this already happened. Nicolas informally guided Alex (an off-script attempt ahead of Story 8.7's controlled Task 4 run, since Alex already had his own pod and was familiar with the system) through onboarding a connector. **Alex minted straight off his own pod's root WebID** rather than a dedicated agent identity — there was nothing in the current flow to route him otherwise. The result: his connector now carries full authority over his entire pod, not a scoped grant, and the mistake is expensive to notice because the connector *works* — it just works with far more power than intended.
+
+This is exactly AC1's failure mode with a name attached. **A pod owner who already has a pod will default to minting off their own root WebID unless the flow makes "create an agent identity first" the obvious, faster path** — not a side door they'd have to already know to look for. Design the create-identity action to appear *before* the mint action is reachable for someone who owns the target pod, not as a peer option next to it.
+
+Open, logged in Story 8.7's Task 4.0: whether to remediate Alex's connector (revoke + re-mint against a proper agent identity) now or after this story ships.
 
 The fix is not a cleanup tool. It is removing the reason the mess is created.
 
