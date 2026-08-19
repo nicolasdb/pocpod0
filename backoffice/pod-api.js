@@ -794,7 +794,8 @@ class DemoBackend {
   }
   async revokeGrant(grantId) {
     const g = this._demoGrants.find((g) => g.grantId === grantId);
-    if (g) g.revoked = true;
+    if (!g) throw new Error("Grant not found.");
+    g.revoked = true;
     return true;
   }
   async turtleAcl(url) {

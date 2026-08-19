@@ -1,6 +1,6 @@
 # Story 7.9: Backoffice-Minted Connector Credentials
 
-Status: ready-for-review — deployed, Task 7 live click-through completed end-to-end by Nicolas (mint → claude.ai → read/list confirmed). One commit (`7a121f6`, container-read error fix) built and tested but NOT yet deployed.
+Status: done — deployed, Task 7 live click-through completed end-to-end by Nicolas (mint → claude.ai → read/list confirmed). Code review complete 2026-08-19 (3-layer): 5 patches applied (revoke ownership check, prefix-match hardening, grants-list UI fields, podRootUrl fallback, DemoBackend error parity), 5 deferred (see Review Findings), 0 decision-needed. One commit (`7a121f6`, container-read error fix) built and tested but NOT yet deployed — the review's patches are additional, on top of that.
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -267,6 +267,19 @@ Those four belong to the **next story, not yet drafted**, listed as items 3 and 
   - [x] 8.2 `mcp-connector/README.md`: button documented as primary route, manual path retained as fallback (AC20), revocation documented as a UI action, plus the read-write bind-mount change flagged for anyone hand-editing the file.
   - [x] 8.3 `epics.md` Story 7.9 updated with shipped outcome + explicit reserved-and-null callout for the justification fields.
   - [ ] 8.4 **Deferred to Task 7** — writing to the live pod action log requires the live VPS deploy this task does not perform.
+
+### Review Findings
+
+- [x] [Review][Patch] `/onboard/revoke` has no ownership check — any signed-in account + a grantId can revoke someone else's grant [mcp-connector/src/onboardRouter.js:287] — fixed: revoke now resolves the caller's owned pod prefixes and 404s if the grant's webId isn't among them
+- [x] [Review][Patch] `accountControlsWebId`/`/grants` filter use naive prefix match (`webId.startsWith(baseUrl)`), no trailing-slash/segment-boundary guard [mcp-connector/src/onboardRouter.js:1852] — fixed: added shared `isUnderPod()` segment-boundary check, used by mint, grants-list, and revoke
+- [x] [Review][Patch] Grants list UI omits webId/containers/lastUsedAt required by AC10 [backoffice/index.html:1747] — fixed: webId + container count now rendered on a second detail line, lastUsedAt folded into the status line
+- [x] [Review][Patch] `podRootUrl` derivation assumes WebID has 4 path segments; shorter paths silently produce `.../undefined/` [mcp-connector/src/onboardRouter.js:2007] — fixed: falls back to `podRootUrl: null` and logs instead of guessing
+- [x] [Review][Patch] `DemoBackend.revokeGrant` silently returns true on no-match instead of throwing like `RealBackend` [backoffice/pod-api.js:633] — fixed: throws "Grant not found." matching RealBackend's contract
+- [x] [Review][Defer] AC11(a) WAC-revoke step uses the agent's own session, which likely lacks Control on the owner's container — currently unreachable since `containers[]` is always `[]` today [mcp-connector/src/onboardRouter.js:301] — deferred, unreachable until containers[] is populated by a future story
+- [x] [Review][Defer] Orphaned grants become invisible to `/onboard/grants` if the owning pod is later deleted (prefix-filter no longer matches), no UI path to revoke [mcp-connector/src/onboardRouter.js:269] — deferred, pre-existing, rare
+- [x] [Review][Defer] EBUSY/EXDEV atomic-write fallback (copy+chmod+unlink) is not crash-atomic [mcp-connector/src/identityRegistry.js:1364] — deferred, pre-existing, already tracked in story's own Task 6.5/Dev Notes
+- [x] [Review][Defer] `_readRawObject` doesn't re-check permissive file mode before merging on write [mcp-connector/src/identityRegistry.js:1334] — deferred, pre-existing, low severity
+- [x] [Review][Defer] Legacy `grantId: null` rows are permanently non-revocable via the UI [mcp-connector/src/onboardRouter.js:2074] — deferred, pre-existing, already a named known gap in the story
 
 ## Dev Notes
 

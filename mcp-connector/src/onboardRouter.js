@@ -84,9 +84,37 @@ async function accountControlsWebId(controls, cookie, webId) {
   // Every pod baseUrl this account owns implies ownership of the WebID
   // profile document beneath it (CSS convention: one pod per top-level
   // segment, WebID lives at <podBaseUrl>profile/card#me for pods created
-  // through this flow). Accept an exact WebID-prefix match against any
-  // owned pod's baseUrl.
-  return Object.keys(pods).some((baseUrl) => webId.startsWith(baseUrl));
+  // through this flow). Accept a segment-bounded WebID-prefix match against
+  // any owned pod's baseUrl.
+  return Object.keys(pods).some((baseUrl) => isUnderPod(webId, baseUrl));
+}
+
+/**
+ * True if `webId` sits under `baseUrl` as a real path segment, not merely as
+ * a string prefix. A bare `startsWith` would let a pod named "alice" match
+ * a webId under a pod named "alice-evil" whenever baseUrl lacks a trailing
+ * slash. Requiring the boundary character closes that gap regardless of
+ * whether the CSS-reported baseUrl happens to end in "/".
+ */
+function isUnderPod(webId, baseUrl) {
+  if (!webId.startsWith(baseUrl)) return false;
+  if (baseUrl.endsWith("/")) return true;
+  const rest = webId.slice(baseUrl.length);
+  return rest === "" || rest.startsWith("/");
+}
+
+/** Resolve the account's owned pod baseUrls from the authed pod-list endpoint. */
+async function fetchOwnedPodPrefixes(controls, cookie) {
+  const podUrl = controls.account && controls.account.pod;
+  if (!podUrl) return [];
+  try {
+    const res = await fetch(podUrl, { headers: { cookie } });
+    if (!res.ok) return [];
+    const body = await res.json();
+    return Object.keys((body && body.pods) || {});
+  } catch {
+    return [];
+  }
 }
 
 function genericFailure(res, status, message) {
@@ -224,7 +252,17 @@ function buildOnboardRouter(identities) {
     // would require logging in synchronously inside this request, and the
     // lazy path already exists to do that on first use.
     const connectorUrl = new URL(`/mcp/${slug}`, "https://solid-mcp.nicolasdb.eu/").toString();
-    const podRootUrl = new URL(webId).origin + "/" + webId.split("/")[3] + "/";
+    const webIdSegment = webId.split("/")[3];
+    if (!webIdSegment) {
+      // Write already succeeded and the credential is live — this is a
+      // display-only failure, not a mint failure, so don't roll anything
+      // back. The person still gets connectorUrl; podRootUrl is omitted
+      // rather than shown wrong.
+      // eslint-disable-next-line no-console
+      console.error(`[onboardRouter] mint: could not derive podRootUrl from webId shape: ${webId}`);
+      return res.status(201).json({ connectorUrl, podRootUrl: null, webId });
+    }
+    const podRootUrl = new URL(webId).origin + "/" + webIdSegment + "/";
 
     // AC18: never in a URL path — response body only. `webId` and `podRootUrl`
     // are returned for scope DISCLOSURE in the reveal modal ("acting as X, which
@@ -252,23 +290,11 @@ function buildOnboardRouter(identities) {
     // visible too (AC10: "revoked ones visible as revoked").
     const all = readRegistryRaw();
 
-    const podUrl = controls.account && controls.account.pod;
-    let ownedPrefixes = [];
-    if (podUrl) {
-      try {
-        const podsRes = await fetch(podUrl, { headers: { cookie } });
-        if (podsRes.ok) {
-          const body = await podsRes.json();
-          ownedPrefixes = Object.keys((body && body.pods) || {});
-        }
-      } catch {
-        ownedPrefixes = [];
-      }
-    }
+    const ownedPrefixes = await fetchOwnedPodPrefixes(controls, cookie);
 
     const grants = Object.entries(all)
       .filter(([slug]) => slug !== "_comment")
-      .filter(([, entry]) => ownedPrefixes.some((p) => entry.webId && entry.webId.startsWith(p)))
+      .filter(([, entry]) => entry.webId && ownedPrefixes.some((p) => isUnderPod(entry.webId, p)))
       .map(([, entry]) => ({
         grantId: entry.grantId || null,
         label: entry.label,
@@ -294,6 +320,23 @@ function buildOnboardRouter(identities) {
     const found = Object.entries(all).find(([slug, e]) => slug !== "_comment" && e.grantId === grantId);
     if (!found) return genericFailure(res, 404, "Grant not found.");
     const [slug, entry] = found;
+
+    // Ownership: only the account that controls the grant's webId may revoke
+    // it. grantId is deliberately non-secret and travels in receipts written
+    // into the data subject's own pod (AC13) — without this check, anyone
+    // who learns a grantId could kill someone else's connector.
+    let controls;
+    try {
+      const resolved = await fetchAccountControls(cookie);
+      if (resolved.unauthenticated) return genericFailure(res, 401, "Not signed in.");
+      controls = resolved.controls;
+    } catch {
+      return genericFailure(res, 502, "Could not reach the account service.");
+    }
+    const ownedPrefixes = await fetchOwnedPodPrefixes(controls, cookie);
+    const owns = entry.webId && ownedPrefixes.some((p) => isUnderPod(entry.webId, p));
+    if (!owns) return genericFailure(res, 404, "Grant not found.");
+
     if (entry.revoked) return res.status(200).json({ revoked: true }); // idempotent
 
     // AC11: three ordered steps. (a) WAC revoke on every recorded container
