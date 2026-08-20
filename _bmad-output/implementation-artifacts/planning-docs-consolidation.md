@@ -28,6 +28,7 @@ Correct, and the investigation found the drift was systemic rather than a couple
 | Stories missing from `sprint-status.yaml` | added: 7.8, 7.9, 8.6.1, 3.7.1 |
 | Convention recorded | `project-context.md` created (BMAD auto-loads it) + memory entry |
 | **Story 6.2 collapsed** | one `story-6-2-acl-dashboard: done` key; TUI story file marked `Status: superseded` with a pointer note, not deleted; `epics.md` already read correctly as one pivoted story — no edit needed there |
+| **Task 2 verified executed (2026-08-20)** | commit `43d5ac6` (same day as this draft) did all three edits: sprint-status.yaml key collapse, TUI file header note, epics.md Epic 6 "(PIVOT)" section — confirmed still consistent 18 days later, re-check found nothing to redo |
 
 Two things surfaced only by reading the files, worth keeping in mind for the rest of the pass:
 - **Planned Story 2.2 (dataset generation) was never a story at all** — the PRD classes the dataset as an external input. No amount of renumbering would have revealed that; only reading did.
@@ -35,9 +36,9 @@ Two things surfaced only by reading the files, worth keeping in mind for the res
 
 ### What remains — this story
 
-1. **The comment bloat.** `sprint-status.yaml` is **~56 KB** with a single **8.9 KB** line. Eight entries exceed 2 KB, all Epic 7/8.
-2. **The 6.2 duplicate**, now unambiguous — see the settled decision below.
-3. **A re-runnable drift check.** Without one, the parity achieved above decays silently again. It decayed across eight epics before anyone looked.
+1. **The comment bloat — worse, not better, as of 2026-08-20.** `sprint-status.yaml` is now **106,708 bytes (104.2 KB) / 226 lines** — up from ~56 KB at draft time, across 18 more days and stories 7.5–8.9. **14 comments exceed 120 chars** (was 8), **12 exceed 2 KB** (was 8), all Epic 7/8. The largest is no longer `story-8-7` — it's now the **top-of-file `last_updated:` field itself, ~14.9 KB**, followed by `story-7-9` at ~13.1 KB. `story-8-7` is ~4.6 KB, roughly where it was, but no longer the outlier. See Dev Notes for the full current ranking and the new bloat pattern this reveals.
+2. **The 6.2 duplicate**, now unambiguous — see the settled decision below. **Confirmed fully executed 2026-08-20** (commit `43d5ac6`, same day as this draft) — nothing left to do here.
+3. **A re-runnable drift check.** Without one, the parity achieved above decays silently again. It decayed across eight epics before anyone looked. **Confirmed still true 2026-08-20**: no drift-check script exists anywhere in the repo. Also confirmed live: `story-7-12-agent-identity-lifecycle` is `done` in sprint-status.yaml with **no matching entry in epics.md** — a real mismatch the drift check should catch, useful as its first test case.
 
 ### Settled decision — Story 6.2 (Nicolas, 2026-08-02)
 
@@ -70,7 +71,7 @@ Already written to `project-context.md`; restated here so this story is self-con
 
 1. **A drift check exists, is re-runnable by someone else, and is documented.** It reports: key mismatches between `epics.md` and `sprint-status.yaml`, duplicate story numbers, comments over 120 characters, and total file size. **Without this the pass is a one-time cleanup that rots again** — parity was achieved once already and decayed across eight epics.
 
-2. **The drift check distinguishes sub-numbered stories from real duplicates.** `3.7`/`3.7.1`, `4.0`/`4.0.1`/`4.0.2`, `4.4`/`4.4.1`, `8.6`/`8.6.1` are legitimate; only genuinely colliding numbers are reported. A check that cries wolf gets ignored.
+2. **The drift check distinguishes sub-numbered stories from real duplicates.** `3.7`/`3.7.1`, `4.0`/`4.0.1`/`4.0.2`, `4.4`/`4.4.1`, `8.6`/`8.6.1` are legitimate; only genuinely colliding numbers are reported. **As of 2026-08-20, also add `7.11`/`7.11a`/`7.11b`** — a letter-suffix split, not a dotted sub-number, so the allowlist logic needs to recognize both suffix styles, not just `\d+\.\d+`. A check that cries wolf gets ignored.
 
 3. ~~Story 6.2 resolves to one key~~ **Done 2026-08-02**, out of scope for this story now — see the table above.
 
@@ -79,7 +80,7 @@ Already written to `project-context.md`; restated here so this story is self-con
 
 5. **Nothing is lost in the trim.** Before shortening any comment, verify its content exists in the story file (or progress report, or memory) and **append what is missing there first**. This is a migration, not a deletion — some findings exist *only* in those comments.
 
-6. **`sprint-status.yaml` ends under 8 KB** (from ~56 KB) while still carrying every key and status.
+6. **`sprint-status.yaml` ends under 8 KB** (from **104.2 KB** as of 2026-08-20, was ~56 KB at draft time) while still carrying every key and status.
 
 7. **The BMAD workflows that consume `sprint-status.yaml` still work** — the file parses, and next-backlog-story selection still resolves correctly. **A lean file that breaks story selection is a worse outcome than a fat one.**
 
@@ -89,18 +90,18 @@ Already written to `project-context.md`; restated here so this story is self-con
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Build the drift check first (AC: 1, 2)**
-  - [ ] 1.1 Report key mismatches both directions, real duplicate story numbers, comments >120 chars, file size.
-  - [ ] 1.2 Handle sub-numbered stories correctly (AC2) — the naive regex reports four false positives.
-  - [ ] 1.3 Run it **before** any edit and keep the baseline output; it is the evidence the pass did something.
-  - [ ] 1.4 One command, runnable by a human. Document it in `project-context.md` next to the convention.
-  - [ ] 1.5 **Build this before touching anything else** — otherwise the rest of the work is judged by eye.
+- [x] **Task 1 — Build the drift check first (AC: 1, 2)**
+  - [x] 1.1 Report key mismatches both directions, real duplicate story numbers, comments >120 chars, file size.
+  - [x] 1.2 Handle sub-numbered stories correctly (AC2) — the naive regex reports four false positives.
+  - [x] 1.3 Run it **before** any edit and keep the baseline output; it is the evidence the pass did something.
+  - [x] 1.4 One command, runnable by a human. Document it in `project-context.md` next to the convention.
+  - [x] 1.5 **Build this before touching anything else** — otherwise the rest of the work is judged by eye.
 
-- [ ] **Task 2 — Resolve Story 6.2 (AC: 3)**
-  - [ ] 2.1 Collapse to a single `story-6-2-*` key, status `done`.
-  - [ ] 2.2 Mark the TUI story file as a superseded *path* of 6.2 — a header note, not a deletion.
-  - [ ] 2.3 Confirm `epics.md`'s Story 6.2 entry reflects one story with two paths, so the epic doc matches.
-  - [ ] 2.4 Preserve the pivot as a finding: Textual/TUI was reached twice (3.7.1 and 6.2) and abandoned twice. That pattern is worth being legible to a future reader.
+- [x] **Task 2 — Resolve Story 6.2 (AC: 3)** — re-verified 2026-08-20, already executed by commit `43d5ac6`, nothing to redo.
+  - [x] 2.1 Collapse to a single `story-6-2-*` key, status `done`. Confirmed: only `story-6-2-acl-dashboard: done` exists (drift check finds no 6.2 duplicate).
+  - [x] 2.2 Mark the TUI story file as a superseded *path* of 6.2 — a header note, not a deletion. Confirmed: `6-2-mission-control-dashboard-implementation.md` header reads "Status: superseded" with pointer note.
+  - [x] 2.3 Confirm `epics.md`'s Story 6.2 entry reflects one story with two paths, so the epic doc matches. Confirmed: `### Story 6.2: ACL Enforcement Dashboard (PIVOT)`.
+  - [x] 2.4 Preserve the pivot as a finding: Textual/TUI was reached twice (3.7.1 and 6.2) and abandoned twice. Confirmed present in both the TUI file's header note and `sprint-status.yaml`'s `story-6-2-acl-dashboard` comment.
 
 - [ ] **Task 3 — Migrate the mega-comments (AC: 4, 5, 6)**
   - [ ] 3.1 For each entry over 120 chars, read the comment **and** the story file. List what the comment says that the story file does not.
@@ -108,7 +109,9 @@ Already written to `project-context.md`; restated here so this story is self-con
   - [ ] 3.3 Replace the comment with `# <date>: <one-line summary> → see <path>`.
   - [ ] 3.4 One epic at a time, commit per epic, so a mistake is reviewable rather than a 56 KB diff.
   - [ ] 3.5 **Start with Epic 8** — largest entries, most recently written, so the content is still fresh enough to judge what is redundant.
-  - [ ] 3.6 Include the 4.4 KB `story-8-7` entry written on 2026-08-02. It is the newest offender and the same rule applies to it.
+  - [ ] 3.6 Include the ~4.6 KB `story-8-7` entry. It was the newest offender on 2026-08-02; as of 2026-08-20 it's mid-pack, but the same rule applies.
+  - [ ] 3.7 **Migrate the top-of-file `last_updated:` field too (~14.9 KB as of 2026-08-20)** — it is not epic-scoped like the rest, it's a global rolling changelog (7.12 review + party-mode scope review + security course-correction concatenated). Read it in full, append anything not already in a story file/progress report/memory, then trim it the same way as a per-story comment.
+  - [ ] 3.8 Also migrate `story-7-9` (~13.1 KB) — currently the largest per-story entry, found during the 2026-08-20 refresh.
 
 - [ ] **Task 4 — Verify (AC: 7, 8, 9)**
   - [ ] 4.1 Drift check passes; record the output.
@@ -130,13 +133,17 @@ The mega-comments contain real findings: live-verified results, review findings 
 
 A regex truncating comments at 120 chars satisfies AC4 and violates AC5. **The reading is the work; the trimming is trivial.**
 
+### The bloat found a second home (found 2026-08-20)
+
+The original story only anticipated per-story-key comments bloating. 18 days later, the **top-of-file `last_updated:` field** independently grew into a ~14.9 KB rolling changelog — it's now the single largest entry in the file, larger than any per-story comment. Same root cause as the Dev Notes section above (sprint-status.yaml is the one file every workflow reads, so it absorbs anything "the next session must not miss") just applied to a different field. Task 3.7 handles it, but a future drift check (Task 1) should probably flag this field's length too, not just per-story comments, or the pattern will just recur in a third location.
+
 ### Sequencing
 
 Non-blocking. Best run **between** stories, not mid-story, since it rewrites the file dev workflows read to pick up work.
 
 ### Traps
 
-- **Sub-numbered stories are not duplicates** — `3.7.1`, `4.0.1`, `4.0.2`, `4.4.1`, `8.6.1` are real stories. A naive duplicate check reports all of them (AC2).
+- **Sub-numbered stories are not duplicates** — `3.7.1`, `4.0.1`, `4.0.2`, `4.4.1`, `8.6.1` are real stories. A naive duplicate check reports all of them (AC2). **As of 2026-08-20, also `7.11a`/`7.11b`** — a letter suffix, not a dotted number; don't assume the sub-numbering pattern is always `\d+\.\d+`.
 - **`story-3-3-openClaw-agent-infrastructure` has a capital C.** Harmless today; any exact-match check must not assume lowercase keys.
 - **Epic ordering in `sprint-status.yaml` is 1,2,3,5,6,4,7,8** — deliberate (the Epic 3 retro resequenced 5→6→4), not drift. Do not "fix" it.
 - **Do not touch `epic-8-action-log.md`** — a live pod resource under an append-only convention.
@@ -159,7 +166,7 @@ The drift check *is* the test. Baseline output before, passing output after, plu
 ### References
 
 - [Source: project-context.md] — the one-owner-per-fact convention this story enforces
-- [Source: _bmad-output/implementation-artifacts/sprint-status.yaml] — the ~56 KB file, the 8.9 KB line, the two 6.2 keys
+- [Source: _bmad-output/implementation-artifacts/sprint-status.yaml] — 104.2 KB as of 2026-08-20 (was ~56 KB at draft), largest entry now the top-of-file `last_updated:` field (~14.9 KB); the two 6.2 keys already collapsed to one
 - [Source: _bmad-output/planning-artifacts/epics.md] — Epic 2 and Epic 3 plan→execution reconciliation notes
 - [Source: _bmad-output/implementation-artifacts/epic-8-progress-report.md] — the intended home for evidence narrative
 - Memory: `feedback_single_source_of_truth`, `architecture_dashboard_tui_decision` (archived), `story_6_2_textual_hybrid_decision` (archived)
@@ -180,3 +187,4 @@ The drift check *is* the test. Baseline output before, passing output after, plu
 |---|---|
 | 2026-08-02 | Drafted after Nicolas flagged large narrative comments in `sprint-status.yaml` and missing keys in both directions. Investigation found the drift systemic — 9+ stories, all of Epic 8, a duplicate story number, and two distinct root causes (renumbering divergence; sprint-status used as the cross-session context dump). |
 | 2026-08-02 | **Rescoped after the same-session keys pass.** Parity (58/58) and the Epic 2/3 renumbering are complete, so their ACs were removed. Story 6.2 resolved by Nicolas as one story with a superseded TUI path — recorded as settled, no longer an open question. Remaining scope: the drift check, the 6.2 collapse, and the comment migration. |
+| 2026-08-20 | **Refreshed after 18 days of further work (stories 7.5–8.9).** Re-explored rather than trusted the draft. Findings: (1) Task 2 (6.2 collapse) confirmed fully executed same-day via commit `43d5ac6` — nothing to redo; (2) the bloat grew, not shrank — 56 KB → 104.2 KB, 8 → 14 oversized comments; (3) a new bloat pattern appeared: the top-of-file `last_updated:` field is now the single largest entry (~14.9 KB), not any per-story comment — added Task 3.7 to handle it; (4) `story-8-7` (the old "newest offender") is now mid-pack; `story-7-9` (~13.1 KB) is now the largest per-story entry — added Task 3.8; (5) new sub-numbering style found, `7.11a`/`7.11b` (letter suffix, not dotted) — added to AC2 and Traps; (6) one live drift confirmed as a first test case for the drift check: `story-7-12-agent-identity-lifecycle` has no epics.md entry. Remaining scope unchanged in kind (drift check + comment migration), numbers and task list updated to match current reality. |

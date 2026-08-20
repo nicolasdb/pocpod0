@@ -18,6 +18,10 @@ Each fact lives in exactly one file. Everywhere else points to it.
 
 **Rule: nothing appears in two places except as a pointer.**
 
+### Drift check
+
+`python3 scripts/drift_check.py` — re-runnable, no deps beyond stdlib. Reports key mismatches between `epics.md` and `sprint-status.yaml` (both directions, story and epic level), real duplicate story numbers (sub-numbered stories like `4.0.1`/`7.11a` are matched by number, not flagged), comments over 120 chars, and file size. Exit code 1 if any mismatch/duplicate/oversized-comment found, 0 if clean. Run it before and after any planning-docs edit.
+
 ### sprint-status.yaml is a state file, not a handoff document
 
 It is the one file every workflow reads start-to-finish, which makes it tempting as a place to leave notes for the next session. Resist it. Context belongs in the story file; lessons belong in memory; evidence belongs in the progress report. Entry format:
