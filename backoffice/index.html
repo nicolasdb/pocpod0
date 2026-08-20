@@ -599,6 +599,74 @@
             </div>
           </sc-if>
         </div>
+
+        <!-- AGENT IDENTITIES (Story 7.12) — a named WebID inside a pod the account
+             already owns, no throwaway pod required (AC1). Same account-session
+             gating as credentials/pods above. -->
+        <div style="margin-top:36px;padding-top:28px;border-top:1px solid var(--line,#e7e2d6)">
+          <div style="font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--tx2,#8a8474);margin:0 0 6px;display:flex;align-items:center;gap:8px"><span>🤖</span> Agent identities</div>
+          <sc-if value="{{ credsUnlocked }}" hint-placeholder-val="{{ true }}">
+            <p style="margin:0 0 16px;color:var(--tx2,#8a8474);font-size:13.5px">Give each agent its own revocable identity inside a pod you already own — no extra pod needed.</p>
+
+            <sc-for list="{{ agentItems }}" as="a" hint-placeholder-count="1">
+              <div style="display:flex;align-items:center;gap:12px;border:1px solid var(--line,#e7e2d6);border-radius:12px;background:var(--panel,#fbfaf7);padding:14px 16px;margin-bottom:10px;opacity:{{ a.rowOpacity }}">
+                <span style="font-size:18px">{{ a.icon }}</span>
+                <span style="flex:1;min-width:0">
+                  <span style="display:block;font-size:14px;font-weight:600">{{ a.displayName }}</span>
+                  <span style="display:block;font-size:11.5px;color:var(--tx3,#b3ac9a)" title="{{ a.statusDetail }}">{{ a.statusLine }}</span>
+                  <span style="display:block;font-size:11px;color:var(--tx3,#b3ac9a);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ a.webId }}">{{ a.webId }}</span>
+                </span>
+                <sc-if value="{{ a.isIncomplete }}" hint-placeholder-val="{{ false }}">
+                  <button onClick="{{ a.retry }}" aria-label="{{ a.retryLabel }}" style="font-family:inherit;font-size:12px;font-weight:600;padding:7px 14px;border-radius:8px;border:1px solid var(--warnLine,#e3c9a3);background:none;color:var(--warn,#b5722a);cursor:pointer" style-hover="filter:brightness(.95)" style-focus-visible="outline:2px solid var(--warn,#b5722a);outline-offset:1px">Retry</button>
+                  <button onClick="{{ a.dismiss }}" aria-label="{{ a.dismissLabel }}" style="font-family:inherit;font-size:12px;padding:7px 12px;border-radius:8px;border:1px solid var(--line,#e7e2d6);background:none;color:var(--tx2,#8a8474);cursor:pointer" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">Dismiss</button>
+                </sc-if>
+                <sc-if value="{{ a.notArmed }}" hint-placeholder-val="{{ true }}">
+                  <button onClick="{{ a.arm }}" aria-label="{{ a.unlinkLabel }}" style="font-family:inherit;font-size:12px;font-weight:600;padding:7px 14px;border-radius:8px;border:1px solid var(--line,#e7e2d6);background:none;color:var(--tx2,#8a8474);cursor:pointer" style-hover="border-color:#a33;color:#a33" style-focus-visible="outline:2px solid #a33;outline-offset:1px">Unlink</button>
+                </sc-if>
+                <sc-if value="{{ a.armed }}" hint-placeholder-val="{{ false }}">
+                  <div style="text-align:right;max-width:230px">
+                    <button onClick="{{ a.confirmUnlink }}" aria-label="{{ a.confirmLabel }}" style="font-family:inherit;font-size:12px;font-weight:600;padding:7px 14px;border-radius:8px;border:1px solid #a33;background:#a33;color:#fff;cursor:pointer" style-focus-visible="outline:2px solid var(--tx,#26241f);outline-offset:1px">Confirm unlink</button>
+                    <div style="font-size:10.5px;color:var(--tx3,#b3ac9a);margin-top:4px">{{ a.unlinkWarning }}</div>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-for>
+
+            <sc-if value="{{ noAgentIdentities }}" hint-placeholder-val="{{ false }}">
+              <div style="text-align:center;padding:28px 0;color:var(--tx3,#b3ac9a)"><div style="font-size:26px;margin-bottom:8px">🤖</div><div style="font-size:13.5px">No agent identities yet.</div></div>
+            </sc-if>
+
+            <sc-if value="{{ agentCreateOpen }}" hint-placeholder-val="{{ false }}">
+              <div style="margin-top:6px">
+                <input value="{{ agentNewName }}" onChange="{{ onAgentNewName }}" placeholder="agent name (letters, numbers, -, _)" style="width:100%;box-sizing:border-box;font-family:inherit;font-size:13.5px;padding:10px 12px;border-radius:9px;border:1px solid var(--line,#e7e2d6);background:var(--bg,#f6f4ef);color:var(--tx,#26241f);outline:none;margin-bottom:8px" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">
+                <p style="margin:0 0 8px;font-size:11.5px;color:var(--tx3,#b3ac9a)">Pod to host this identity:</p>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+                  <sc-for list="{{ ownedPodChoices }}" as="op" hint-placeholder-count="1">
+                    <button onClick="{{ op.pick }}" style="{{ op.style }}" style-hover="border-color:var(--acc,#3d6b52)" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">{{ op.label }}</button>
+                  </sc-for>
+                </div>
+                <sc-if value="{{ agentCreateError }}" hint-placeholder-val="{{ false }}">
+                  <p style="margin:0 0 10px;font-size:12px;color:#a33">{{ agentCreateError }}</p>
+                </sc-if>
+                <button onClick="{{ submitCreateAgent }}" style="font-family:inherit;font-size:13.5px;font-weight:600;padding:10px 18px;border-radius:99px;border:none;background:var(--acc,#3d6b52);color:#fff;cursor:pointer" style-hover="filter:brightness(1.08)" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">Create</button>
+                <button onClick="{{ cancelCreateAgent }}" style="font-family:inherit;font-size:13.5px;padding:10px 16px;border-radius:99px;border:1px solid var(--line,#e7e2d6);background:none;color:var(--tx2,#8a8474);cursor:pointer" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">Cancel</button>
+              </div>
+            </sc-if>
+            <sc-if value="{{ agentCreateClosed }}" hint-placeholder-val="{{ true }}">
+              <button onClick="{{ startCreateAgent }}" style="font-family:inherit;font-size:13.5px;font-weight:600;padding:9px 18px;border-radius:99px;border:1px dashed var(--acc,#3d6b52);background:none;color:var(--acc,#3d6b52);cursor:pointer" style-hover="background:var(--accSoft,#eef3ef)" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">+ Create agent identity</button>
+            </sc-if>
+
+            <p style="margin:14px 0 0;font-size:11.5px;color:var(--tx3,#b3ac9a)">CSS has no way to delete a pod once made — agent identities remove the reason to make one per agent. There's no "delete pod" button anywhere in this app, on purpose.</p>
+          </sc-if>
+
+          <sc-if value="{{ credsSignedOut }}" hint-placeholder-val="{{ false }}">
+            <div style="border:1px solid var(--line,#e7e2d6);border-radius:14px;background:var(--panel,#fbfaf7);padding:20px 22px;text-align:center">
+              <div style="font-size:26px;margin-bottom:10px">🔒</div>
+              <p style="margin:0 0 16px;font-size:13.5px;color:var(--tx2,#8a8474)">Your sign-in has expired or wasn't found. Sign in to see and manage agent identities.</p>
+              <button onClick="{{ goSignIn }}" style="font-family:inherit;font-size:13.5px;font-weight:600;padding:10px 22px;border-radius:99px;border:none;background:var(--acc,#3d6b52);color:#fff;cursor:pointer" style-hover="filter:brightness(1.08)" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">Sign in</button>
+            </div>
+          </sc-if>
+        </div>
       </div>
       </sc-if>
 
@@ -715,17 +783,40 @@
           </div>
           <label style="display:block;font-size:12px;font-weight:600;margin-bottom:5px">Label <span style="font-weight:400;color:var(--tx3,#b3ac9a)">— so you recognise it later</span></label>
           <input value="{{ connectorMintLabel }}" onChange="{{ onConnectorMintLabel }}" placeholder="e.g. my laptop" style="width:100%;box-sizing:border-box;font-family:inherit;font-size:13.5px;padding:10px 12px;border-radius:9px;border:1px solid var(--line,#e7e2d6);background:var(--bg,#f6f4ef);color:var(--tx,#26241f);outline:none;margin-bottom:14px" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">
-          <div style="font-size:12.5px;color:var(--tx2,#8a8474);background:var(--warnBg,#faf3e6);border:1px solid var(--warnLine,#e3c9a3);border-radius:11px;padding:12px 14px;margin-bottom:18px;line-height:1.55">⚠︎ <strong>For the length of this request, our server can do anything your account can do</strong> — it uses your sign-in for exactly one mint sequence, never logs it, never stores it. Acts as <code style="font-family:'JetBrains Mono',monospace;font-size:11.5px">{{ connectorMintWebIdDisplay }}</code>. The connector URL itself is a key — it's shown once, on the next screen.</div>
-          <!-- Story 7.9 follow-up (2026-08-12): the WebID picked at sign-in decides
-               the credential's power, and picking the pod that HOLDS your data (rather
-               than the agent identity) silently yields a connector with full Control
-               over it — it works perfectly, so nothing surfaces the mistake. This
-               states the consequence before the button. It cannot restrict anything:
+          <!-- IDENTITY PICKER (Story 7.12 follow-up, 2026-08-19). Was: bound to
+               whichever WebID you happened to SIGN IN as, with copy telling you to
+               sign in again as the agent if that was wrong — a footgun that already
+               fired once in the wild (Alex minted off his pod-root WebID). It never
+               needed the sign-in at all: CreateClientCredentialsHandler gates on
+               `isLinked(webId, accountId)` — ACCOUNT-scoped, not session-scoped —
+               so any linked identity can be minted against with just the account
+               cookie (source-verified live 2026-08-19). Now you choose here, with
+               the blast radius of each choice stated on the option itself. -->
+          <label style="display:block;font-size:12px;font-weight:600;margin-bottom:5px">Act as <span style="font-weight:400;color:var(--tx3,#b3ac9a)">— this decides what the connector can reach</span></label>
+          <div style="margin-bottom:14px">
+            <sc-for list="{{ mintIdentityChoices }}" as="mi" hint-placeholder-count="2">
+              <button onClick="{{ mi.pick }}" aria-label="{{ mi.ariaLabel }}" style="{{ mi.style }}" style-hover="border-color:var(--acc,#3d6b52)" style-focus-visible="outline:2px solid var(--acc,#3d6b52);outline-offset:1px">
+                <span style="font-size:16px">{{ mi.icon }}</span>
+                <span style="flex:1;min-width:0;text-align:left">
+                  <span style="display:block;font-size:13px;font-weight:600">{{ mi.name }}</span>
+                  <span style="display:block;font-size:11px;color:var(--tx3,#b3ac9a)">{{ mi.reach }}</span>
+                </span>
+                <span style="font-size:13px;font-weight:700;color:var(--acc,#3d6b52)">{{ mi.check }}</span>
+              </button>
+            </sc-for>
+            <sc-if value="{{ noMintIdentities }}" hint-placeholder-val="{{ false }}">
+              <p style="margin:0;font-size:12.5px;color:var(--tx3,#b3ac9a)">No linked identities found. Create an agent identity below first.</p>
+            </sc-if>
+          </div>
+          <div style="font-size:12.5px;color:var(--tx2,#8a8474);background:var(--warnBg,#faf3e6);border:1px solid var(--warnLine,#e3c9a3);border-radius:11px;padding:12px 14px;margin-bottom:18px;line-height:1.55">⚠︎ <strong>For the length of this request, our server can do anything your account can do</strong> — it uses your sign-in for exactly one mint sequence, never logs it, never stores it. The connector URL itself is a key — it's shown once, on the next screen.</div>
+          <!-- Consequence stated before the button. This cannot RESTRICT anything:
                CSS client credentials carry the full authority of their WebID, with no
-               scope parameter. WAC on the target is the only real boundary. -->
+               scope parameter. WAC on the target is the only real boundary — so the
+               honest move is to disclose the reach, and make the small-reach option
+               the easy one to pick. -->
           <div style="font-size:12.5px;color:var(--tx2,#8a8474);background:var(--codebg,#f0ede4);border:1px solid var(--line,#e7e2d6);border-radius:11px;padding:12px 14px;margin-bottom:18px;line-height:1.55">
-            This connector will hold <strong>full control of {{ connectorMintPodDisplay }}</strong>, the pod that identity owns.
-            <span style="display:block;margin-top:7px;color:var(--tx3,#b3ac9a)">Minting from a dedicated agent identity keeps that blast radius small — the agent then reaches other pods only where they've granted it access. If this names the pod holding your real data, sign in as the agent instead.</span>
+            {{ mintReachSentence }}
+            <span style="display:block;margin-top:7px;color:var(--tx3,#b3ac9a)">A credential carries the full authority of the identity it's minted for — it can't be scoped down. An agent identity starts with no access at all, and reaches your data only where you grant it.</span>
           </div>
           <div style="display:flex;gap:10px">
             <button onClick="{{ confirmMintConnector }}" style="flex:1;font-family:inherit;font-size:13.5px;font-weight:600;padding:11px;border-radius:99px;border:none;background:var(--acc,#3d6b52);color:#fff;cursor:pointer" style-hover="filter:brightness(1.08)" style-focus-visible="outline:2px solid var(--tx,#26241f);outline-offset:1px">Create connector URL</button>
@@ -877,9 +968,17 @@ class Component extends DCLogic {
       credConfirmRevoke: null, // resource url armed for revoke confirmation
       // connector onboarding (Story 7.9) — the button that removes the operator
       grantsList: [], grantsLoading: false,
-      connectorMintOpen: false, connectorMintLabel: '',
+      connectorMintOpen: false, connectorMintLabel: '', connectorMintWebId: '',
       mintedConnector: null,   // transient {connectorUrl, podRootUrl} — DOM only, shown once (AC3)
       grantConfirmRevoke: null, // grantId armed for revoke confirmation
+      // agent identities (Story 7.12)
+      agentLinks: [], agentLoading: false,
+      agentCreateOpen: false, agentNewName: '', agentPodPick: '', agentCreateError: null, agentCreating: false,
+      agentUnlinkConfirm: null, // resource url armed for unlink confirmation
+      // AC6: a failed create is never silently dropped — it's listed as incomplete,
+      // with the failing step's message, and a retry that re-runs the whole flow
+      // (cleanup on failure makes a full retry safe — see createAgentIdentity).
+      agentIncomplete: [], // {key, name, podBaseUrl, error}
       toast: null, undoFn: null, canUndo: false
     };
     this.chapters = ['intro', 'box', 'webid', 'keys', 'checkpoint', 'create', 'folders', 'file', 'share', 'recap'];
@@ -888,7 +987,7 @@ class Component extends DCLogic {
   async componentDidMount() {
     this.setVars();
     try {
-      this.api = await import('./pod-api.js?v=7-9-1');
+      this.api = await import('./pod-api.js?v=7-12-3');
     } catch (e) {
       this.api = null;
     }
@@ -1184,6 +1283,7 @@ class Component extends DCLogic {
     this.loadCreds();
     this.loadPods();
     this.loadGrants();
+    this.loadAgentIdentities();
   }
   goSignIn() {
     if (this.api && this.api.Solid) this.api.Solid.connect();
@@ -1376,13 +1476,28 @@ class Component extends DCLogic {
       else this.toast('Could not load connector access: ' + e.message);
     }
   }
-  startMintConnector() { this.setState({ connectorMintOpen: true, connectorMintLabel: '' }); }
+  startMintConnector() {
+    // Default to a dedicated agent identity when one exists — the safe choice
+    // should be the one already selected, not one you have to know to look for
+    // (Story 7.12's Alex case). Falls back to the signed-in WebID otherwise.
+    const links = this.state.agentLinks || [];
+    const agent = links.find(l => !l.isPodRoot);
+    const signedIn = this.state.webId || (this.cl && this.cl.webId);
+    this.setState({
+      connectorMintOpen: true, connectorMintLabel: '',
+      connectorMintWebId: (agent && agent.webId) || signedIn || '',
+    });
+  }
   cancelMintConnector() { this.setState({ connectorMintOpen: false, connectorMintLabel: '' }); }
   onConnectorMintLabel(e) { this.setState({ connectorMintLabel: e.target.value }); }
+  pickMintIdentity(webId) { this.setState({ connectorMintWebId: webId }); }
   async confirmMintConnector() {
     if (this._mintingConnector) return; // guard double-click
-    const webId = this.state.webId || (this.cl && this.cl.webId);
-    if (!webId) { this.toast('No signed-in WebID to mint against.'); return; }
+    // The chosen identity, NOT the signed-in one: CSS gates the mint on
+    // isLinked(webId, accountId), which is account-scoped, so any linked
+    // identity is mintable from this session.
+    const webId = this.state.connectorMintWebId || this.state.webId || (this.cl && this.cl.webId);
+    if (!webId) { this.toast('Pick an identity to mint against.'); return; }
     this._mintingConnector = true;
     try {
       const r = await this.cl.mintConnector(webId, this.state.connectorMintLabel);
@@ -1402,11 +1517,88 @@ class Component extends DCLogic {
     try {
       await this.cl.revokeGrant(grantId);
       this.setState({ grantConfirmRevoke: null });
-      this.toast(`Revoked "${label}" — access ends now. (The key itself can stay technically valid up to an hour longer; it just can't reach anything.)`);
+      this.toast(`Revoked "${label}" — access ends now. (The key itself can stay technically valid for up to ~10 minutes longer; it just can't reach anything.)`);
       this.loadGrants();
     } catch (e) {
       if (e.message === 'SESSION_EXPIRED') { this.setState({ credsUnlocked: false, credsSignedOut: true, grantConfirmRevoke: null }); this.toast('Session expired — sign in again to revoke.'); }
       else this.toast('Could not revoke: ' + e.message);
+    }
+  }
+
+  // ---- Agent identities (Story 7.12) ----
+  async loadAgentIdentities() {
+    if (!this.cl || !this.cl.listWebIdLinks) return;
+    this.setState({ agentLoading: true });
+    try {
+      const links = await this.cl.listWebIdLinks();
+      this.setState({ agentLinks: links, agentLoading: false });
+    } catch (e) {
+      this.setState({ agentLoading: false });
+      if (e.message === 'SESSION_EXPIRED') { this.setState({ credsUnlocked: false, credsSignedOut: true, agentLinks: [] }); }
+      else this.toast('Could not load agent identities: ' + e.message);
+    }
+  }
+  startCreateAgent() {
+    const first = (this.state.podItems && this.state.podItems[0]) || null;
+    this.setState({ agentCreateOpen: true, agentNewName: '', agentPodPick: first ? first.baseUrl : '', agentCreateError: null });
+  }
+  cancelCreateAgent() { this.setState({ agentCreateOpen: false, agentNewName: '', agentCreateError: null }); }
+  onAgentNewName(e) { this.setState({ agentNewName: e.target.value, agentCreateError: null }); }
+  pickAgentPod(baseUrl) { this.setState({ agentPodPick: baseUrl, agentCreateError: null }); }
+  async submitCreateAgent() {
+    if (this._creatingAgent) return; // guard double-click
+    const name = (this.state.agentNewName || '').trim();
+    const podBaseUrl = this.state.agentPodPick;
+    if (!name) { this.setState({ agentCreateError: 'Give the agent a name first.' }); return; }
+    if (!/^[A-Za-z0-9_-]+$/.test(name)) { this.setState({ agentCreateError: 'Only letters, numbers, "-" and "_" — no spaces or punctuation.' }); return; }
+    if (!podBaseUrl) { this.setState({ agentCreateError: 'Pick a pod to host this identity.' }); return; }
+    this._creatingAgent = true;
+    try {
+      await this.cl.createAgentIdentity(podBaseUrl, name);
+      this.setState({ agentCreateOpen: false, agentNewName: '', agentCreateError: null,
+        agentIncomplete: this.state.agentIncomplete.filter(a => a.name !== name || a.podBaseUrl !== podBaseUrl) });
+      await this.loadAgentIdentities();
+      this.toast('Agent identity "' + name + '" created.');
+    } catch (e) {
+      if (e.message === 'SESSION_EXPIRED') { this.setState({ agentCreateOpen: false, credsUnlocked: false, credsSignedOut: true }); return; }
+      // AC6: name the failing step, list as incomplete rather than a dead-end error.
+      this.setState({
+        agentCreateOpen: false, agentNewName: '',
+        agentIncomplete: [
+          ...this.state.agentIncomplete.filter(a => a.name !== name || a.podBaseUrl !== podBaseUrl),
+          { key: name + '|' + podBaseUrl, name, podBaseUrl, error: e.message },
+        ],
+      });
+      this.toast('Could not finish creating "' + name + '" — listed as incomplete, retry below.');
+    } finally { this._creatingAgent = false; }
+  }
+  async retryCreateAgent(name, podBaseUrl) {
+    try {
+      await this.cl.createAgentIdentity(podBaseUrl, name);
+      this.setState({ agentIncomplete: this.state.agentIncomplete.filter(a => a.name !== name || a.podBaseUrl !== podBaseUrl) });
+      await this.loadAgentIdentities();
+      this.toast('Agent identity "' + name + '" is now ready.');
+    } catch (e) {
+      if (e.message === 'SESSION_EXPIRED') { this.setState({ credsUnlocked: false, credsSignedOut: true }); return; }
+      this.setState({
+        agentIncomplete: this.state.agentIncomplete.map(a =>
+          (a.name === name && a.podBaseUrl === podBaseUrl) ? { ...a, error: e.message } : a),
+      });
+      this.toast('Still incomplete: ' + e.message);
+    }
+  }
+  dismissIncompleteAgent(key) {
+    this.setState({ agentIncomplete: this.state.agentIncomplete.filter(a => a.key !== key) });
+  }
+  async doUnlinkAgent(resource, label) {
+    try {
+      await this.cl.unlinkWebId(resource);
+      this.setState({ agentUnlinkConfirm: null });
+      this.toast(`Unlinked "${label}" — new credential minting is blocked. (An already-issued token can stay valid for up to ~10 minutes; the profile document itself is untouched — re-linking restores it.)`);
+      this.loadAgentIdentities();
+    } catch (e) {
+      if (e.message === 'SESSION_EXPIRED') { this.setState({ credsUnlocked: false, credsSignedOut: true, agentUnlinkConfirm: null }); this.toast('Session expired — sign in again to unlink.'); }
+      else this.toast('Could not unlink: ' + e.message);
     }
   }
 
@@ -1764,6 +1956,77 @@ class Component extends DCLogic {
       confirmRevoke: () => { clearTimeout(this._grantRevTimer); this.doRevokeGrant(g.grantId, g.label); },
       revokeLabel: 'Revoke ' + g.label, confirmLabel: 'Confirm revoke ' + g.label,
     }));
+    // agent identities (Story 7.12) — AC7's list (name/WebID/host pod/linked/
+    // connector-or-not) plus AC6's incomplete rows and AC9's pod-root marking.
+    // WCAG: state is always icon+text, never colour alone (mirrors grantItems above).
+    const agentNameFromWebId = (webId) => {
+      const m = /\/agents\/([^/#]+)#/.exec(webId || '');
+      return m ? m[1] : (webId || '').replace(/^https?:\/\//, '');
+    };
+    const linkedItems = (S.agentLinks || []).map(l => ({
+      key: l.resource, name: agentNameFromWebId(l.webId), webId: l.webId, resource: l.resource,
+      displayName: agentNameFromWebId(l.webId) + (l.isPodRoot ? '  ·  pod-root identity' : ''),
+      icon: l.isPodRoot ? '🗄️' : '🤖',
+      statusLine: 'linked' + (l.hasGrant ? '  ·  connector active' : '  ·  no connector'),
+      isIncomplete: false, rowOpacity: '1',
+      armed: S.agentUnlinkConfirm === l.resource, notArmed: S.agentUnlinkConfirm !== l.resource,
+      arm: () => { clearTimeout(this._agentUnlinkTimer); this.setState({ agentUnlinkConfirm: l.resource }); this._agentUnlinkTimer = setTimeout(() => this.setState({ agentUnlinkConfirm: null }), 4000); },
+      confirmUnlink: () => { clearTimeout(this._agentUnlinkTimer); this.doUnlinkAgent(l.resource, agentNameFromWebId(l.webId)); },
+      unlinkLabel: 'Unlink ' + agentNameFromWebId(l.webId), confirmLabel: 'Confirm unlink ' + agentNameFromWebId(l.webId),
+      unlinkWarning: l.hasGrant
+        ? 'Revoke the connector first — unlinking alone leaves an active credential able to authenticate for up to ~10 minutes.'
+        : "Doesn't delete the profile document or an already-issued token (~10 min). Re-linking restores it.",
+    }));
+    // A failed step must read as one short human sentence naming WHICH step and
+    // WHAT to do — never CSS's raw error text. The raw detail stays available on
+    // hover (title=) for whoever is debugging, but the row itself stays legible.
+    const stepSummary = (raw) => {
+      const step = (/^([a-z-]+):/.exec(raw || '') || [])[1];
+      const known = {
+        'write-doc': "Couldn't create the identity's profile document in that pod. Check you still have write access to it.",
+        'write-acl': "Created the document, but couldn't make it publicly readable. Nothing was left behind.",
+        'verify-public': "The profile document isn't publicly readable, so it could never sign in. Nothing was left behind.",
+        'link': "Couldn't register the identity with your account. Nothing was left behind.",
+      };
+      return known[step] || 'Creation did not finish. Nothing was left behind.';
+    };
+    const incompleteItems = (S.agentIncomplete || []).map(a => ({
+      key: a.key, name: a.name, webId: a.podBaseUrl + 'agents/' + a.name + '  ·  not created',
+      displayName: a.name, icon: '⚠️',
+      statusLine: 'incomplete — ' + stepSummary(a.error),
+      statusDetail: a.error,
+      isIncomplete: true, rowOpacity: '1', armed: false, notArmed: false,
+      retry: () => this.retryCreateAgent(a.name, a.podBaseUrl), retryLabel: 'Retry creating ' + a.name,
+      dismiss: () => this.dismissIncompleteAgent(a.key), dismissLabel: 'Dismiss ' + a.name,
+    }));
+    const agentItems = [...linkedItems, ...incompleteItems];
+    // Mint-dialog identity options, from the same linked-WebID list. CSS's mint
+    // gate is isLinked(webId, accountId) — account-scoped — so every one of
+    // these is mintable from this session regardless of who we signed in as.
+    const podShortOf = (webId) => {
+      try { const u = new URL(webId); return u.host + '/' + u.pathname.split('/')[1] + '/'; }
+      catch (_) { return 'its own pod'; }
+    };
+    const mintIdentityChoices = (S.agentLinks || []).map(l => {
+      const name = agentNameFromWebId(l.webId);
+      const selected = S.connectorMintWebId === l.webId;
+      return {
+        webId: l.webId, name, selected, isPodRoot: l.isPodRoot, podShort: podShortOf(l.webId),
+        icon: l.isPodRoot ? '🗄️' : '🤖',
+        reach: l.isPodRoot ? 'full control of ' + podShortOf(l.webId) : 'agent identity — reaches only what you grant it',
+        check: selected ? '✓' : '',
+        ariaLabel: (selected ? 'Selected: ' : 'Act as ') + name + (l.isPodRoot ? ', full control of ' + podShortOf(l.webId) : ', scoped agent identity'),
+        pick: () => this.pickMintIdentity(l.webId),
+        style: 'width:100%;box-sizing:border-box;display:flex;align-items:center;gap:10px;margin-bottom:6px;font-family:inherit;padding:10px 12px;border-radius:10px;cursor:pointer;text-align:left;border:1px solid '
+          + (selected ? 'var(--acc,#3d6b52);background:var(--accSoft,#eef3ef)' : 'var(--line,#e7e2d6);background:none'),
+      };
+    });
+    const ownedPodChoices = (S.podItems || []).filter(p => this.isOwnedPod(p.baseUrl)).map(p => ({
+      baseUrl: p.baseUrl, label: p.baseUrl.replace(/^https?:\/\//, ''),
+      pick: () => this.pickAgentPod(p.baseUrl),
+      style: 'font-family:inherit;font-size:12.5px;padding:8px 14px;border-radius:99px;cursor:pointer;border:1px solid ' +
+        (S.agentPodPick === p.baseUrl ? 'var(--acc,#3d6b52);background:var(--accSoft,#eef3ef);color:var(--acc,#3d6b52);font-weight:600' : 'var(--line,#e7e2d6);background:none;color:var(--tx2,#8a8474)'),
+    }));
     const mc = S.mintedConnector;
     const ms = S.mintedSecret;
     const recipe = ms ? [
@@ -1866,12 +2129,17 @@ class Component extends DCLogic {
       connectorMintOpen: S.connectorMintOpen, cancelMintConnector: () => this.cancelMintConnector(),
       escCancelMintConnector: (e) => { if (e.key==='Escape') this.cancelMintConnector(); },
       connectorMintLabel: S.connectorMintLabel, onConnectorMintLabel: (e)=>this.onConnectorMintLabel(e),
-      connectorMintWebIdDisplay: selfWebId,
-      // Derived the same way the server derives podRootUrl (onboardRouter.js): the
-      // pod a WebID owns is its first path segment. Display-only.
-      connectorMintPodDisplay: (() => {
-        try { const u = new URL(selfWebId); return (u.host + '/' + u.pathname.split('/')[1] + '/'); }
-        catch (_) { return 'its own pod'; }
+      // Identity picker (Story 7.12 follow-up). Each option states its own reach,
+      // so the cost of the choice is visible AT the choice rather than in prose
+      // above it. Pod-root identities own a whole pod; agent identities own
+      // nothing until granted.
+      mintIdentityChoices, noMintIdentities: mintIdentityChoices.length === 0,
+      mintReachSentence: (() => {
+        const sel = mintIdentityChoices.find(m => m.selected);
+        if (!sel) return 'Pick the identity this connector will act as.';
+        return sel.isPodRoot
+          ? `This connector will hold full control of ${sel.podShort} — everything in that pod.`
+          : `This connector will act as ${sel.name}, which currently reaches nothing until you grant it access.`;
       })(),
       confirmMintConnector: () => this.confirmMintConnector(),
       mintedConnectorOpen: !!mc,
@@ -1896,6 +2164,14 @@ class Component extends DCLogic {
       podCreateError: S.podCreateError,
       startCreatePod: () => this.startCreatePod(), cancelCreatePod: () => this.cancelCreatePod(),
       submitCreatePod: () => this.submitCreatePod(),
+
+      // agent identities (Story 7.12)
+      agentItems, noAgentIdentities: S.credsUnlocked && !S.agentLoading && agentItems.length===0,
+      agentCreateOpen: S.agentCreateOpen, agentCreateClosed: !S.agentCreateOpen,
+      agentNewName: S.agentNewName, onAgentNewName: (e)=>this.onAgentNewName(e),
+      agentCreateError: S.agentCreateError, ownedPodChoices,
+      startCreateAgent: () => this.startCreateAgent(), cancelCreateAgent: () => this.cancelCreateAgent(),
+      submitCreateAgent: () => this.submitCreateAgent(),
 
       // delete-pod ceremony (Story 7.10 Task 6)
       podDeleteOpen: S.podDeleteOpen,

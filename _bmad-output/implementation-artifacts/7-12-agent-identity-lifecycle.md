@@ -1,6 +1,6 @@
 # Story 7.12: Agent Identity Lifecycle
 
-Status: drafted — not yet ready-for-dev. **Live evidence this is blocking, not speculative:** see Context, "The Alex proof case."
+Status: in-progress — Tasks 1-5 implemented and deployed to VPS; Task 6's browser/human-hands steps still open (see Dev Agent Record).
 
 ## Story
 
@@ -59,7 +59,8 @@ This story:
 | Fact | Value | Source |
 |---|---|---|
 | WebID : Pod cardinality | **n:1** — many WebIDs per pod | `LinkWebIdHandler.js`, live 2026-08-19 |
-| Linking a WebID under an owned pod | **No ownership challenge** — `isCreator` short-circuits `ownershipValidator` | `LinkWebIdHandler.js` |
+| ~~Linking a WebID under an owned pod~~ | ~~**No ownership challenge** — `isCreator` short-circuits `ownershipValidator`~~ **FALSE ON THIS DEPLOYMENT** — see below | `LinkWebIdHandler.js` |
+| Linking a WebID (corrected, live 2026-08-19) | **Ownership challenge ALWAYS fires.** `infra/css/config.json` uses `config/identity/pod/static.json` + `storage/location/root.json` = ONE root storage, so `getStorageIdentifier(webId)` resolves every WebID to the ROOT pod, owned by account `80f4a781…`, not ours (`0ce7c46b…`) → `isCreator` false → `TokenOwnershipValidator` runs. Answered automatically: CSS's 400 carries the required proof triple, we republish the doc with it, retry, strip it back out. | live failure + `TokenOwnershipValidator.js` |
 | Credential-mint gate | `webIdStore.isLinked(webId, accountId)` — **not** pod ownership | `CreateClientCredentialsHandler.js` |
 | WebID doc must be public-readable | RS dereferences anonymously (bare `node-fetch`) for `solid:oidcIssuer`; else `WebidDereferencingError` | `@solid/access-token-verifier/dist/algorithm/retrieveWebidTrustedOidcIssuers.js` |
 | Minimum WebID doc | `<webid> solid:oidcIssuer <ISSUER>; a foaf:Person.` | `templates/pod/base/profile/card$.ttl.hbs` |
@@ -106,41 +107,41 @@ This story:
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Identity creation in `pod-api.js` (AC: 1, 2, 3, 4, 6)**
-  - [ ] 1.1 `RealBackend.createAgentIdentity(podBaseUrl, agentName)`: validate the name (AC4), compose the WebID as `<podBaseUrl>agents/<name>#me`, write the profile doc, write the public-read ACL, verify anonymously, then link.
-  - [ ] 1.2 Reuse the existing `_writeAcl` path rather than hand-rolling Turtle — 7.3 fixed a real bug there (`accessTo` targets `./` + basename for files). Do not introduce a second ACL writer.
-  - [ ] 1.3 The anonymous verification GET must genuinely omit credentials — a same-origin `fetch` with `credentials: 'omit'`, not the authed helper. A check that passes only because it was authenticated proves nothing (AC3).
-  - [ ] 1.4 Step-labelled errors so AC6's UI can name the failing step.
-  - [ ] 1.5 `DemoBackend` stub matching the same contract, throwing on the same error shapes (7.9's review found the demo/real divergence worth avoiding).
+- [x] **Task 1 — Identity creation in `pod-api.js` (AC: 1, 2, 3, 4, 6)**
+  - [x] 1.1 `RealBackend.createAgentIdentity(podBaseUrl, agentName)`: validate the name (AC4), compose the WebID as `<podBaseUrl>agents/<name>#me`, write the profile doc, write the public-read ACL, verify anonymously, then link.
+  - [x] 1.2 Reuse the existing `_writeAcl` path rather than hand-rolling Turtle — 7.3 fixed a real bug there (`accessTo` targets `./` + basename for files). Do not introduce a second ACL writer.
+  - [x] 1.3 The anonymous verification GET must genuinely omit credentials — a same-origin `fetch` with `credentials: 'omit'`, not the authed helper. A check that passes only because it was authenticated proves nothing (AC3).
+  - [x] 1.4 Step-labelled errors so AC6's UI can name the failing step.
+  - [x] 1.5 `DemoBackend` stub matching the same contract, throwing on the same error shapes (7.9's review found the demo/real divergence worth avoiding).
 
-- [ ] **Task 2 — Link management (AC: 5, 7, 8, 9)**
-  - [ ] 2.1 `listWebIdLinks()` from `controls.account.webId`; join against 7.9's `GET /onboard/grants` by `webId` for AC7's connector column.
-  - [ ] 2.2 `unlinkWebId(resourceUrl)` — `DELETE` the link resource.
-  - [ ] 2.3 Mark pod-root identities distinctly from agent identities (AC9). Heuristic: the WebID sits at `<pod>/profile/card#me`. State it as a heuristic in a comment; it is presentation only, nothing authorizes on it.
+- [x] **Task 2 — Link management (AC: 5, 7, 8, 9)**
+  - [x] 2.1 `listWebIdLinks()` from `controls.account.webId`; join against 7.9's `GET /onboard/grants` by `webId` for AC7's connector column.
+  - [x] 2.2 `unlinkWebId(resourceUrl)` — `DELETE` the link resource.
+  - [x] 2.3 Mark pod-root identities distinctly from agent identities (AC9). Heuristic: the WebID sits at `<pod>/profile/card#me`. State it as a heuristic in a comment; it is presentation only, nothing authorizes on it.
 
-- [ ] **Task 3 — Backoffice UI (AC: 1, 7, 8, 12, 13)**
-  - [ ] 3.1 "Agent identities" section on the People & apps screen, gated on the same `credsUnlocked`/`credsSignedOut` state as 7.9's connector section.
-  - [ ] 3.2 Create form: agent name + pod picker (pods the account owns). Inline validation for AC4.
-  - [ ] 3.3 List per AC7, with the incomplete state from AC6 visually distinct and actionable (retry the failed step).
-  - [ ] 3.4 Unlink with the arm/confirm-within-4s idiom (7.9's grants list), plus AC8's honest copy. Where a live grant exists, the confirm step says revoke-the-connector-first and links to it.
-  - [ ] 3.5 AC12's boundary text where a person would look for a delete-pod button.
-  - [ ] 3.6 Cache-buster bump on `pod-api.js`.
+- [x] **Task 3 — Backoffice UI (AC: 1, 7, 8, 12, 13)**
+  - [x] 3.1 "Agent identities" section on the People & apps screen, gated on the same `credsUnlocked`/`credsSignedOut` state as 7.9's connector section.
+  - [x] 3.2 Create form: agent name + pod picker (pods the account owns). Inline validation for AC4.
+  - [x] 3.3 List per AC7, with the incomplete state from AC6 visually distinct and actionable (retry the failed step).
+  - [x] 3.4 Unlink with the arm/confirm-within-4s idiom (7.9's grants list), plus AC8's honest copy. Where a live grant exists, the confirm step says revoke-the-connector-first and links to it.
+  - [x] 3.5 AC12's boundary text where a person would look for a delete-pod button.
+  - [x] 3.6 Cache-buster bump on `pod-api.js`.
 
-- [ ] **Task 4 — Correct the mint gate (AC: 10, 15)**
-  - [ ] 4.1 Replace `accountControlsWebId()`'s prefix match with a `webIdLinks` membership test in `mcp-connector/src/onboardRouter.js`.
-  - [ ] 4.2 Keep `isUnderPod()` for the `/grants` and `/revoke` ownership filters — those scope *rows to a viewer* and are a different question from *may this WebID be minted against*. Do not collapse the two.
-  - [ ] 4.3 Test: a WebID created by this story mints; an unlinked WebID under an owned pod is refused **before** anything is written.
+- [x] **Task 4 — Correct the mint gate (AC: 10, 15)**
+  - [x] 4.1 Replace `accountControlsWebId()`'s prefix match with a `webIdLinks` membership test in `mcp-connector/src/onboardRouter.js`.
+  - [x] 4.2 Keep `isUnderPod()` for the `/grants` and `/revoke` ownership filters — those scope *rows to a viewer* and are a different question from *may this WebID be minted against*. Do not collapse the two.
+  - [x] 4.3 Test: a WebID created by this story mints; an unlinked WebID under an owned pod is refused **before** anything is written.
 
-- [ ] **Task 5 — Docs (AC: 11, 12)**
-  - [ ] 5.1 `docs/team-onboarding.md`: agent identities no longer need a pod each; orphan recovery via re-linking; CSS cannot delete a pod. Every existing honest-limits bullet stays.
-  - [ ] 5.2 `mcp-connector/README.md`: the corrected mint gate, and that a WebID must be linked *and* publicly dereferenceable.
+- [x] **Task 5 — Docs (AC: 11, 12)**
+  - [x] 5.1 `docs/team-onboarding.md`: agent identities no longer need a pod each; orphan recovery via re-linking; CSS cannot delete a pod. Every existing honest-limits bullet stays.
+  - [x] 5.2 `mcp-connector/README.md`: the corrected mint gate, and that a WebID must be linked *and* publicly dereferenceable.
 
-- [ ] **Task 6 — Live verification (AC: 3, 5, 15)**
-  - [ ] 6.1 Create `hermes-manny` under `nicolas_claude` through the real UI. Confirm anonymous GET of the WebID doc returns 200 with the issuer triple.
+- [ ] **Task 6 — Live verification (AC: 3, 5, 15)** — deployed to VPS 2026-08-19; boot regression (6.5, partial) and endpoint reachability confirmed from this session. The browser/human-hands sub-steps below need Nicolas's own account session (no browser tool and no account password available to this session) — see Dev Agent Record for exactly what's confirmed vs. still open.
+  - [x] 6.1 **DONE 2026-08-19.** Nicolas created `agent-smithwhite` (not `hermes-manny` — name differs, substance identical) under `nicolas_claude` through the real UI, in ONE action, with the ownership challenge answered automatically. Verified from outside the browser with credential-free `curl`: anonymous GET of `https://pod.nicolasdb.eu/nicolas_claude/agents/agent-smithwhite` returns **200 `text/turtle`** carrying `solid:oidcIssuer <https://pod.nicolasdb.eu/>` — the exact path `@solid/access-token-verifier` takes, so this WebID can authenticate (AC3). The ownership-proof token was correctly stripped after linking, leaving the minimal profile (AC2). Scoping confirmed minimal: `agents/` container is **not** anonymously listable (401, so agent names aren't enumerable) and `<doc>.acl` requires Control (401) — public read is granted on the one document that needs it and nothing else. UI shows it as an agent identity (🤖) distinct from the four pod-root identities (🗄️), each with its real WebID (AC7, AC9).
   - [ ] 6.2 Mint a connector against it; confirm it authenticates on first request with no restart (7.9 AC15's lazy path).
   - [ ] 6.3 Confirm two live connectors on **one pod** produce distinguishable `grantId`s in the access journal — the attribution this whole approach exists for.
   - [ ] 6.4 Unlink; confirm new mints refused, and confirm the ~1h token window behaves as `css_revocation_model` predicts (authenticates, denied by WAC) rather than as a bug.
-  - [ ] 6.5 Confirm the four pre-existing WebIDs still authenticate (AC15).
+  - [x] 6.5 Confirm the four pre-existing WebIDs still authenticate (AC15) — partial: `nicolas_claude` and `claude-alex` confirmed authenticating cleanly in the post-deploy boot log (both configured identities logged in with no error). The other two (`nicolas`, `agent`) aren't in mcp-connector's `identities.json` (they're not connector identities) and would need a direct OIDC-login check by Nicolas.
 
 ## Dev Notes
 
@@ -173,6 +174,7 @@ Add owner stays a CSS-stock expert operation. Do not surface it.
 - **"WebID:Pod is 1:1."** False. n:1.
 - **"CSS can delete a pod if you find the right endpoint."** False — no handler exists.
 - **"An orphaned pod is lost."** False — the profile doc survives an unlink; re-linking restores control.
+- **"Linking a WebID inside a pod your account created skips the ownership challenge."** FALSE on this deployment, and it was this story's load-bearing premise. `pod/static.json` gives ONE root storage, so `isCreator` is always false and `TokenOwnershipValidator` always fires. Found only by deploying and watching it fail on a real click — the handler source alone (read without checking the configured storage strategy) supported the wrong conclusion. See memory `css_static_pods_ownership_challenge`.
 
 ## References
 
@@ -183,8 +185,130 @@ Add owner stays a CSS-stock expert operation. Do not surface it.
 - Story 7.9 — mint/grants/revoke, the flow this feeds
 - `deferred-work.md` 2026-08-13 — filenames-with-spaces ACL defect (AC4's basis)
 
+## Dev Agent Record
+
+### Debug Log
+
+- **BUG FOUND AND FIXED LIVE (2026-08-19, post-deploy):** the initial
+  `listWebIdLinks()`/`accountControlsWebId()` implementation guessed
+  `controls.account.webId`'s GET shape as `{ webIdLinks: { <resourceUrl>:
+  {webId} } }` — key/value backwards. Nicolas caught it from the deployed UI
+  (screenshot: the "Agent identities" list showed link-resource paths like
+  `.../account/.../webid/45d6bd89-.../` where a real WebID should be). Read
+  `LinkWebIdHandler.js` directly off the running `community-solid-server`
+  container (`ssh hetzner`, `docker exec community-solid-server cat
+  /community-server/dist/identity/interaction/webid/LinkWebIdHandler.js`) —
+  its `getView()` builds `webIdLinks[webId] = resourcePath`, confirming the
+  real shape is `{ webIdLinks: { <webId>: <resourceUrl> } }`, the reverse of
+  what was implemented. Fixed in both `pod-api.js`'s `listWebIdLinks()` and
+  `onboardRouter.js`'s `accountControlsWebId()`, `verify-mint-gate.js`'s
+  fixture corrected to match, all offline checks re-run, re-deployed. POST's
+  response shape (`{resource, webId, oidcIssuer}`) and DELETE's contract were
+  unaffected — `UnlinkWebIdHandler.js` was also read live and confirms DELETE
+  on the resource path is correct as implemented.
+- **SECOND LIVE FAILURE, same root habit (2026-08-19).** Nicolas ran the flow
+  for real (`agent_smith_white` under `nicolas_claude`) and it dead-ended with
+  CSS's raw ownership-challenge error dumped into the row. Three distinct
+  defects behind one screenshot:
+  1. **The webIdLinks fix never reached the browser** — `pod-api.js` was edited
+     without bumping `?v=7-12-1`, so the browser served the cached old module.
+     The list kept showing resource paths even though the corrected file was on
+     the server. Cache-buster bump is not optional bookkeeping; it is the only
+     thing that makes a `pod-api.js` change real. Now `?v=7-12-3`.
+  2. **This story's load-bearing premise was false** (see Invalidated
+     assumptions): `pod/static.json` = one root storage ⇒ `isCreator` always
+     false ⇒ `TokenOwnershipValidator` always fires. Fixed properly rather than
+     papered over: `_linkWebIdWithOwnershipProof()` parses the token out of
+     CSS's 400, republishes the WebID document with the proof triple (the app
+     owns that document — it just wrote it), retries the link, then strips the
+     triple. One click, per AC1. Proven by
+     `mcp-connector/scripts/verify-agent-identity.js` (offline, mocked CSS):
+     asserts two link attempts, proof present on the second, token absent
+     afterwards, no retry-loop on a non-token failure, cleanup on failure.
+  3. **UX failure, called out as such by Nicolas.** Incomplete rows dumped
+     CSS's full multi-line error verbatim. Now: one short sentence naming the
+     step and what it means, raw detail moved to `title=` for debugging, plus a
+     Dismiss action so a dead row can be cleared.
+- This is the second time in this story a guessed wire shape needed a live
+  correction post-deploy rather than pre-deploy — worth remembering:
+  `docker exec <container> cat <path>` against the running CSS container was
+  available the whole time and would have caught this before deploy, not
+  after. Use it first next time a CSS account-API shape is uncertain, rather
+  than reasoning from sibling-endpoint analogy.
+- Deployed to the VPS (`make vps-deploy`, 2026-08-19) — mcp-connector rebuilt and
+  restarted cleanly; boot log shows both configured identities (`nicolas_claude`,
+  `claude-alex`) authenticating with no error, and `/onboard/grants` reachable
+  through `pod.nicolasdb.eu` (401 unauthenticated, as expected with no cookie).
+  This confirms Task 4's corrected mint gate didn't break the existing boot path,
+  but does **not** exercise the new `createAgentIdentity`/`listWebIdLinks`/
+  `unlinkWebId` code paths, which only run from an authenticated browser session.
+- Task 6.1-6.4 need a live browser session signed in as the pod owner
+  (`nicolas_claude`'s account) to click through the new "Agent identities" UI —
+  no browser tool and no account password were available to this session, so
+  these remain **open**, for Nicolas to run by hand against
+  `https://pod.nicolasdb.eu/`. Everything they'd exercise (the create/list/unlink
+  code, the corrected mint gate, the docs) is written, deployed, and passes
+  offline checks (syntax, tag-balance, `verify-mint-gate.js`) — what's unverified
+  is specifically the live wire contract for `controls.account.webId` and the
+  end-to-end browser flow.
+
+### Completion Notes
+
+- Task 1: `RealBackend.createAgentIdentity()` in `backoffice/pod-api.js` — four
+  step-labelled stages (write-doc → write-acl → verify-public → link), reuses
+  `_writeAcl` (no second ACL writer), anonymous `credentials:'omit'` verification
+  fetch, best-effort orphan-doc cleanup with loud double-failure logging.
+  `DemoBackend` parity added with a `_demoFailStep` hook for exercising the
+  incomplete-state UI offline.
+- Task 2: `listWebIdLinks()`/`unlinkWebId()` added to both backends; AC9's
+  pod-root-vs-agent marking is a presentation-only heuristic (`/profile/card#me`
+  suffix), documented as such in the code.
+- Task 3: new "Agent identities" section in `backoffice/index.html`'s People &
+  apps screen — same `credsUnlocked`/`credsSignedOut` gating, arm/confirm-4s
+  unlink idiom (mirrors 7.9's grant revoke), a client-side-tracked
+  `agentIncomplete` list so a failed create is shown as an incomplete row with
+  retry (AC6) rather than a dead-end toast, AC12's no-delete-pod boundary text,
+  cache-buster bumped to `?v=7-12-1`.
+- Task 4: `accountControlsWebId()` in `mcp-connector/src/onboardRouter.js`
+  rewritten to check `controls.account.webId` link membership instead of pod
+  ownership prefix-matching. `isUnderPod()`/`fetchOwnedPodPrefixes()` untouched
+  (still used by `/grants`/`/revoke`, a different question per Task 4.2).
+  Verified offline against a mocked `fetch` in
+  `mcp-connector/scripts/verify-mint-gate.js` (Task 4.3's two cases + a
+  fails-closed case) — all pass.
+- Task 5: `docs/team-onboarding.md` step (c) rewritten to create an agent
+  identity inside the existing data pod rather than a second pod; two new
+  honest-limits bullets (no pod deletion exists; unlinking doesn't lose the pod).
+  `mcp-connector/README.md` documents the corrected mint gate and the
+  linked-AND-public-dereferenceable requirement.
+- Task 6: deploy done, boot/endpoint regression checks done from this session
+  (see Debug Log). The remaining sub-steps require a live browser session as
+  the pod owner and are left for Nicolas — story Status is `in-progress`, not
+  `review`, until those close (per this workflow's own completion gate: all
+  tasks must be `[x]` before moving to review).
+
+## File List
+
+- `backoffice/pod-api.js` — `createAgentIdentity`, `listWebIdLinks`,
+  `unlinkWebId` (RealBackend + DemoBackend), `slugifyAgentName` helper
+- `backoffice/index.html` — "Agent identities" section, state, methods, view
+  derivation; cache-buster bump
+- `mcp-connector/src/onboardRouter.js` — `accountControlsWebId()` rewritten;
+  exported for testing
+- `mcp-connector/scripts/verify-mint-gate.js` — new, Task 4.3's offline test
+- `mcp-connector/scripts/verify-agent-identity.js` — new, offline test of
+  `createAgentIdentity`'s ownership-challenge path, failure cleanup, and slug rejection
+- `mcp-connector/README.md` — mint-gate + dereferenceability documentation
+- `docs/team-onboarding.md` — step (c) rewritten; two new honest-limits bullets
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — status flipped to
+  ready-for-dev then in-progress
+
 ## Change Log
 
 | Date | Change |
 |---|---|
 | 2026-08-19 | Drafted from the live CSS cardinality investigation |
+| 2026-08-19 | Marked ready-for-dev by Nicolas; Tasks 1-5 implemented, deployed to VPS, boot/endpoint regression confirmed. Task 6's browser/human-hands live steps left open — no browser tool or account password available to this session. Status: in-progress. |
+| 2026-08-19 | **Scope extended by Nicolas** (crosses this story's "does not change the mint flow's UX" fence, decided deliberately): mint dialog now has an IDENTITY PICKER. Source-verified why this is safe and correct — `CreateClientCredentialsHandler.handle()` gates on `isLinked(webId, accountId)`, i.e. ACCOUNT-scoped, so the OIDC-signed-in WebID is irrelevant and any linked identity is mintable from the current session. Previously the mint bound to `state.webId` (whoever you signed in as), which is precisely the Alex footgun: the copy told you to sign in again as the agent rather than letting you just choose. Picker defaults to a dedicated agent identity when one exists, states each option's blast radius on the option itself (pod-root = "full control of &lt;pod&gt;", agent = "reaches only what you grant it"), and the summary sentence below updates with the choice. Also recorded: CSS's stock account page claims registered WebIDs "have full control access to the pods registered for this account" — **false on this deployment**, verified against every pod's root `.acl` (each names only its own pod-root WebID; `agent-smithwhite#me` appears in none). |
+| 2026-08-19 | Task 6.1 PASSES live after the fixes: `agent-smithwhite` created in one action under `nicolas_claude`, anonymous GET 200 with the issuer triple, proof token stripped, container not enumerable. AC1/2/3/5/7/9 confirmed live. 6.2-6.4 (connector mint against it, dual-grant attribution, unlink behaviour) still open. |
+| 2026-08-19 | Nicolas ran it live; it failed. Three fixes: cache-buster bump (the earlier webIdLinks fix was never being served), automatic handling of CSS's ownership challenge (this story's "no challenge" premise was false under `pod/static.json` — corrected in Verified state + Invalidated assumptions), and legible incomplete-row copy replacing a raw CSS error dump. New offline test `verify-agent-identity.js` covers the challenge path. Redeployed. |

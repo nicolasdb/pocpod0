@@ -59,20 +59,28 @@ async function fetchAccountControls(cookie) {
 }
 
 /**
- * AC16: mint only against a webId this account actually controls. CSS's
- * account index does not hand back a flat "these are your webIds" list in
- * one place we can rely on without a live shape check (Task 7 verifies
- * this), so this checks the account's pod ownership map — every pod this
- * account created was created with settings.webId === the account's own
- * WebID (architecture_pod_webid_ownership) — and falls back to comparing
- * against the account's own resolved WebID if that control isn't present.
- * Fails CLOSED: any shape this can't positively confirm is refused, not
- * silently allowed.
+ * AC16/Story 7.12 AC10: mint only against a webId this account has actually
+ * LINKED. The prior implementation checked pod ownership (any WebID under an
+ * owned pod's baseUrl) — looser than what CSS itself enforces.
+ * CreateClientCredentialsHandler.js gates on
+ * `webIdStore.isLinked(webId, accountId)`, not pod ownership, so an unlinked
+ * WebID sitting under an owned pod would pass the old check here and then
+ * fail inside CSS with a generic 400. This checks the account's
+ * `controls.account.webId` link list directly — the same resource Story
+ * 7.12's backoffice flow POSTs to when creating an agent identity — so a
+ * WebID this app creates passes, and a merely-co-located-but-unlinked one is
+ * refused BEFORE any CSS call is attempted. Fails CLOSED: any shape this
+ * can't positively confirm is refused, not silently allowed.
+ *
+ * Wire shape confirmed live against CSS's actual LinkWebIdHandler.js
+ * (getView(), read off the running container, 2026-08-19):
+ * `{ webIdLinks: { <webId>: <resourceUrl> } }` — the KEY is the webId, not
+ * the value. An earlier version of this check had that backwards.
  */
 async function accountControlsWebId(controls, cookie, webId) {
-  const podUrl = controls.account && controls.account.pod;
-  if (!podUrl) return false;
-  const res = await fetch(podUrl, { headers: { cookie } });
+  const linkUrl = controls.account && controls.account.webId;
+  if (!linkUrl) return false;
+  const res = await fetch(linkUrl, { headers: { cookie } });
   if (!res.ok) return false;
   let body;
   try {
@@ -80,13 +88,8 @@ async function accountControlsWebId(controls, cookie, webId) {
   } catch {
     return false;
   }
-  const pods = (body && body.pods) || {};
-  // Every pod baseUrl this account owns implies ownership of the WebID
-  // profile document beneath it (CSS convention: one pod per top-level
-  // segment, WebID lives at <podBaseUrl>profile/card#me for pods created
-  // through this flow). Accept a segment-bounded WebID-prefix match against
-  // any owned pod's baseUrl.
-  return Object.keys(pods).some((baseUrl) => isUnderPod(webId, baseUrl));
+  const map = (body && body.webIdLinks) || {};
+  return Object.keys(map).includes(webId);
 }
 
 /**
@@ -393,4 +396,4 @@ function buildOnboardRouter(identities) {
   return router;
 }
 
-module.exports = { buildOnboardRouter };
+module.exports = { buildOnboardRouter, accountControlsWebId };

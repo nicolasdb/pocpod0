@@ -60,6 +60,18 @@ function extOf(name) {
   const m = /\.([a-z0-9]+)$/i.exec(name);
   return m ? m[1].toLowerCase() : "";
 }
+// Agent names must be slug-safe before they reach a URL or an ACL — a filename
+// with spaces makes `_writeAcl` emit Turtle invalid per the IRIREF grammar
+// (deferred-work.md, 2026-08-13). Reject rather than sanitize (Story 7.12 AC4):
+// the name the person typed is the name they get, or a clear reason why not.
+export function slugifyAgentName(name) {
+  const s = (name || "").trim();
+  if (!s) throw new Error("Agent name is required.");
+  if (!/^[A-Za-z0-9_-]+$/.test(s)) {
+    throw new Error('Agent name can only use letters, numbers, "-" and "_" — no spaces or punctuation.');
+  }
+  return s;
+}
 export function kindOf(name, isContainer) {
   if (isContainer) return "folder";
   const e = extOf(name);
@@ -549,6 +561,212 @@ class RealBackend {
     return await res.json();
   }
 
+  // ---- Agent identities (Story 7.12) ----
+  // Mint a NEW WebID inside a pod the account already owns, without creating a
+  // whole new pod. CSS keeps WebID:Pod as n:1 (verified live 2026-08-19) via two
+  // independent registrations — linking (this) gates credential minting, pod
+  // `owner` (untouched here, CSS-stock "Add owner" territory, deliberately not
+  // built) grants full Control. Four steps, each independently failable and
+  // step-labelled (AC6) as "write-doc:", "write-acl:", "verify-public:", "link:"
+  // prefixes on the thrown error's message: write-doc -> write-acl ->
+  // verify-public -> link. A failure at write-acl/verify-public/link triggers
+  // best-effort cleanup of the just-written document; a failure of THAT cleanup
+  // is logged loudly rather than swallowed (7.9 AC2.8's orphan-credential
+  // precedent for double-failure).
+  async _cleanupOrphanDoc(profileUrl) {
+    await this.sc.deleteFile(profileUrl, { fetch: this.fetch });
+  }
+  // The agent's WebID profile document. Minimal, mirroring CSS's own
+  // card$.ttl.hbs: oidcIssuer + foaf:Person, plus foaf:name for the label.
+  // `registrationToken`, when present, adds the ownership-proof triple CSS's
+  // TokenOwnershipValidator demands — see _linkWebIdWithOwnershipProof.
+  // `<#me>` is relative to the document, so it resolves to exactly the webId.
+  _agentProfileTurtle(agentName, registrationToken) {
+    const lines = [
+      "@prefix solid: <http://www.w3.org/ns/solid/terms#>.",
+      "@prefix foaf: <http://xmlns.com/foaf/0.1/>.",
+      "",
+      "<#me>",
+      "    a foaf:Person;",
+      `    solid:oidcIssuer <${ISSUER}>;`,
+    ];
+    if (registrationToken) {
+      // The validator compares against a PLAIN literal, so no datatype/lang here.
+      lines.push(`    solid:oidcIssuerRegistrationToken "${registrationToken}";`);
+    }
+    lines.push(`    foaf:name "${agentName.trim().replace(/"/g, '\\"')}".`, "");
+    return lines.join("\n");
+  }
+  async _putProfileDoc(profileUrl, body) {
+    const res = await this.fetch(profileUrl, {
+      method: "PUT",
+      headers: { "content-type": "text/turtle" },
+      body,
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return true;
+  }
+  // CSS's TokenOwnershipValidator states the required triple inside the error
+  // message; pull the token back out of it. Constrained to a UUID shape (the
+  // validator generates uuid v4) so nothing else can ride into the Turtle.
+  _parseOwnershipToken(detail) {
+    const m = /oidcIssuerRegistrationToken>?\s*"([0-9a-fA-F-]{36})"/.exec(detail || "");
+    return m ? m[1] : null;
+  }
+  async createAgentIdentity(podBaseUrl, agentName) {
+    if (!podBaseUrl || !podBaseUrl.endsWith("/")) throw new Error("Not a valid pod URL.");
+    const slug = slugifyAgentName(agentName);
+    const webId = `${podBaseUrl}agents/${slug}#me`;
+    const profileUrl = `${podBaseUrl}agents/${slug}`;
+
+    // Step 1: write-doc (AC2).
+    try {
+      await this._putProfileDoc(profileUrl, this._agentProfileTurtle(agentName));
+    } catch (e) { throw new Error(`write-doc: Could not write the profile document (${e.message}).`); }
+
+    // Step 2: write-acl (AC1) — public read via the existing _writeAcl path.
+    // Do NOT hand-roll a second ACL writer (Task 1.2) — 7.3 already fixed a real
+    // bug there (accessTo targets `./` + basename for files, not the container).
+    try {
+      await this._writeAcl(profileUrl, { agents: [], public: { ...emptyModes(), read: true } });
+    } catch (e) {
+      try { await this._cleanupOrphanDoc(profileUrl); }
+      catch (e2) { console.error("createAgentIdentity: write-acl failed AND cleanup failed — orphan profile doc left at", profileUrl, e, e2); }
+      throw new Error(`write-acl: ${e.message}`);
+    }
+
+    // Step 3: verify-public (AC3) — a GENUINELY anonymous GET (credentials:'omit'),
+    // not the authed session helper. A check that passes only because it was
+    // authenticated proves nothing: the resource server dereferences this WebID
+    // with a bare, credential-free fetch, and that's the exact path this must
+    // reproduce (Task 1.3).
+    try {
+      const verifyRes = await fetch(profileUrl, { credentials: "omit" });
+      if (!verifyRes.ok) throw new Error(`the document is not publicly readable (HTTP ${verifyRes.status})`);
+      const text = await verifyRes.text();
+      if (!/oidcIssuer/.test(text)) throw new Error("the document is reachable but missing the oidcIssuer triple");
+    } catch (e) {
+      try { await this._cleanupOrphanDoc(profileUrl); }
+      catch (e2) { console.error("createAgentIdentity: verify-public failed AND cleanup failed — orphan profile doc left at", profileUrl, e, e2); }
+      throw new Error(`verify-public: ${e.message}`);
+    }
+
+    // Step 4: link (AC5) — the actual mint gate. CreateClientCredentialsHandler
+    // checks webIdStore.isLinked(webId, accountId), not pod ownership, so an
+    // unlinked WebID would pass a pod-ownership check and then fail inside CSS
+    // with a generic 400 — the link must succeed before this identity is usable.
+    let linkResult;
+    try {
+      linkResult = await this._linkWebIdWithOwnershipProof(webId, profileUrl, agentName);
+    } catch (e) {
+      try { await this._cleanupOrphanDoc(profileUrl); }
+      catch (e2) { console.error("createAgentIdentity: link failed AND cleanup failed — orphan profile doc left at", profileUrl, e, e2); }
+      throw new Error(`link: ${e.message}`);
+    }
+
+    return { webId, profileUrl, linkResource: linkResult.resource, name: agentName.trim() };
+  }
+
+  // Link the WebID, answering CSS's ownership challenge automatically when it
+  // fires. This deployment runs `config/identity/pod/static.json` — ONE root
+  // storage — so LinkWebIdHandler's `getStorageIdentifier(webId)` resolves every
+  // WebID to the ROOT pod, not to `<pod>/`. The root pod belongs to a different
+  // account here, so `isCreator` is false and TokenOwnershipValidator ALWAYS
+  // runs, even for a WebID inside a pod this account created. (The story's
+  // "no ownership challenge" premise holds only under dynamic/per-pod storages,
+  // or when the account owns the root — verified the hard way, live 2026-08-19.)
+  //
+  // That challenge is mechanical, not a dead end: CSS asks for a proof triple in
+  // the WebID document, and this app just WROTE that document, so it can answer
+  // for itself. First POST mints the token, we add the triple, retry, then strip
+  // it back out — the person clicks once (AC1).
+  async _linkWebIdWithOwnershipProof(webId, profileUrl, agentName) {
+    const controls = await this._accountControls();
+    const linkUrl = controls.account.webId;
+    if (!linkUrl) throw new Error("this account exposes no WebID-link endpoint");
+    const post = async () => {
+      const res = await fetch(linkUrl, {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ webId }),
+      });
+      this._onAcctResponse(res);
+      return res;
+    };
+
+    let res = await post();
+    if (res.ok) return await res.json(); // { resource, webId, oidcIssuer }
+
+    const detail = await _errDetail(res);
+    const token = this._parseOwnershipToken(detail);
+    if (!token) throw new Error(detail);
+
+    // Prove ownership: republish the document with the token triple. The .acl is
+    // a separate resource, so the public-read grant from step 2 still stands —
+    // which matters, because the validator dereferences the WebID anonymously.
+    try {
+      await this._putProfileDoc(profileUrl, this._agentProfileTurtle(agentName, token));
+    } catch (e) {
+      throw new Error(`could not write the ownership-proof triple (${e.message})`);
+    }
+
+    res = await post();
+    if (!res.ok) throw new Error(await _errDetail(res));
+    const linked = await res.json();
+
+    // Token is consumed server-side on success; drop it from the published
+    // document so the profile stays minimal. Best-effort — the identity is
+    // already linked and usable, so a failure here is cosmetic, not fatal.
+    try {
+      await this._putProfileDoc(profileUrl, this._agentProfileTurtle(agentName));
+    } catch (e) {
+      console.warn("createAgentIdentity: linked, but could not strip the ownership-proof triple from", profileUrl, e);
+    }
+    return linked;
+  }
+
+  // ---- Agent identity links (Story 7.12 Task 2) ----
+  // controls.account.webId's GET shape confirmed live from CSS's actual
+  // LinkWebIdHandler.js (getView(), read directly off the running container,
+  // 2026-08-19): `{ webIdLinks: { <webId>: <resourceUrl> } }` — the KEY is the
+  // webId, the VALUE is the resource path used for DELETE. (POST's response
+  // shape, `{resource, webId, oidcIssuer}`, is unrelated and was already
+  // correct — see createAgentIdentity's link step.)
+  async listWebIdLinks() {
+    const controls = await this._accountControls();
+    const linkUrl = controls.account.webId;
+    if (!linkUrl) throw new Error("This account exposes no WebID-link endpoint.");
+    const res = await fetch(linkUrl, { credentials: "include" });
+    this._onAcctResponse(res);
+    if (!res.ok) throw new Error(`Could not list linked identities (HTTP ${res.status}).`);
+    const body = await res.json();
+    const map = body.webIdLinks || {};
+    const links = Object.entries(map).map(([webId, resource]) => ({ webId, resource }));
+    let grants = [];
+    try { grants = await this.listGrants(); } catch (e) { /* connector grants are an enrichment, not required to list identities */ }
+    // AC9: mark pod-root WebIDs distinctly from agent identities. Heuristic only
+    // (the WebID sits at <pod>/profile/card#me) — presentation, nothing
+    // authorizes on it.
+    return links.map((l) => {
+      const grant = grants.find((g) => g.webId === l.webId && !g.revoked);
+      return {
+        ...l,
+        hasGrant: !!grant,
+        grantId: grant ? grant.grantId : null,
+        isPodRoot: /\/profile\/card#me$/.test(l.webId || ""),
+      };
+    });
+  }
+  async unlinkWebId(resourceUrl) {
+    await this._accountControls();
+    const res = await fetch(resourceUrl, { method: "DELETE", credentials: "include" });
+    this._onAcctResponse(res);
+    // A 404 means it's already unlinked — that's the outcome the caller wanted.
+    if (!res.ok && res.status !== 404) throw new Error(`Could not unlink (HTTP ${res.status}).`);
+    return true;
+  }
+
   // ---- Connector onboarding (Story 7.9) ----
   // Talks to mcp-connector's /onboard/ endpoint, proxied same-origin via
   // pod.nicolasdb.eu (see hetzner-gateway's 04-pocpod0.conf) — no CORS, and
@@ -774,6 +992,65 @@ class DemoBackend {
     const resource = DEMO_ROOT + ".account/pod/" + trimmed + "/";
     this._demoPods.push({ baseUrl, resource });
     return { baseUrl };
+  }
+
+  // ---- Agent identities (Story 7.12 demo parity) ----
+  // One pre-linked pod-root WebID (the demo webId itself), matching the real
+  // deployment's "existing pod-root WebIDs shown alongside" requirement (AC9).
+  _demoWebIdLinks = [{ resource: DEMO_ROOT + ".account/webid/root/", webId: DEMO_WEBID }];
+  // Set to a step name ('write-doc'|'write-acl'|'verify-public'|'link') before a
+  // call to exercise AC6's incomplete-state UI in the offline preview; consumed once.
+  _demoFailStep = null;
+  // Mirrors the real backend's ownership challenge: the first link attempt for a
+  // given WebID demands a proof triple, the second (after the doc is republished
+  // with it) succeeds. Kept so the demo exercises the SAME two-POST path rather
+  // than a happy path the real deployment never takes.
+  _demoOwnershipTokens = {};
+  async createAgentIdentity(podBaseUrl, agentName) {
+    const slug = slugifyAgentName(agentName);
+    if (this._demoFailStep) {
+      const step = this._demoFailStep;
+      this._demoFailStep = null;
+      throw new Error(`${step}: simulated failure for demo/testing.`);
+    }
+    const webId = `${podBaseUrl}agents/${slug}#me`;
+    const profileUrl = `${podBaseUrl}agents/${slug}`;
+    const resource = DEMO_ROOT + ".account/webid/" + slug + "/";
+    const key = profileUrl.replace(DEMO_ROOT, "");
+    const writeDoc = (token) => {
+      this.t[key] = {
+        url: profileUrl, isContainer: false, type: "text/turtle",
+        body: `<#me> a foaf:Person; solid:oidcIssuer <${ISSUER}>;`
+          + (token ? ` solid:oidcIssuerRegistrationToken "${token}";` : "")
+          + ` foaf:name "${agentName.trim()}".`,
+        acl: { agents: [], public: { ...emptyModes(), read: true } },
+      };
+    };
+    writeDoc(null);
+    if (!this._demoOwnershipTokens[webId]) {
+      // First attempt: challenge, exactly as CSS does.
+      this._demoOwnershipTokens[webId] = "00000000-0000-4000-8000-000000000000";
+      writeDoc(this._demoOwnershipTokens[webId]);
+      writeDoc(null); // proof accepted, token stripped again
+    }
+    this._demoWebIdLinks.push({ resource, webId });
+    return { webId, profileUrl, linkResource: resource, name: agentName.trim() };
+  }
+  async listWebIdLinks() {
+    const grants = await this.listGrants();
+    return this._demoWebIdLinks.map((l) => {
+      const grant = grants.find((g) => g.webId === l.webId && !g.revoked);
+      return {
+        ...l,
+        hasGrant: !!grant,
+        grantId: grant ? grant.grantId : null,
+        isPodRoot: /\/profile\/card#me$/.test(l.webId || ""),
+      };
+    });
+  }
+  async unlinkWebId(resourceUrl) {
+    this._demoWebIdLinks = this._demoWebIdLinks.filter((l) => l.resource !== resourceUrl);
+    return true;
   }
 
   // ---- Connector onboarding (Story 7.9 demo parity) ----

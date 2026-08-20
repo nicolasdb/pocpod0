@@ -122,6 +122,20 @@ generates the slug, and writes `identities.json` itself, atomically and
 validated against the same rules boot uses. Picked up by the lazy identity
 path (8.6.1) on that person's very next request — no restart.
 
+**The mint gate (Story 7.12):** `/onboard/mint` only mints against a WebID
+the caller's account has actually **linked** (`controls.account.webId`),
+matching CSS's own `CreateClientCredentialsHandler` (`isLinked`), not pod
+ownership — a WebID merely sitting under a pod you own but never linked is
+refused before any CSS call is made. Two things must both be true for a
+WebID to mint and then actually authenticate: it must be **linked** to the
+account (mint gate), and its profile document must be **publicly
+dereferenceable** (the resource server fetches it anonymously for
+`solid:oidcIssuer` — a private document fails authentication with an opaque
+error at token-use time, not at mint time). The backoffice's **Agent
+identities** flow (People & apps) guarantees both when it creates an
+identity; a hand-made WebID document does not unless you check both
+yourself.
+
 **Revoking a person (primary route, Story 7.9):** same screen, "Revoke" — a
 UI action, not a file edit. Removes the WAC grant, deletes the CSS
 credential, evicts the in-memory session, and tombstones the row (kept, not

@@ -62,11 +62,14 @@ account** — pick your own name (e.g. `yourname/`), not something generic
 like `notes/` that the next person will also reach for. If the name's
 taken, the server refuses with a `409 Conflict` and you just pick another.
 
-**(c) Create your agent pod**: a second pod on the *same account*, with its
-own WebID. This is the identity your Claude connector will use — it is not
-you, it is not your login. Same uniqueness rule applies: name it something
-like `yourname-agent/`, not a generic `agent/` — that name is only free for
-the first person who claims it.
+**(c) Create your agent identity** — in the backoffice's **People & apps**
+screen, under **Agent identities**, pick your data pod (from step b) and
+give the agent a name. This is the identity your Claude connector will use
+— it is not you, it is not your login. **You do not need a second pod for
+this.** One pod can host many WebIDs (the pod you already have, plus one
+document per agent inside it) — a whole extra pod is only worth it if you
+actually want a fully separate space, with its own storage, not just a
+separate identity.
 
 **(d) Get your connector URL.** In the backoffice, open **People & apps**
 and find **Claude connector access**. Click **"Get connector URL for
@@ -75,14 +78,15 @@ your connector URL, shown once. No password re-entry, no client-credentials
 step, no message to anyone — the server mints the credential on your
 account's behalf and never lets the secret reach this browser at all.
 
-> **Sign in as your *agent* WebID (step c), not your data pod.** When the
-> server asks which WebID to authorize, the one you pick decides what the
-> connector can do — a credential carries the full authority of its WebID,
-> and a WebID has full control of the pod it owns. Pick the pod holding your
-> real notes and the connector gets total control of it, silently: everything
-> works, nothing warns you afterwards. Pick the agent, and it reaches your
-> data only where you've granted it access. The mint screen states which pod
-> it will control before you confirm — read that line.
+> **Pick your *agent* identity (step c) in the "Act as" list, not a pod-root
+> WebID.** The identity you choose decides what the connector can do — a
+> credential carries the full authority of its identity and cannot be scoped
+> down afterwards. A pod-root identity has full control of its whole pod, so
+> choosing one hands the connector everything in it, silently: it works, and
+> nothing warns you later. An agent identity starts with **no access at all**
+> and reaches your data only where you've granted it. The dialog labels each
+> option with its reach, and pre-selects an agent identity when you have one
+> — you don't need to sign out or sign in as the agent.
 
 **Copy the connector URL now — it will not be shown again.** If you lose
 it, mint another and revoke the old one from the same screen.
@@ -109,7 +113,7 @@ into a shared channel.
 to rotate, revoke the grant from **Claude connector access** — it's a
 one-click action, and you can always mint a fresh one afterwards. Revoking
 removes the underlying access immediately; the honest caveat is that the
-*key itself* can stay cryptographically valid for up to an hour afterward
+*key itself* can stay cryptographically valid for up to about ten minutes afterward
 (CSS doesn't check a deleted credential against issued tokens) — it just
 can't reach anything once revoked, so what you'll see in that window, if
 anything, is denied requests, not successful ones.
@@ -172,6 +176,18 @@ for the actual commands.
 - **A receipt records a read; it doesn't record what was done next.** Once a
   reader has your file, the receipt says they took it. It cannot say what
   they did with it afterwards.
+- **CSS cannot delete a pod, at all — there is no such button anywhere.**
+  Once you make one, it's there indefinitely; the *reason* you'd want to is
+  what this system removes, not the ability to delete afterwards. That's why
+  step (c) makes an agent identity inside a pod you already have, instead of
+  a whole new pod per agent — one fewer pod you'll never be able to remove.
+- **Unlinking an agent identity doesn't lose the pod it lives in.** If you
+  unlink a WebID (from **Agent identities**), it can no longer authenticate
+  and no new connector can be minted against it — but its profile document
+  is untouched, and any pod it happened to own stays exactly as it was.
+  Re-linking the same WebID (same URL) restores it, as long as the document
+  is still there. Nothing is actually lost by unlinking; it's a reversible
+  "turn this identity off," not a delete.
 
 Knowing these isn't a reason to distrust the system — it's how to work with
 it correctly: append rather than overwrite, treat your URL as a secret, and
