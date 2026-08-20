@@ -30,6 +30,8 @@ It is the one file every workflow reads start-to-finish, which makes it tempting
   story-8-5-live-verification: done  # 2026-08-01: all ACs met live → see 8-5-live-verification.md
 ```
 
+Story files are named `{key with leading "story-" stripped}.md` in this directory. When a story's own file is the pointer target, the `→ see` clause may be omitted — the mapping is mechanical. Keep the explicit `→ see <path>` only when the pointer target is NOT that file (epics.md, architecture.md, another story, a retro/progress report).
+
 ### When a story is split, renumbered, or inserted mid-execution
 
 **Write back to `epics.md` in the same session.** This is the single largest source of drift in this project: epics.md carried the original plan numbering while execution split and inserted stories, and the two diverged silently across eight epics before anyone checked.

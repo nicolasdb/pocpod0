@@ -6,23 +6,10 @@ tracking_system: file-system
 project_key: NOKEY
 communication_language: English
 
-# Sprint Status Tracking
-#
-# STATUS VALUES
-#   backlog       - not yet drafted; `create-story` auto-discovery picks the FIRST of these top-to-bottom
-#   ready-for-dev - story file exists and is contexted; `dev-story` picks these up
-#   in-progress   - dev started
-#   review        - dev complete, awaiting code review
-#   done          - reviewed and closed
-#   optional      - retrospectives; run on demand
-#
-# NON-STANDARD (added 2026-08-03, sprint-change-proposal-2026-08-03.md) — deliberately
-# invisible to both `create-story` and `dev-story` auto-discovery, which is the point:
-#   merged-into-<N>  - superseded; scope absorbed by story N. Never pick these up.
-#   needs-redraft    - a story FILE exists but its scope changed under it. Must NOT be
-#                      auto-discovered: 7.9 is blocked on 7.10 and picking it up early
-#                      would rebuild the button-in-a-broken-flow this proposal removed.
-#                      Redraft it explicitly (`create-story 7.9`) once 7.10 is done.
+# STATUS VALUES: backlog (undrafted) | ready-for-dev | in-progress | review | done | optional (retros)
+# NON-STANDARD, invisible to create-story/dev-story auto-discovery by design (sprint-change-proposal-2026-08-03.md):
+#   merged-into-<N> - scope absorbed by story N, never pick up
+#   needs-redraft   - scope changed under an existing file; redraft (`create-story <id>`) once unblocked
 development_status:
   # Epic 1: Pod Sovereignty & Access Control
   epic-1: done
@@ -54,72 +41,37 @@ development_status:
   story-3-5-fatima-unified-parental-view: done
   story-3-6-isabelle-evidence-based-policy: done
   story-3-7-graph-only-vs-hybrid-comparison: done
-  story-3-7-1-pipeline-dashboard-tui: done  # direction later abandoned; superseded by ACL dashboard (6.2) -> see 3-7-1-pipeline-dashboard-tui.md
+  story-3-7-1-pipeline-dashboard-tui: done  # abandoned direction, superseded by 6-2 ACL dashboard
   story-3-8-troll-cross-inference-validation: done
-  # NOTE (2026-03-25): Story 3.8 enables OpenClaw chatCompletions API — prerequisite for Epic 5/6 agent interaction
-  # NOTE (2026-03-25): Story 3.7.1 (side-quest) Pipeline Dashboard TUI — seed for Epic 6 mission control
   epic-3-retrospective: done
 
-  # Epic 5: Data Sovereignty Lifecycle (RESEQUENCED: was after Epic 4, now NEXT)
-  # NOTE (2026-03-25): Epic 3 retro decision — resequence to 5→6→4
-  # Rationale: acl-manage skill is prerequisite for both Marc (transfer) and Ayoub (governance).
-  # Anagnorisis narrative enriches consent mechanics (consent-as-architecture, access receipts,
-  # tombstone revocation, civic signal). Build consent machinery first.
-  # Epic 5 stories need review against consent-as-architecture before implementation.
+  # Epic 5: Data Sovereignty Lifecycle — resequencing/rationale → see epics.md Epic 5 header
   epic-5: done
   story-5-1-ayoub-governance-transition: done
   story-5-2-deletion-cascade-propagation: done
   story-5-3-troll-deletion-timing-validation: done
-  # Anagnorisis backlog stories (added 2026-03-25 — consent-as-architecture principles)
   story-5-4-access-receipt-written-to-pod: done
   story-5-5-consent-grant-as-rdf-resource: done
   story-5-6-ephemeral-time-scoped-consent: done
   epic-5-retrospective: done
-  # NOTE (2026-03-30): Retro confirmed — all 6 stories shipped incl. 3 Anagnorisis backlog stories.
-  # LEGACY-PRIV1: pre-5.2 Qdrant points carry pod_resource_uri — handled by compose down -v reset (no migration needed for PoC).
-  # camp-dietary-aggregate.ttl not wired into pipeline — Story 6.0 added to fix.
-  # Demo reset strategy: compose down -v → up -d → run_pipeline.py (single command after Story 6.0).
 
-  # Epic 6: Adversarial Trust Report & Mission Control (RESEQUENCED: was last, now before Epic 4)
-  # NOTE (2026-03-25): Dashboard before demo — project lead navigating blind = Isabelle's pain.
-  # TUI pivot confirmed: Rich TUI + JSONL (Story 3.7.1 seed), NOT FastAPI+HTMX.
-  # Two-terminal demo model: pipeline/troll in one, dashboard in the other.
-  # NOTE (2026-03-30): Story 6.0 completed — pipeline provision as Stage 0.
-  # NOTE (2026-03-31): Pipeline completed successfully! Total: 3320.6s
-
+  # Epic 6: Adversarial Trust Report & Mission Control — resequencing/rationale → see epics.md Epic 6 header
   epic-6: done
   story-6-0-pipeline-provision-stage-zero: done
   story-6-1-troll-comprehensive-run-and-report: done
-  story-6-2-acl-dashboard: done  # 2026-08-02: collapsed from two 6-2-* keys — one story, two paths. TUI path (6-2-mission-control-dashboard-implementation.md) was a dead end, superseded 2026-04-01 by this FastAPI+HTML path. See 6-2-acl-dashboard.md.
+  story-6-2-acl-dashboard: done  # 2026-08-02: one story two paths, TUI superseded
   story-6-3-funder-intervention-points: done  # Code review 2026-04-04: approved, 8 patches applied
-  epic-6-retrospective: done  # 2026-04-12: Retro completed. Decisions: Discord over Telegram, seed-on-boot for agent workspaces, troll on Discord (#security_logs), ACL dashboard keeper. Five carried items must land as Story 4.1 prerequisites.
+  epic-6-retrospective: done  # 2026-04-12 → see epic-6-retro-2026-04-12.md
 
-  # Implementation Gaps (documented in epic-6-retro-2026-04-12.md, section "Technical Debt Register")
-  # AC2-GAP: Troll category launch env vars not validated (low — troll migrating to Discord)
-  # IG-1: CSS 404 semantics undocumented (low — attach to Story 4.1 prereq)
-  # CSS_CONNECT_URL vs CSS_BASE_URL: both default :3000, document if they diverge
-
-  # Epic 4: Student Transfer & Data Portability (RESEQUENCED: was next, now CAPSTONE)
-  # NOTE (2026-03-25): Marc's transfer becomes the integration test for the full stack.
-  # Built WITH dashboard running — first epic where project lead watches live.
-  # Consent mechanics (Epic 5) + dashboard (Epic 6) both available.
-  # NOTE (2026-04-12): Epic 6 retro decisions shape Epic 4 infrastructure:
-  #   - Discord as interaction layer (all agents bound to channels)
-  #   - Seed-on-boot agent workspaces (evolvable, factory-resettable)
-  #   - Troll on Discord (#security_logs heartbeat)
-  #   - ACL dashboard keeper (runs alongside)
-  #   - Nicolas as new user (own pod + agent proves onboarding)
-  #   - Five carried items (NFR-LAG, IG-1, ACL-DRIFT, consent catalog, invalidated assumptions) must land as Story 4.1 prerequisites
+  # Implementation Gaps + Epic 4 resequencing rationale → see epic-6-retro-2026-04-12.md, epics.md Epic 4 header
   epic-4: in-progress
   story-4-0-discord-seed-on-boot-infrastructure: done
-  # Side quest split (2026-04-14): WebUI unreachable under podman compose — root cause identified
-  # as podman-compose silently using bridge instead of pasta (podman-compose#967, podman#24285).
-  # 4-0-1 is timeboxed local fix attempt; 4-0-2 is VPS deploy (strategic fallback, also unblocks pilot-bridge).
+  # Side quest (2026-04-14): podman-compose bridge/pasta bug → see 4-0-1-force-pasta-local-fix.md
   story-4-0-1-force-pasta-local-fix: done  # 2026-04-15: WebUI+pairing fixed; podman 5.8.1 + openclaw v2026.4.14
   story-4-0-2-vps-deploy-hetzner: done
   # UNPLANNED (2026-07-21): "review last couple months" session surfaced pocpod0 wasn't
   # using the VPS's shared nginx-gateway convention. See 4-4-1-nginx-openclaw-retirement-css-hardening.md.
-  story-4-4-1-nginx-openclaw-retirement-css-hardening: in-progress  # CSS repointed onto pod.nicolasdb.eu via nginx-gateway + security fix done; OpenClaw retirement, tunnel/portainer migration, data recreate, pod-lifecycle deep-dive still open
+  story-4-4-1-nginx-openclaw-retirement-css-hardening: in-progress  # CSS on shared nginx-gateway
   story-4-1-marc-school-transfer-via-discord: ready-for-dev     # was: story-4-1-marc-seamless-student-transfer
   story-4-2-cross-community-data-handling: backlog
   story-4-3-nicolas-onboarding-proof: backlog
@@ -127,99 +79,53 @@ development_status:
   story-4-5-ayoub-revokes-isabelle-reacts: backlog
   epic-4-retrospective: optional
 
-  # Epic 7: Pod Owner Experience (ADDED 2026-07-21 — sprint change proposal 2026-07-21)
-  # Epic 4 PARKED at this date: 4.1 stays ready-for-dev, resume after Epic 7.
-  # Origin: runnable mockup bundle "SOLID Pod Management Interface.zip" (see backoffice/ + its HANDOFF.md).
-  # Deploy target: https://pod.nicolasdb.eu/ root (replaces CSS default welcome page), not a separate hostname.
+  # Epic 7: Pod Owner Experience — origin/rationale → see epics.md Epic 7 header
   epic-7: in-progress
   story-7-1-backoffice-deploy-real-account-registration: done
-  story-7-2-css-registration-pages-restyle: done  # 2026-07-23: CSS page restyle via override, live-verified, review resolved → see 7-2-css-registration-pages-restyle.md
-  story-7-3-my-things-crud-acl-fix: done  # 2026-07-23: ACL write bug fixed+live-verified, CRUD/upload/rename, review resolved → see 7-3-my-things-crud-acl-fix.md
-  story-7-4-apps-and-credentials: done  # 2026-07-23: client-creds mint/list/revoke UI, live-confirmed, review resolved → see 7-4-apps-and-credentials.md
-  story-7-5-export-backup-portability: ready-for-dev  # 2026-08-03: resequenced last, depends on 7.11a resolver → see 7-5-export-backup-portability.md
-  story-7-6-file-manager-hardening: deferred-post-poc  # 2026-08-11: deferred, no PoC pod big enough yet → see 7-6-file-manager-hardening.md
-  story-7-7-delete-my-pod: merged-into-7-10  # 2026-08-03: merged into 7.10, no scope dropped → see epics.md Story 7.7
-  story-7-8-roles-and-grants-ui: merged-into-7-11  # 2026-08-03: merged into 7.11, no scope dropped → see epics.md Story 7.8
-  story-7-9-backoffice-minted-credentials: done  # 2026-08-19: connector minting deployed, 6 live bugs fixed, review resolved → see 7-9-backoffice-minted-credentials.md
-  story-7-10-account-and-pod-lifecycle: done  # 2026-08-03: gate removal, pod lifecycle, live-verified, review resolved → see 7-10-account-and-pod-lifecycle.md
-  story-7-11-effective-access-and-roles: split-into-7-11a-7-11b  # 2026-08-11: split, resolver load-bearing / roles team-only → see epics.md Story 7.11
-  story-7-11a-effective-access-resolver-and-badge: backlog  # 2026-08-11: in-scope half of 7.11 split, resolver+badge, runs after 7.9 before 7.5 → see epics.md
-  story-7-11b-roles-and-collective-access: deferred-post-poc  # 2026-08-11: deferred half of 7.11 split, model settled in BP-6, re-enters at first multi-person pod → see epics.md
-  story-7-12-agent-identity-lifecycle: done  # 2026-08-20: agent WebIDs in an existing pod, deployed, review resolved → see 7-12-agent-identity-lifecycle.md
+  story-7-2-css-registration-pages-restyle: done  # 2026-07-23: CSS page restyle, live-verified
+  story-7-3-my-things-crud-acl-fix: done  # 2026-07-23: ACL bug fixed, CRUD/upload/rename, live-verified
+  story-7-4-apps-and-credentials: done  # 2026-07-23: client-creds mint/list/revoke UI, live-confirmed
+  story-7-5-export-backup-portability: ready-for-dev  # 2026-08-03: resequenced last, depends on 7.11a resolver
+  story-7-6-file-manager-hardening: deferred-post-poc  # 2026-08-11: deferred, no PoC pod big enough yet
+  story-7-7-delete-my-pod: merged-into-7-10  # 2026-08-03: merged, no scope dropped → see epics.md
+  story-7-8-roles-and-grants-ui: merged-into-7-11  # 2026-08-03: merged, no scope dropped → see epics.md
+  story-7-9-backoffice-minted-credentials: done  # 2026-08-19: connector minting deployed, 6 bugs fixed
+  story-7-10-account-and-pod-lifecycle: done  # 2026-08-03: gate removal, pod lifecycle, live-verified
+  story-7-11-effective-access-and-roles: split-into-7-11a-7-11b  # 2026-08-11: split → see epics.md
+  story-7-11a-effective-access-resolver-and-badge: backlog  # 2026-08-11: in-scope half of 7.11 split → see epics.md
+  story-7-11b-roles-and-collective-access: deferred-post-poc  # 2026-08-11: deferred half of 7.11 split → see epics.md
+  story-7-12-agent-identity-lifecycle: done  # 2026-08-20: agent WebIDs in existing pod, deployed
   epic-7-retrospective: optional
 
-  # Epic 8: Solid MCP Connector (ADDED 2026-07-30 — Quest B handoff, MISSION_BRIEF_solid-mcp-connector.md)
-  # Independent of Epic 7/4 — new mcp-connector/ Node service, not a backoffice/pipeline change.
-  # Story 8.1 must land before 8.5 (live verification) — ports Story 7.3's ACL Turtle fix into
-  # wacManager.js instead of trusting the toolkit's untested Inrupt universal-access calls.
+  # Epic 8: Solid MCP Connector — origin/rationale → see epics.md Epic 8 header
   epic-8: in-progress
   story-8-1-wac-hardening-verification: done
-  story-8-2-http-transport: done  # 2026-07-31: HTTP transport + code review, all findings resolved live → see 8-2-http-transport.md
-  story-8-3-per-person-endpoints: done  # 2026-07-31: per-person slug routing + review, live-reverified → see 8-3-per-person-endpoints.md
-  story-8-4-vps-deploy-hardening: done  # 2026-08-01: VPS deploy+hardening, live-verified public URL, review resolved → see 8-4-vps-deploy-hardening.md
-  story-8-5-live-verification: review  # 2026-08-01: all 11 ACs met live from claude.ai, 1 bug found+fixed → see 8-5-live-verification.md
-  story-8-6-capture-surface-and-skill: done  # 2026-08-02: capture skill+receipts, live-verified, 2 bugs fixed → see 8-6-capture-surface-and-skill.md
-  story-8-6-1-lazy-identity-loading: done  # 2026-08-02: no-restart onboarding, live-verified, review resolved → see 8-6-1-lazy-identity-loading.md
-  story-8-7-team-onboarding-doc: in-progress  # 2026-08-03: Tasks 1-3 done, halted before Task 4 (needs a live 2nd person) → see 8-7-team-onboarding-doc.md
-  # ADDED 2026-08-11 (sprint-change-proposal-2026-08-11.md) from security-hardening-brief-2026-08-09.md.
-  # Both are hardening on surfaces that already work — neither blocks 8.7 or any Epic 7 story.
-  story-8-8-credential-at-rest-hardening: deferred-pre-pilot  # 2026-08-11: plaintext-at-rest risk accepted for PoC → see architecture.md SEC-4
-  story-8-9-access-journal-tamper-spike: done  # 2026-08-12: fixed journal-rewritable finding, deployed+verified → see 8-9-access-journal-tamper-spike.md
+  story-8-2-http-transport: done  # 2026-07-31: HTTP transport + code review, all findings resolved live
+  story-8-3-per-person-endpoints: done  # 2026-07-31: per-person slug routing + review, live-reverified
+  story-8-4-vps-deploy-hardening: done  # 2026-08-01: VPS deploy+hardening, live-verified
+  story-8-5-live-verification: review  # 2026-08-01: all 11 ACs met live from claude.ai, 1 bug found+fixed
+  story-8-6-capture-surface-and-skill: done  # 2026-08-02: capture skill+receipts, live-verified, 2 bugs fixed
+  story-8-6-1-lazy-identity-loading: done  # 2026-08-02: no-restart onboarding, live-verified, review resolved
+  story-8-7-team-onboarding-doc: in-progress  # 2026-08-03: Tasks 1-3 done, halted before Task 4 (needs a live 2nd person)
+  story-8-8-credential-at-rest-hardening: deferred-pre-pilot  # 2026-08-11: risk accepted → see architecture.md SEC-4
+  story-8-9-access-journal-tamper-spike: done  # 2026-08-12: fixed journal-rewritable finding, deployed+verified
   # Cross-cutting housekeeping (not epic-scoped, non-blocking)
-  planning-docs-consolidation: ready-for-dev  # 2026-08-20: refreshed after 18-day drift, bloat grew not shrank -> see planning-docs-consolidation.md
+  planning-docs-consolidation: review  # 2026-08-20: 106.7KB→7.6KB, drift check clean
   epic-8-retrospective: optional
 
-# Sprint Metadata
-notes:
-  solo_dev_model: "1 human (Nicolas) + Claude Code AI pair programmer. Phases do NOT interleave; one must complete before next begins."
-  timebox_guidance: "Phase 1 hard timebox; invest most time in Phase 2 (intellectual core); Phase 3 implements quality data with fallback to 3 journeys; Phase 4 completes with troll run and dashboard."
-  context_switching_cost: "Budget 1 ramp-up day per phase transition (different tech stacks)."
-  dependencies: "Nginx spike (story-1-2) is critical path with 3-day timebox and explicit fallback plan."
+# Sprint Metadata (solo-dev phasing, phases complete) trimmed → see product-brief.md
 
-# Known Issues — Privacy Findings (real partial results from Story 2.8)
-# These are not artificial failures. They reflect genuine architectural constraints
-# discovered during adversarial testing. All are "known unknowns" to address before
-# the pilot. Easy fixes should be absorbed into Epics 3-6 stories; hard fixes are
-# post-pilot recommendations.
-#
-# Root cause: pod_resource_uri stored in Qdrant payloads uses the pod slug
-# (e.g. "http://localhost:3000/ayoub/"), which encodes the student name.
-# Any operator with raw Qdrant access can correlate embeddings to student identities.
-#
+# Known Issues — real partial results from Story 2.8 adversarial testing, not artificial failures
 known_issues:
   - id: PRIV-1
     title: "pod_resource_uri leaks student identity via pod slug"
-    source: story-2-8 (vector_privacy.py, 9/14 tests partial)
+    source: story-2-8
     severity: medium
-    attack_categories_affected: [name-extraction, identity-correlation, location-extraction, grade-extraction]
-    status: fixed
-    fix_effort: medium
-    target: epic-5 (implemented in story-5-2)
-    proposed_fix: >
-      At embed time, store an opaque UUID (derived from pod_resource_uri via SHA-256)
-      in the Qdrant payload instead of the raw URI. Maintain a separate lookup index
-      (in Oxigraph or a config file) mapping UUID → pod_resource_uri for authorized
-      services only. Changes: embed pipeline (story-2-5 code), traceability module
-      (story-2-6 code). Likely absorbed into story-5-2 (deletion cascade) which
-      already needs to walk pod→embedding linkage.
-    easy_partial_fix: >
-      Short-term (no code change): document that Qdrant port 6333 must never be
-      exposed outside the Docker network. Already true in current compose config;
-      add an explicit note in infra README and story-6-1 report.
-
+    status: fixed  # implemented story-5-2 (opaque UUID hash) → see 5-2-deletion-cascade-propagation.md
   - id: PRIV-2
     title: "Cross-person correlation via shared semantic domain"
-    source: story-2-8 (cross-person correlation attack, partial results)
+    source: story-2-8
     severity: low
-    attack_categories_affected: [cross-person-correlation]
-    status: open
-    fix_effort: low
-    target: epic-6 (document in funder report)
-    proposed_fix: >
-      This is expected behavior: all students study math, so their embeddings cluster
-      by subject domain, not by individual. Not a real leakage risk — an adversary
-      learns "these students both study algebra", not any PII. Mitigation is to
-      document this clearly in the Epic 6 funder report (story-6-1) as an
-      acceptable risk with explanation. No code change needed.
+    status: accepted-risk  # expected behavior not a leak, documented in epic-6 funder report → see epic-5-retro-2026-03-30.md
 
-# Ready to implement: call 'bmad-create-story' with story ID from sprint_backlog_order to begin work # 2026-08-01: Task 9 (AC11) DONE, STORY CLOSED (status: review). README's "Deploying on a VPS" restructured along the Divio documentation system (docs.divio.com: tutorial/how-to/reference/explanation, never mixed in one doc) into ### Reference / ### How-to / ### Explanation subsections, replacing one mixed-shape section. Appended a dated "Story 8.4" section to the live pod action log (epic-8-action-log.md) via podClient read-then-write under the AGENT's own session, verified by byte-length growth (5385 -> 7995) rather than assumed; added a full "Story 8.4" proof-table section (bugs found+fixed, decisions, scope notes) to epic-8-progress-report.md matching 8.1-8.3's format. All 9 tasks / 11 ACs now complete and live-verified against the production VPS. Next: 8.5 (live verification from claude.ai) is now unblocked.
+# Ready to implement: call 'bmad-create-story' with story ID from sprint_backlog_order to begin work

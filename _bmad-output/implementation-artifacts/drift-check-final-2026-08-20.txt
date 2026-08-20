@@ -1,0 +1,20 @@
+=== Planning-docs drift check ===
+epics.md:            _bmad-output/planning-artifacts/epics.md
+sprint-status.yaml:  _bmad-output/implementation-artifacts/sprint-status.yaml
+
+sprint-status.yaml size: 7,831 bytes (7.6 KB)
+
+Story keys — sprint-status.yaml: 65, epics.md: 65
+  ✅ every sprint-status.yaml story id has an epics.md entry
+  ✅ every epics.md story id has a sprint-status.yaml entry
+
+Epic keys — sprint-status.yaml: 8, epics.md: 8
+  ✅ epic keys match both directions
+
+Duplicate story numbers (excluding legitimate sub-numbered stories): 0
+  ✅ none
+
+Comments over 120 chars: 0
+  ✅ none
+
+RESULT: clean.
