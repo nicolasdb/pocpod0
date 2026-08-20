@@ -405,6 +405,16 @@ Role = named grant bundle (absorbed from 7.8): define once (containers + modes),
 
 **Why deferred, not dropped:** roles are how the model scales to Singelijn and partner orgs — architecture.md BP-6 is written and the invariant is real. But no PoC journey has two people sharing a pod, so the UI would ship untested against its own use case. Recorded in `post-poc-backlog.md`; re-enters at the first multi-person pod. The receipt-surfacing bullet travels with it — a receipts view for a pod nobody else reads shows an empty list.
 
+### Story 7.12: Agent Identity Lifecycle _(ADDED 2026-08-19 — live CSS investigation; found missing from this file by the planning-docs-consolidation drift check, 2026-08-20)_
+
+As a pod owner, I can mint a dedicated agent WebID inside my own pod (instead of an agent's connector binding to my personal WebID) so an agent's blast radius is confined to what I explicitly grant it.
+
+- **Finding that motivated the story:** WebID:Pod is n:1, not 1:1. CSS keeps two independent registrations that were being conflated — `webIdLink` (WebID→Account, gates credential minting via `isLinked`) and pod ownership (WebID→Pod, full Control). `LinkWebIdHandler` links any WebID under a pod your account created with no ownership challenge, so one pod can host many agent WebIDs.
+- **Corrects our own mint gate:** `accountControlsWebId()` previously prefix-matched pod `baseUrl`s; CSS's real rule is `isLinked`.
+- **Hard constraint:** the resource server dereferences the WebID anonymously for `solid:oidcIssuer`, so a non-public WebID doc cannot authenticate — verified at creation time rather than surfacing inside claude.ai hours later.
+- **Out of scope, stated as such:** pod deletion (no `DeletePodHandler` in CSS) and "Add owner" (full Control — wrong tool for a scoped agent). Orphaned pods are recoverable: unlinking doesn't delete the profile doc, re-linking restores control.
+- **Shipped 2026-08-20:** agent identities UI in the backoffice, corrected mint gate, deployed to VPS, code-reviewed (7 patches applied, 7 deferred). Task 6.4 (retiring `agent-smithwhite`) deliberately left open, non-blocking. See `7-12-agent-identity-lifecycle.md`.
+
 ## Epic 1: Pod Sovereignty & Access Control
 
 Learners own their data in Solid Pods with enforceable, auditable access control — the fundamental sovereignty primitive is proven and adversarially validated.
