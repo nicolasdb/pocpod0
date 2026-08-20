@@ -96,12 +96,13 @@ agent and goes wherever permissions allow, but there's no way to ask a Solid
 server "what can this identity reach" — so tell Claude the pod address
 yourself, in your project instructions or in the conversation.
 
-**One connector URL per harness.** Running Claude and another agent? Mint
-twice against the *same* agent WebID. That's two independently revocable
-URLs sharing one identity — no extra pod, no extra grants, and each action
-is traceable to its own grant in the access journal. Mint a second WebID
-only if the two need *different* permissions, since access control sees the
-WebID, not the URL.
+**One connector per WebID.** Running Claude and another agent? Create a
+second **agent identity** (step c) in the same pod and mint against that —
+not a second connector on the identity you already used. The connector
+registry refuses two active connectors sharing one WebID by design, so each
+harness gets attributed to its own identity rather than being lumped under
+one shared grant. Story 7.12 made this cheap: a second identity is a
+document inside the pod you already have, not a new pod.
 
 **(e) Add the connector in Claude.** In Claude, add a custom connector
 using the URL you were just given:
