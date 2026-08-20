@@ -615,9 +615,17 @@ class RealBackend {
   }
   async createAgentIdentity(podBaseUrl, agentName) {
     if (!podBaseUrl || !podBaseUrl.endsWith("/")) throw new Error("Not a valid pod URL.");
+    if (agentName && agentName.trim().length > 64) throw new Error("Agent name is too long (max 64 characters).");
     const slug = slugifyAgentName(agentName);
     const webId = `${podBaseUrl}agents/${slug}#me`;
     const profileUrl = `${podBaseUrl}agents/${slug}`;
+
+    // Step 0: refuse if a profile doc already exists at this slug — the write
+    // in Step 1 is a blind PUT and would otherwise silently overwrite it.
+    try {
+      const existsRes = await fetch(profileUrl, { credentials: "include" });
+      if (existsRes.ok) throw new Error(`write-doc: An identity named "${slug}" already exists in this pod.`);
+    } catch (e) { if (/already exists/.test(e.message)) throw e; /* network/other errors fall through to Step 1's own handling */ }
 
     // Step 1: write-doc (AC2).
     try {
@@ -631,7 +639,10 @@ class RealBackend {
       await this._writeAcl(profileUrl, { agents: [], public: { ...emptyModes(), read: true } });
     } catch (e) {
       try { await this._cleanupOrphanDoc(profileUrl); }
-      catch (e2) { console.error("createAgentIdentity: write-acl failed AND cleanup failed — orphan profile doc left at", profileUrl, e, e2); }
+      catch (e2) {
+        console.error("createAgentIdentity: write-acl failed AND cleanup failed — orphan profile doc left at", profileUrl, e, e2);
+        throw new Error(`write-acl: ${e.message} (also could not clean up the partial profile document at ${profileUrl} — it may need a manual sweep).`);
+      }
       throw new Error(`write-acl: ${e.message}`);
     }
 
@@ -644,10 +655,13 @@ class RealBackend {
       const verifyRes = await fetch(profileUrl, { credentials: "omit" });
       if (!verifyRes.ok) throw new Error(`the document is not publicly readable (HTTP ${verifyRes.status})`);
       const text = await verifyRes.text();
-      if (!/oidcIssuer/.test(text)) throw new Error("the document is reachable but missing the oidcIssuer triple");
+      if (!/solid:oidcIssuer\s+<[^>]+>/.test(text)) throw new Error("the document is reachable but missing the oidcIssuer triple");
     } catch (e) {
       try { await this._cleanupOrphanDoc(profileUrl); }
-      catch (e2) { console.error("createAgentIdentity: verify-public failed AND cleanup failed — orphan profile doc left at", profileUrl, e, e2); }
+      catch (e2) {
+        console.error("createAgentIdentity: verify-public failed AND cleanup failed — orphan profile doc left at", profileUrl, e, e2);
+        throw new Error(`verify-public: ${e.message} (also could not clean up the partial profile document at ${profileUrl} — it may need a manual sweep).`);
+      }
       throw new Error(`verify-public: ${e.message}`);
     }
 
@@ -660,7 +674,10 @@ class RealBackend {
       linkResult = await this._linkWebIdWithOwnershipProof(webId, profileUrl, agentName);
     } catch (e) {
       try { await this._cleanupOrphanDoc(profileUrl); }
-      catch (e2) { console.error("createAgentIdentity: link failed AND cleanup failed — orphan profile doc left at", profileUrl, e, e2); }
+      catch (e2) {
+        console.error("createAgentIdentity: link failed AND cleanup failed — orphan profile doc left at", profileUrl, e, e2);
+        throw new Error(`link: ${e.message} (also could not clean up the partial profile document at ${profileUrl} — it may need a manual sweep).`);
+      }
       throw new Error(`link: ${e.message}`);
     }
 
@@ -740,8 +757,9 @@ class RealBackend {
     const res = await fetch(linkUrl, { credentials: "include" });
     this._onAcctResponse(res);
     if (!res.ok) throw new Error(`Could not list linked identities (HTTP ${res.status}).`);
-    const body = await res.json();
-    const map = body.webIdLinks || {};
+    let body;
+    try { body = await res.json(); } catch (e) { throw new Error("Could not list linked identities (malformed response)."); }
+    const map = (body && body.webIdLinks) || {};
     const links = Object.entries(map).map(([webId, resource]) => ({ webId, resource }));
     let grants = [];
     try { grants = await this.listGrants(); } catch (e) { /* connector grants are an enrichment, not required to list identities */ }
@@ -1008,6 +1026,10 @@ class DemoBackend {
   _demoOwnershipTokens = {};
   async createAgentIdentity(podBaseUrl, agentName) {
     const slug = slugifyAgentName(agentName);
+    const wouldBeWebId = `${podBaseUrl}agents/${slug}#me`;
+    if (this._demoWebIdLinks.some((l) => l.webId === wouldBeWebId)) {
+      throw new Error(`write-doc: An identity named "${slug}" already exists in this pod.`);
+    }
     if (this._demoFailStep) {
       const step = this._demoFailStep;
       this._demoFailStep = null;

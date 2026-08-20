@@ -1573,6 +1573,10 @@ class Component extends DCLogic {
     } finally { this._creatingAgent = false; }
   }
   async retryCreateAgent(name, podBaseUrl) {
+    const key = name + '|' + podBaseUrl;
+    if (!this._retryingAgents) this._retryingAgents = {};
+    if (this._retryingAgents[key]) return; // guard double-click racing two retries
+    this._retryingAgents[key] = true;
     try {
       await this.cl.createAgentIdentity(podBaseUrl, name);
       this.setState({ agentIncomplete: this.state.agentIncomplete.filter(a => a.name !== name || a.podBaseUrl !== podBaseUrl) });
@@ -1585,7 +1589,7 @@ class Component extends DCLogic {
           (a.name === name && a.podBaseUrl === podBaseUrl) ? { ...a, error: e.message } : a),
       });
       this.toast('Still incomplete: ' + e.message);
-    }
+    } finally { delete this._retryingAgents[key]; }
   }
   dismissIncompleteAgent(key) {
     this.setState({ agentIncomplete: this.state.agentIncomplete.filter(a => a.key !== key) });
@@ -1974,8 +1978,8 @@ class Component extends DCLogic {
       confirmUnlink: () => { clearTimeout(this._agentUnlinkTimer); this.doUnlinkAgent(l.resource, agentNameFromWebId(l.webId)); },
       unlinkLabel: 'Unlink ' + agentNameFromWebId(l.webId), confirmLabel: 'Confirm unlink ' + agentNameFromWebId(l.webId),
       unlinkWarning: l.hasGrant
-        ? 'Revoke the connector first — unlinking alone leaves an active credential able to authenticate for up to ~10 minutes.'
-        : "Doesn't delete the profile document or an already-issued token (~10 min). Re-linking restores it.",
+        ? "Revoke the connector first — unlinking alone leaves an active credential able to authenticate for up to ~10 minutes, and doesn't remove any WAC grants it already wrote on other pods."
+        : "Doesn't delete the profile document, remove WAC grants already written on other pods, or invalidate an already-issued token (~10 min). Re-linking restores it.",
     }));
     // A failed step must read as one short human sentence naming WHICH step and
     // WHAT to do — never CSS's raw error text. The raw detail stays available on
