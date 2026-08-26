@@ -1,6 +1,6 @@
 # Story 7.13: Origin Split — Backoffice & Valisette Off pod.nicolasdb.eu
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -117,11 +117,11 @@ Confirmed live (`curl -I https://pod.nicolasdb.eu/pod-api.js`, `/valisette/`, th
   - [x] 6.1 In `backoffice/pod-api.js`: replace `Solid.namedSession`/`_backofficeSession`/`canRestore` machinery with a plain `new libs.authn.Session({}, BACKOFFICE_SESSION_ID)` and unconditional `restorePreviousSession: true`. Remove the now-inaccurate long comment block explaining the cross-app race (or replace it with a one-line note that the race no longer applies post-origin-split, for the next person's benefit).
   - [x] 6.2 In `valisette/valisette.js`: same simplification — drop the `canRestore` check in `initSolid()`, keep `SESSION_ID = "valisette"` for stability across reloads, restore unconditionally.
   - [x] 6.3 Update the code comments referencing `Solid.namedSession`/`canRestore` in both files (`valisette.js:6-10,212-216`) since the mechanism they describe is being removed, not just no longer needed.
-  - [ ] 6.4 Live-verify AC2: log into backoffice, then Valisette without logging out, confirm both stay logged in after reload. **Needs a real browser session — cannot be done headlessly.** Flagged for Nicolas in completion report.
+  - [x] 6.4 Live-verify AC2: log into backoffice, then Valisette without logging out, confirm both stay logged in after reload. Confirmed live by Nicolas (2026-08-26): both apps stayed logged in, no bounce.
 
-- [ ] **Task 7 — Full regression pass (AC: 9)**
-  - [ ] 7.1 Backoffice: login, file browse/CRUD/upload/ACL, client-credential mint/list/revoke, agent identity list (7.12) — all from `backoffice.nicolasdb.eu`.
-  - [ ] 7.2 Valisette: login, gist container listing, swipe-triage flow, autosave — from `valisette.nicolasdb.eu`.
+- [x] **Task 7 — Full regression pass (AC: 9)**
+  - [x] 7.1 Backoffice: login, file browse/CRUD/upload/ACL, client-credential mint/list/revoke, agent identity list (7.12) — all from `backoffice.nicolasdb.eu`. Confirmed live by Nicolas.
+  - [x] 7.2 Valisette: login, gist container listing, swipe-triage flow, autosave — from `valisette.nicolasdb.eu`. Confirmed live by Nicolas.
   - [x] 7.3 `pod.nicolasdb.eu`: confirm LDP/WAC/OIDC endpoints unaffected — this is the acceptance bar for "pod.nicolasdb.eu is a plain Solid provider now."
 
 ## Dev Agent Record
@@ -174,4 +174,17 @@ _(Further entries: Task 7 regression pass.)_
 
 ## File List
 
-_(To be filled during implementation.)_
+- `infra/css/config.json` — removed backoffice/Valisette `StaticAssetHandler` blocks; added `CssTokensAsset` block
+- `infra/css/tokens.css` (new) — CSS's own copy, decoupled from `backoffice/`
+- `docker-compose.yml` — removed `./backoffice`/`./valisette` bind-mounts; added `infra/css/tokens.css` bind-mount
+- `backoffice/pod-api.js` — removed `Solid.namedSession`/`canRestore`/`KEY_CURRENT_SESSION`; unconditional `restorePreviousSession: true`
+- `valisette/valisette.js` — own `loadLibs()` (esm.sh), removed `import ... "/pod-api.js"` and `canRestore` guard
+- `valisette/index.html` — asset paths fixed from `/valisette/*` to root-relative
+- `Makefile` — new `vps-push-apps` target
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — status tracking
+- (out-of-repo, `hetzner-gateway`) `nginx/conf.d/12-backoffice.conf`, `13-valisette.conf` (new); `docker-compose.yml` volume mounts for `/srv/backoffice`, `/srv/valisette`
+- (VPS disk, `pocpod0_css-data` volume, not in git) `index.html` — CSS's seeded root welcome page, edited to link both new subdomains (backup at `index.html.bak-7.13`)
+
+## Change Log
+
+- 2026-08-26: Story implemented and closed. Root cause verified against npm dist source (not docs) for the SSO-bounce bug. Two live regressions found and fixed during implementation, beyond the original task list: (1) Valisette's cross-app import of `backoffice/pod-api.js` broke on origin split — replaced with a self-contained library loader; (2) CSS's own identity-page chrome (Story 7.2) depended on `tokens.css` being served via the backoffice's static mapping — given its own dedicated copy/mapping. All 9 ACs live-verified; Nicolas confirmed both apps stay logged in independently and full regression pass (file CRUD, credentials, agent identities, gist triage) on the new subdomains.
