@@ -1049,6 +1049,14 @@ el("close-btn").addEventListener("click", () => {
   showScreen("login");
 });
 
+// The only way back once the deck is empty or mid-session — there's no
+// other affordance out of screen-deck besides finishing the whole stack.
+el("deck-back-btn").addEventListener("click", () => {
+  state.gists = [];
+  resetDeckState();
+  showScreen("setup");
+});
+
 document.addEventListener("keydown", (e) => {
   if (state.screen !== "deck") return;
   const tag = document.activeElement && document.activeElement.tagName;
