@@ -443,7 +443,9 @@ class RealBackend {
   // acts with THAT WebID's full access — WAC can't scope it to one app's data. The real
   // controls are least-privilege ACLs + fast revocation, not per-app sandboxing.
   // Resolve `controls` from the authed account index, using the `css-account` cookie
-  // the browser already holds (same-origin: backoffice is served from ISSUER's root).
+  // the browser already holds. Post-Story-7.13, backoffice is served from its own
+  // origin (backoffice.nicolasdb.eu), cross-origin from ISSUER (pod.nicolasdb.eu) —
+  // this only works because the cookie/CORS setup permits it; don't assume same-origin.
   // Trap: this GET must carry NO content-type header — with one present, CSS
   // content-negotiates a controls-less body and `controls.account.*` comes back
   // `undefined`, which looks exactly like "the endpoint does not exist" (7.4 finding).
@@ -790,8 +792,10 @@ class RealBackend {
   }
 
   // ---- Connector onboarding (Story 7.9) ----
-  // Talks to mcp-connector's /onboard/ endpoint, proxied same-origin via
-  // pod.nicolasdb.eu (see hetzner-gateway's 04-pocpod0.conf) — no CORS, and
+  // Talks to mcp-connector's /onboard/ endpoint, proxied via pod.nicolasdb.eu
+  // (see hetzner-gateway's 04-pocpod0.conf). Post-Story-7.13, backoffice is
+  // cross-origin from pod.nicolasdb.eu, not same-origin — this relies on the
+  // cookie/CORS setup permitting it, and
   // the css-account cookie rides along automatically with credentials:
   // 'include', same as every other account-scoped call in this file. The
   // server does the actual CSS credential mint; the secret it produces

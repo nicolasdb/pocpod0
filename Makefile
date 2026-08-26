@@ -174,6 +174,7 @@ vps-push:
 # are small flat app dirs with nothing VPS-authored to protect (unlike
 # vps-push's guarded delete against server-authored state).
 vps-push-apps:
+	ssh $(VPS_REMOTE) "mkdir -p /srv/backoffice /srv/valisette"
 	rsync -avz --delete --exclude=".git" ./backoffice/ $(VPS_REMOTE):/srv/backoffice/
 	rsync -avz --delete --exclude=".git" ./valisette/ $(VPS_REMOTE):/srv/valisette/
 	@echo "backoffice/valisette synced to /srv on VPS."
@@ -181,7 +182,7 @@ vps-push-apps:
 vps-build:
 	ssh $(VPS_REMOTE) "cd $(VPS_PATH) && docker compose build"
 
-vps-deploy: vps-push vps-build
+vps-deploy: vps-push vps-push-apps vps-build
 	ssh $(VPS_REMOTE) "cd $(VPS_PATH) && docker compose up -d"
 
 # One-time: bootstrap pipeline venv on VPS after first vps-push
