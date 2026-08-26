@@ -296,7 +296,7 @@ const validateEl = el("validate-overlay");
 const anagnorisisEl = el("anagnorisis-overlay");
 
 // ── persistence ────────────────────────────────────────────────────────
-// Only the source folder and the recents list are remembered. There is no
+// Only the source folder is remembered. There is no
 // local mirror of decisions any more: the TOML on the pod is the single
 // source of truth, and a stale mirror could resurrect a swiped gist or hide
 // a pending one.
@@ -437,38 +437,10 @@ async function writeValidation(gist, value) {
 
 // ── source folder chips — real pod listing, static fallback ────────────
 const STATIC_FOLDER_HINTS = ["capture/", "gists/", "inbox/"];
-const RECENTS_KEY = "valisette:recentFolders";
-const RECENTS_MAX = 5;
 
 // { source: { root, path } } — root is fixed (pod storage root), path is
 // whatever container is currently drilled into.
 const browse = { source: {} };
-
-function loadRecents() {
-  try { return JSON.parse(localStorage.getItem(RECENTS_KEY) || "[]"); } catch (e) { return []; }
-}
-function saveRecent(path) {
-  try {
-    const list = [path, ...loadRecents().filter((p) => p !== path)].slice(0, RECENTS_MAX);
-    localStorage.setItem(RECENTS_KEY, JSON.stringify(list));
-  } catch (e) { /* ignore */ }
-}
-function renderRecents(group) {
-  const wrap = el(`${group}-recents`);
-  const list = loadRecents();
-  wrap.hidden = list.length === 0;
-  wrap.innerHTML = "";
-  list.forEach((path) => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "vz-chip vz-chip-recent";
-    btn.setAttribute("data-nodrag", "");
-    btn.title = path;
-    btn.textContent = path.startsWith(browse[group].root) ? path.slice(browse[group].root.length) || "(root)" : path;
-    btn.addEventListener("click", () => browseTo(group, path));
-    wrap.appendChild(btn);
-  });
-}
 
 function renderBreadcrumb(group) {
   const { root, path } = browse[group];
@@ -549,7 +521,6 @@ async function browseTo(group, url) {
 
 function initBrowsers(root) {
   browse.source = { root, path: state.sourcePath };
-  renderRecents("source");
   browseTo("source", state.sourcePath);
 }
 
@@ -629,7 +600,6 @@ async function collectPendingFiles(folder) {
 
 // ── loading the deck ───────────────────────────────────────────────────
 async function loadGists() {
-  saveRecent(state.sourcePath);
   saveSetupToLocalStorage();
   const folder = state.sourcePath.replace(/\/?$/, "/");
 

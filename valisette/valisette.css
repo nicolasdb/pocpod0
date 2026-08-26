@@ -137,8 +137,6 @@ input::placeholder, textarea::placeholder { color: var(--text-tertiary); }
   border-radius: 3px; font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); cursor: pointer;
 }
 
-.vz-chip-recent { border-color: var(--convergence); color: var(--convergence); }
-
 .vz-breadcrumb {
   display: flex; flex-wrap: wrap; align-items: center; gap: 2px;
   font-family: var(--font-mono); font-size: 11px; color: var(--text-tertiary);
