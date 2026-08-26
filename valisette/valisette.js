@@ -551,12 +551,13 @@ function initBrowsers(root) {
   browseTo("source", state.sourcePath);
 }
 
+// No pod behind demo mode, so no folder to pick — straight to the deck on
+// the one synthetic file.
 function bootDemo() {
   state.demo = true;
   state.webId = "https://pod.nicolasdb.eu/hyperscope_ndb/profile/card#me";
-  state.sourcePath = "https://pod.nicolasdb.eu/hyperscope_ndb/capture/gists/";
-  showScreen("setup");
-  initBrowsers("https://pod.nicolasdb.eu/hyperscope_ndb/");
+  state.sourcePath = DEMO_FILE_URL;
+  loadGists();
 }
 
 // ── scanning the source folder ─────────────────────────────────────────
