@@ -415,6 +415,25 @@ As a pod owner, I can mint a dedicated agent WebID inside my own pod (instead of
 - **Out of scope, stated as such:** pod deletion (no `DeletePodHandler` in CSS) and "Add owner" (full Control — wrong tool for a scoped agent). Orphaned pods are recoverable: unlinking doesn't delete the profile doc, re-linking restores control.
 - **Shipped 2026-08-20:** agent identities UI in the backoffice, corrected mint gate, deployed to VPS, code-reviewed (7 patches applied, 7 deferred). Task 6.4 (retiring `agent-smithwhite`) deliberately left open, non-blocking. See `7-12-agent-identity-lifecycle.md`.
 
+### Story 7.13: Origin Split — Backoffice & Valisette Off pod.nicolasdb.eu _(ADDED 2026-08-26 — live SSO-bounce investigation, commit 6432771)_
+
+As a pod owner running two Solid apps (backoffice, Valisette) on my own server, I want each app on its own subdomain instead of sharing `pod.nicolasdb.eu` with the CSS provider, so the apps stop fighting over browser-global session state and `pod.nicolasdb.eu` can be a plain Solid provider any client can trust.
+
+- **Finding that motivated the story:** `@inrupt/solid-client-authn-browser@2.3.0`'s `session.login()` calls `clearOidcPersistentStorage()` at the start of every login, which wipes every `oidc.*` and `solidClientAuthenticationUser:*` localStorage key **origin-wide, with no per-app scoping** — confirmed against the library's own npm dist source. Logging into one app silently deletes the other's session. The `solidClientAuthn:currentSession` pointer (also one per origin) compounds it by making `restorePreviousSession` redirect to whichever app logged in most recently. Story 7.1's `Solid.namedSession`/`canRestore` guard (commit 6432771) reduces the second mechanism but cannot touch the first — confirmed live by Nicolas: signing out of Valisette restored backoffice access.
+- **The only real fix:** all three mechanisms read/write `window.localStorage`, which is origin-scoped by the browser itself. Two origins, two independent storages, problem gone — not patched around.
+- **Not in scope:** the cookie→token auth rework and provider-agnostic pod management (Story 7.14) — found in the same investigation but independent of the origin split.
+- See `7-13-origin-split-portable-apps.md`.
+
+### Story 7.14: Backoffice Auth — Token Header + Provider-Agnostic Pod Management _(ADDED 2026-08-26 — same investigation as 7.13)_
+
+As a pod owner, I want the backoffice to authenticate with a portable `Authorization` header instead of a same-site cookie, and to manage a pod on any Solid provider (not just this CSS instance), so the app is genuinely hostable anywhere and genuinely Solid-spec-compliant where the underlying operation is.
+
+- **Finding that motivated the story:** all 13 `credentials:'include'` call sites in `backoffice/pod-api.js` rely on the `css-account` cookie's `SameSite=Lax` behaviour, which only survives being split across subdomains (Story 7.13) because both stay under `nicolasdb.eu`. CSS's own docs (confirmed current, Context7 2026-08-26) document `Authorization: CSS-Account-Token <value>` as the header equivalent of that cookie — issued by the same login call, accepted everywhere the cookie is. Switching removes the same-site coupling entirely.
+- **Second, independent finding:** the backoffice's file-manager half (browse/CRUD/upload/ACL) is plain LDP+WAC — spec-compliant, works against any Solid provider — but `pod-api.js` hardcodes `ISSUER = "https://pod.nicolasdb.eu/"` and derives the pod root from CSS's one-pod-per-top-level-segment URL convention rather than the WebID profile's `pim:storage`. The account-console half (register/create-pod/mint-credential) is genuinely CSS-proprietary — no equivalent API exists on other providers — and must be hidden, not broken, when the connected provider isn't CSS.
+- **`mcp-connector`'s `/onboard/*` routes read the `css-account` cookie directly** (`onboardRouter.js`, stated in its own header comment) and carry zero CORS headers today (confirmed live: cross-origin probe → 401, no `access-control-*`). These break the moment backoffice moves origin under 7.13 unless they move to the same header scheme.
+- **Depends on 7.13** shipping first (origin split is what makes the cookie's limits visible/blocking in the first place, and `/onboard/`'s CORS gap only bites once backoffice is cross-origin).
+- See `7-14-token-auth-provider-agnostic-pods.md`.
+
 ## Epic 1: Pod Sovereignty & Access Control
 
 Learners own their data in Solid Pods with enforceable, auditable access control — the fundamental sovereignty primitive is proven and adversarially validated.
