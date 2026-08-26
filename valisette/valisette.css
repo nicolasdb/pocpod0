@@ -235,6 +235,10 @@ input::placeholder, textarea::placeholder { color: var(--text-tertiary); }
   border-radius: 3px; font-size: 16px; cursor: pointer; color: var(--border);
 }
 #undo-btn.vz-undo-active { color: var(--text-secondary); }
+#comment-input {
+  flex: 1; min-width: 0; background: var(--surface-recessed); border: 1px solid var(--border);
+  border-radius: 3px; padding: 12px 14px; font-size: 13.5px; outline: none; font-family: var(--font-body);
+}
 
 .vz-status-strip {
   flex-shrink: 0; padding: 11px 18px calc(14px + env(safe-area-inset-bottom));

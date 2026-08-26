@@ -152,7 +152,8 @@ const RAW_OPEN = 'raw = """';
 
 function unquote(v) {
   const t = v.trim();
-  return (t.startsWith('"') && t.endsWith('"') && t.length > 1) ? t.slice(1, -1) : t;
+  if (!(t.startsWith('"') && t.endsWith('"') && t.length > 1)) return t;
+  return t.slice(1, -1).replace(/\\(.)/g, "$1");
 }
 
 function parseGistTOML(text) {
@@ -191,6 +192,7 @@ function parseGistTOML(text) {
     else if (key === "titre") current.titre = val;
     else if (key === "moment") current.moment = val;
     else if (key === "validation") current.validation = val;
+    else if (key === "note") current.note = val;
   }
   if (current && current.id) gists.push(current);
   return gists;
@@ -214,16 +216,27 @@ function isIngested(text) {
 // today, and whatever the pipeline adds tomorrow). Exactly one line changes.
 // Returns null when the gist, or its validation line, isn't there — a failed
 // patch has to surface, never pass as a silent no-op.
-function patchValidationLine(text, gistId, value) {
+function tomlString(v) {
+  return `"${String(v).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+// String-level patch of one gist's `validation` (always) and `note` (only
+// when non-empty) fields — deliberately NOT parse-then-rebuild, so every
+// other field (including pipeline-added ones like `ingested`) survives
+// byte-identical. Returns null when the gist isn't in this file.
+function patchGistFields(text, gistId, validation, note) {
   const lines = text.split("\n");
-  let inRaw = false, inGist = false, curId = null, valLine = -1, target = -1;
+  let inRaw = false, inGist = false, curId = null, valLine = -1, noteLine = -1, blockEnd = -1;
+  let target = null;
 
   const closeBlock = () => {
-    if (inGist && curId === gistId && valLine !== -1 && target === -1) target = valLine;
-    curId = null; valLine = -1;
+    if (inGist && curId === gistId && valLine !== -1 && !target) {
+      target = { valLine, noteLine };
+    }
+    curId = null; valLine = -1; noteLine = -1;
   };
 
-  for (let n = 0; n < lines.length && target === -1; n++) {
+  for (let n = 0; n < lines.length && !target; n++) {
     const t = lines[n].trim();
     // Skip multi-line raw bodies, so prose containing "validation = " is
     // never mistaken for the field.
@@ -242,12 +255,18 @@ function patchValidationLine(text, gistId, value) {
     const key = t.slice(0, eq).trim();
     if (key === "id") curId = unquote(t.slice(eq + 1));
     else if (key === "validation") valLine = n;
+    else if (key === "note") noteLine = n;
   }
-  closeBlock();
+  if (!target) closeBlock();
 
-  if (target === -1) return null;
-  const indent = lines[target].match(/^\s*/)[0];
-  lines[target] = `${indent}validation = "${value}"`;
+  if (!target) return null;
+  const indent = lines[target.valLine].match(/^\s*/)[0];
+  lines[target.valLine] = `${indent}validation = ${tomlString(validation)}`;
+  if (note) {
+    const noteText = `${indent}note = ${tomlString(note)}`;
+    if (target.noteLine !== -1) lines[target.noteLine] = noteText;
+    else lines.splice(target.valLine + 1, 0, noteText);
+  }
   return lines.join("\n");
 }
 
@@ -289,12 +308,17 @@ const state = {
   failures: 0,
   now: Date.now(),
   trayOpen: false,
+  comment: "",
 };
 
 let session = null; // this app's own isolated Inrupt Session (see header comment)
 let libs = null;    // { authn, sc } — loaded once, shared with the session above
 let animating = false;
 let drag = null;
+// Which gist's note is currently loaded into #comment-input — so a
+// renderDeck() triggered by an async write settling (e.g. after undo)
+// doesn't stomp an in-progress edit for the still-displayed card.
+let commentLoadedFor = null;
 
 const el = (id) => document.getElementById(id);
 const screens = { login: el("screen-login"), setup: el("screen-setup"), deck: el("screen-deck"), done: el("screen-done") };
@@ -418,7 +442,7 @@ async function writeFile(url, text, etag) {
 // Read → patch → PUT, every time. The file string is never held across
 // swipes: a Rate run landing mid-session would otherwise be overwritten by a
 // stale copy, erasing `ingested = true`.
-async function writeValidation(gist, value) {
+async function writeValidation(gist, value, note = "") {
   for (let attempt = 0; attempt < 2; attempt++) {
     const { text, etag } = await readFile(gist.sourceUrl);
     if (isIngested(text)) {
@@ -426,7 +450,7 @@ async function writeValidation(gist, value) {
       e.code = "batch-closed";
       throw e;
     }
-    const patched = patchValidationLine(text, gist.id, value);
+    const patched = patchGistFields(text, gist.id, value, note);
     if (patched === null) {
       const e = new Error("gist is no longer in that file");
       e.code = "not-found";
@@ -644,6 +668,8 @@ function resetDeckState() {
   state.batchClosed = false;
   state.lastWriteAt = null;
   state.failures = 0;
+  state.comment = "";
+  commentLoadedFor = null;
 }
 
 // ── swipe mechanics — DOM writes only, no re-render mid-drag ────────────
@@ -713,15 +739,21 @@ function commit(vote) {
   cardEl.style.transform = `translate(${fx}px,${fy}px) rotate(${rot}deg)`;
   cardEl.style.opacity = "0";
 
-  const prev = state.decisions[g.id] || null;
+  const prevVote = state.decisions[g.id] || null;
+  const prevNote = g.note || "";
+  const note = state.comment.trim();
   state.decisions = { ...state.decisions, [g.id]: vote };
-  state.history = state.history.concat([{ id: g.id, index: i, prev, gist: g }]);
+  state.history = state.history.concat([{ id: g.id, index: i, prevVote, prevNote, note, gist: g }]);
+  g.note = note;
   state.i = i + 1;
   state.writeError = null;
   state.writing += 1;
   state.trayOpen = false;
+  state.comment = "";
+  el("comment-input").value = "";
+  commentLoadedFor = null;
 
-  writeValidation(g, vote).then(
+  writeValidation(g, vote, note).then(
     () => settleWrite(g, null),
     (err) => settleWrite(g, err),
   );
@@ -773,18 +805,22 @@ function settleWrite(gist, err) {
 function undo() {
   if (animating || !state.history.length) return;
   const last = state.history[state.history.length - 1];
-  const target = last.prev || "pending";
+  const target = last.prevVote || "pending";
 
   const decisions = { ...state.decisions };
-  if (last.prev) decisions[last.id] = last.prev; else delete decisions[last.id];
+  if (last.prevVote) decisions[last.id] = last.prevVote; else delete decisions[last.id];
   state.decisions = decisions;
   state.history = state.history.slice(0, -1);
   state.i = last.index;
   state.writeError = null;
   state.writing += 1;
   state.trayOpen = false;
+  last.gist.note = last.prevNote;
+  state.comment = last.note;
+  commentLoadedFor = last.gist.id; // keep the just-typed note visible, don't let renderDeck reload it from prevNote
+  el("comment-input").value = state.comment;
 
-  writeValidation(last.gist, target).then(
+  writeValidation(last.gist, target, last.prevNote).then(
     () => { state.writing = Math.max(0, state.writing - 1); state.lastWriteAt = Date.now(); renderDeck(); },
     (err) => {
       state.writing = Math.max(0, state.writing - 1);
@@ -863,6 +899,7 @@ function renderDeck() {
   document.querySelector(".vz-ghost-card").hidden = finished;
   el("empty-stack").hidden = !finished;
   el("undo-btn").disabled = !state.history.length;
+  el("comment-input").disabled = finished;
 
   if (g) {
     el("gist-type").textContent = g.type || "—";
@@ -873,8 +910,14 @@ function renderDeck() {
     el("gist-moment").style.color = backlog ? "var(--temporal)" : "var(--text-tertiary)";
     el("gist-title").textContent = g.titre || "";
     el("gist-raw").textContent = g.raw || "";
+    if (commentLoadedFor !== g.id) {
+      state.comment = g.note || "";
+      el("comment-input").value = state.comment;
+      commentLoadedFor = g.id;
+    }
   } else {
     el("empty-stack").textContent = EMPTY_COPY[state.loadState] || EMPTY_COPY.ok;
+    commentLoadedFor = null;
   }
 
   renderDeckStatus();
@@ -922,6 +965,7 @@ el("card-area").addEventListener("pointermove", onMove);
 el("card-area").addEventListener("pointerup", onUp);
 el("card-area").addEventListener("pointercancel", onUp);
 el("undo-btn").addEventListener("click", undo);
+el("comment-input").addEventListener("input", (e) => { state.comment = e.target.value; });
 
 document.querySelectorAll(".vz-vote-btn").forEach((btn) => {
   btn.addEventListener("click", () => commit(btn.dataset.vote));
