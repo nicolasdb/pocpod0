@@ -14,7 +14,7 @@ VPS_PATH       = /home/nicolas/pocpod0
         pull rebuild sync-workspaces backup \
         pipeline pipeline-dry dashboard troll setup \
         cli-devices \
-        vps-push vps-build vps-deploy vps-setup vps-pipeline \
+        vps-push vps-push-apps vps-build vps-deploy vps-setup vps-pipeline \
         vps-devices-list vps-devices-approve vps-backup vps-backup-schedule
 
 # ── Help ─────────────────────────────────────────────────────────────────────
@@ -35,6 +35,7 @@ help:
 	@echo ""
 	@echo "VPS (run from local):"
 	@echo "  vps-push          rsync repo + .env → VPS, apply VPS .env overrides"
+	@echo "  vps-push-apps     rsync backoffice/ + valisette/ → nginx-served /srv on VPS (Story 7.13)"
 	@echo "  vps-build         docker compose build on VPS"
 	@echo "  vps-deploy        push + build + up (full deploy)"
 	@echo "  vps-setup         One-time: create pipeline venv on VPS"
@@ -164,6 +165,18 @@ vps-push:
 			sed -i "s|^$$key=.*|$$key=$$value|" .env; \
 		done'
 	@echo "Sync complete."
+
+# Story 7.13: backoffice and Valisette are served as static files directly
+# by nginx (hetzner-gateway repo), off pod.nicolasdb.eu — not through CSS
+# anymore. /srv/{backoffice,valisette} on the VPS are bind-mounted read-only
+# into the nginx-gateway container; this target keeps them in sync with the
+# repo copies. --delete keeps stray removed files from lingering, since these
+# are small flat app dirs with nothing VPS-authored to protect (unlike
+# vps-push's guarded delete against server-authored state).
+vps-push-apps:
+	rsync -avz --delete --exclude=".git" ./backoffice/ $(VPS_REMOTE):/srv/backoffice/
+	rsync -avz --delete --exclude=".git" ./valisette/ $(VPS_REMOTE):/srv/valisette/
+	@echo "backoffice/valisette synced to /srv on VPS."
 
 vps-build:
 	ssh $(VPS_REMOTE) "cd $(VPS_PATH) && docker compose build"

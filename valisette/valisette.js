@@ -2,20 +2,34 @@
 //
 // Hand-ported from the design handoff (`Valisette Mobile.dc.html` + README.md)
 // into plain JS, matching this repo's no-build-step convention (see
-// backoffice/pod-api.js). Auth reuses backoffice's dynamic esm.sh import of
-// the Inrupt libraries (Solid.namedSession), but with its OWN named Session —
-// NOT the shared default session backoffice uses. Sharing the default session
-// caused restorePreviousSession's silent-refresh to bounce back to backoffice
-// (whichever app logs in last owns the origin's one "current session" pointer
-// and its stored redirectUrl); see the comment on Solid.namedSession in
-// pod-api.js for the full explanation.
+// backoffice/pod-api.js).
+//
+// Story 7.13: Valisette now lives on its own origin (valisette.nicolasdb.eu),
+// separate from backoffice.nicolasdb.eu, so it can no longer import
+// backoffice's pod-api.js (that was a same-origin `/pod-api.js` path that
+// only worked while both apps were served together off pod.nicolasdb.eu).
+// It loads the Inrupt libraries itself, same esm.sh `?bundle` pattern as
+// pod-api.js's loadLibs() — see that file's comment for why `?bundle` is
+// required. Origin split also means the previous same-origin session-bounce
+// guard (Solid.namedSession/canRestore) is dead code: each app's browser
+// storage is scoped to its own origin now, so a plain per-app Session with a
+// stable id and unconditional restorePreviousSession:true is safe.
 //
 // Drag mechanics write straight to DOM `style.transform` on pointermove and
 // never go through a re-render (README, "Drag mechanics" — a per-move
 // re-render drops frames and loses the gesture). Everything else is driven
 // by `render()` after a discrete state transition.
 
-import { Solid } from "/pod-api.js";
+let _libs = null;
+async function loadLibs() {
+  if (_libs) return _libs;
+  const [authn, sc] = await Promise.all([
+    import("https://esm.sh/@inrupt/solid-client-authn-browser@2.3.0?bundle"),
+    import("https://esm.sh/@inrupt/solid-client@2.1.0?bundle"),
+  ]);
+  _libs = { authn, sc };
+  return _libs;
+}
 
 const AUTOSAVE_MS = 30000;
 
@@ -209,20 +223,16 @@ function setLoginStatus(msg, toneVar) {
   node.style.color = `var(${toneVar})`;
 }
 
-// See the long comment on Solid.namedSession in pod-api.js: this origin's
-// silent-restore pointer is global, shared with backoffice, so we only ask
-// for a restore when that pointer already belongs to Valisette's own
-// session id — otherwise fall through to the ordinary login screen instead
-// of silently bouncing to whichever app logged in more recently.
+// Stable across reloads so restorePreviousSession can find it.
 const SESSION_ID = "valisette";
 
 async function initSolid() {
   setLoginStatus("checking session…", "--text-tertiary");
   try {
-    ({ session, libs } = await Solid.namedSession(SESSION_ID));
+    libs = await loadLibs();
+    session = new libs.authn.Session({}, SESSION_ID);
     state.libReady = true;
-    const canRestore = Solid.canRestore(SESSION_ID);
-    const info = await session.handleIncomingRedirect({ restorePreviousSession: canRestore });
+    const info = await session.handleIncomingRedirect({ restorePreviousSession: true });
     if (info && info.isLoggedIn) {
       state.webId = info.webId;
       const root = podRootFrom(info.webId);

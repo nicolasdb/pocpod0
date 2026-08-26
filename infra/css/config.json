@@ -85,85 +85,22 @@
     },
     {
       "comment": [
-        "Story 7.1: serve the pod backoffice at the root of pod.nicolasdb.eu instead of the CSS",
-        "default welcome page. Additive to css:config/http/static/default.json's",
-        "StaticAssetHandler (same @id) - Components.js concatenates the array-valued `assets`",
-        "property across definitions sharing an @id, so only new entries are listed here;",
-        "redeclaring @type/baseUrl/options_expires here would conflict with the base definition."
+        "Story 7.13: CSS's own identity pages (main.html.ejs, Story 7.2 restyle) load",
+        "tokens.css from pod.nicolasdb.eu's root. That used to be served for free by the",
+        "backoffice's StaticAssetHandler block (also mapped '/tokens.css'), which was",
+        "removed in Story 7.13's origin split — breaking this page's styling as a side",
+        "effect. tokens.css is CSS's own dependency now, kept as its own copy here",
+        "(infra/css/tokens.css) rather than reaching into backoffice/, which CSS no",
+        "longer has bind-mount access to at all post-7.13."
       ],
       "@id": "urn:solid-server:default:StaticAssetHandler",
       "@type": "StaticAssetHandler",
       "assets": [
         {
-          "@id": "urn:solid-server:pocpod0:BackofficeIndexAsset",
-          "@type": "StaticAssetEntry",
-          "relativeUrl": "/",
-          "filePath": "/backoffice/index.html"
-        },
-        {
-          "@id": "urn:solid-server:pocpod0:BackofficePodApiAsset",
-          "@type": "StaticAssetEntry",
-          "relativeUrl": "/pod-api.js",
-          "filePath": "/backoffice/pod-api.js"
-        },
-        {
-          "@id": "urn:solid-server:pocpod0:BackofficeSupportAsset",
-          "@type": "StaticAssetEntry",
-          "relativeUrl": "/support.js",
-          "filePath": "/backoffice/support.js"
-        },
-        {
-          "@id": "urn:solid-server:pocpod0:DesignTokensAsset",
+          "@id": "urn:solid-server:pocpod0:CssTokensAsset",
           "@type": "StaticAssetEntry",
           "relativeUrl": "/tokens.css",
-          "filePath": "/backoffice/tokens.css"
-        }
-      ]
-    },
-    {
-      "comment": [
-        "Valisette (gist swipe-triage app): served at /valisette/ alongside the backoffice",
-        "at the root. Same StaticAssetHandler @id as above — Components.js concatenates the",
-        "array-valued `assets` property across definitions sharing an @id."
-      ],
-      "@id": "urn:solid-server:default:StaticAssetHandler",
-      "@type": "StaticAssetHandler",
-      "assets": [
-        {
-          "@id": "urn:solid-server:pocpod0:ValisetteIndexAsset",
-          "@type": "StaticAssetEntry",
-          "relativeUrl": "/valisette/",
-          "filePath": "/valisette/index.html"
-        },
-        {
-          "@id": "urn:solid-server:pocpod0:ValisetteIndexHtmlAsset",
-          "@type": "StaticAssetEntry",
-          "relativeUrl": "/valisette/index.html",
-          "filePath": "/valisette/index.html"
-        },
-        {
-          "@id": "urn:solid-server:pocpod0:ValisetteJsAsset",
-          "@type": "StaticAssetEntry",
-          "relativeUrl": "/valisette/valisette.js",
-          "filePath": "/valisette/valisette.js"
-        },
-        {
-          "@id": "urn:solid-server:pocpod0:ValisetteCssAsset",
-          "@type": "StaticAssetEntry",
-          "relativeUrl": "/valisette/valisette.css",
-          "filePath": "/valisette/valisette.css"
-        },
-        {
-          "@id": "urn:solid-server:pocpod0:ValisetteCoreCssAsset",
-          "@type": "StaticAssetEntry",
-          "relativeUrl": "/valisette/core.css",
-          "filePath": "/valisette/core.css"
-        },
-        {
-          "@id": "urn:solid-server:pocpod0:ValisetteThemeCssAsset",
-          "@type": "StaticAssetEntry",
-          "relativeUrl": "/valisette/theme.css",
-          "filePath": "/valisette/theme.css"
+          "filePath": "/css-tokens.css"
         }
       ]
     }

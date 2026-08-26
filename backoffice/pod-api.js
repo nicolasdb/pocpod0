@@ -12,13 +12,9 @@
 
 const ISSUER = "https://pod.nicolasdb.eu/";
 const CLIENT_NAME = "Pod Backoffice";
-// The backoffice's own stable session id (see Solid.namedSession below for why
-// this can't just be the library's implicit default session).
+// The backoffice's own stable session id, kept across reloads so
+// restorePreviousSession can find it (see Solid.init below).
 const BACKOFFICE_SESSION_ID = "backoffice";
-// solid-client-authn-browser's one-per-origin "which session should silently
-// restore" pointer. Whichever app logged in most recently owns it — see the
-// long comment on Solid.namedSession.
-const KEY_CURRENT_SESSION = "solidClientAuthn:currentSession";
 let _backofficeSession = null;
 // CSS token endpoint a bot uses to exchange a client credential for a DPoP access
 // token. Surfaced in the "how to connect" recipe (Story 7.4).
@@ -1140,39 +1136,11 @@ class DemoBackend {
 // =====================================================================
 export const Solid = {
   issuer: ISSUER,
-  // Isolated Session for an app that must NOT share the origin's default
-  // session. @inrupt/solid-client-authn-browser tracks exactly one "current
-  // session" pointer per ORIGIN (not per app/path), under KEY_CURRENT_SESSION,
-  // for restorePreviousSession's silent-refresh — confirmed against
-  // solid-client-authn-js's actual Session.ts (2026-08-25): handleIncomingRedirect's
-  // restore branch reads that one global key and calls
-  // silentlyAuthenticate(storedSessionId, ...) using WHATEVER id is stored
-  // there, regardless of which Session instance (or the implicit default
-  // session) is asking. So on an origin shared by two apps, calling
-  // restorePreviousSession:true unconditionally makes the app that logged in
-  // LEAST recently silently re-authenticate AS the other app and get
-  // redirected to ITS stored redirectUrl — bouncing between backoffice and
-  // Valisette in either direction. There is no per-instance storage isolation
-  // to lean on (sessionId only tags which stored tokens to reuse, not a
-  // separate namespace) — the only lever client code has is the boolean.
-  // Fix: every app on this origin must (a) use a STABLE sessionId across
-  // reloads — the library's own getDefaultSession() generates a random uuid
-  // per page load, which can never match a stored pointer — and (b) only
-  // pass restorePreviousSession:true when Solid.canRestore(ownSessionId) says
-  // the global pointer already belongs to it. See backoffice's own init()
-  // below for the paired fix — namedSession() alone was NOT sufficient
-  // (Valisette-only guard caused the same bounce in the other direction).
-  async namedSession(sessionId) {
-    const libs = await loadLibs();
-    const session = new libs.authn.Session({}, sessionId);
-    return { session, libs };
-  },
-  // True if the origin's one global "current session" pointer already belongs
-  // to `sessionId` — i.e. restorePreviousSession:true is safe to pass without
-  // risking a silent bounce to whichever OTHER app logged in more recently.
-  canRestore(sessionId) {
-    try { return window.localStorage.getItem(KEY_CURRENT_SESSION) === sessionId; } catch (e) { return false; }
-  },
+  // Story 7.13: backoffice now lives on its own origin (backoffice.nicolasdb.eu),
+  // so @inrupt/solid-client-authn-browser's per-ORIGIN "current session" pointer
+  // can no longer collide with another app's (that was Valisette, sharing
+  // pod.nicolasdb.eu before the origin split). A stable sessionId across
+  // reloads plus unconditional restorePreviousSession:true is safe again.
   async _session() {
     if (!_backofficeSession) {
       const libs = await loadLibs();
@@ -1184,8 +1152,7 @@ export const Solid = {
     // Returns { loggedIn, webId } after processing any redirect.
     try {
       const { session } = await this._session();
-      const canRestore = this.canRestore(BACKOFFICE_SESSION_ID);
-      const info = await session.handleIncomingRedirect({ restorePreviousSession: canRestore });
+      const info = await session.handleIncomingRedirect({ restorePreviousSession: true });
       if (info && info.isLoggedIn) return { loggedIn: true, webId: info.webId };
     } catch (e) {
       // Library couldn't load / no network (e.g. sandboxed preview). Demo still works.

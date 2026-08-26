@@ -89,44 +89,88 @@ Confirmed live (`curl -I https://pod.nicolasdb.eu/pod-api.js`, `/valisette/`, th
 ## Tasks / Subtasks
 
 - [ ] **Task 1 — Pre-req: DNS + certs (AC: none directly; blocks Task 2-4)**
-  - [ ] 1.1 Confirm with Nicolas (or hetzner-gateway repo) that A records for `backoffice.nicolasdb.eu` and `valisette.nicolasdb.eu` exist and point at the VPS.
-  - [ ] 1.2 Confirm certbot has issued/expanded certs to cover both new names (this repo does not own certbot config — coordinate, don't assume).
+  - [x] 1.1 Confirm with Nicolas (or hetzner-gateway repo) that A records for `backoffice.nicolasdb.eu` and `valisette.nicolasdb.eu` exist and point at the VPS.
+  - [x] 1.2 Confirm certbot has issued/expanded certs to cover both new names (this repo does not own certbot config — coordinate, don't assume).
 
 - [ ] **Task 2 — Root container ACL verification (AC: 4, 5)**
-  - [ ] 2.1 GET `https://pod.nicolasdb.eu/.acl` (or the resolved root ACL per WAC inheritance) with an authenticated request as the pod owner; read and record its contents.
-  - [ ] 2.2 Confirm it is not the orphaned-lockout shape from memory `css_orphan_acl_lockout` (`accessTo <./>` on a resource `.acl` that 403s the owner too).
-  - [ ] 2.3 Document the finding in Dev Agent Record before Task 3 removes the masking mapping.
+  - [x] 2.1 GET `https://pod.nicolasdb.eu/.acl` (or the resolved root ACL per WAC inheritance) with an authenticated request as the pod owner; read and record its contents.
+  - [x] 2.2 Confirm it is not the orphaned-lockout shape from memory `css_orphan_acl_lockout` (`accessTo <./>` on a resource `.acl` that 403s the owner too).
+  - [x] 2.3 Document the finding in Dev Agent Record before Task 3 removes the masking mapping.
 
-- [ ] **Task 3 — nginx vhosts + static serving (AC: 1, 3, 6)**
-  - [ ] 3.1 Write nginx server blocks for `backoffice.nicolasdb.eu` and `valisette.nicolasdb.eu` in the hetzner-gateway repo (out-of-repo change, coordinate), serving each app's directory from disk (`root /srv/backoffice;` / `root /srv/valisette;`, `try_files $uri $uri/ =404;` — these are single-page-ish static apps, no SPA fallback needed per current `index.html` structure, confirm against actual routing before assuming otherwise).
-  - [ ] 3.2 Set cache headers per AC6 — either nginx's own `etag on;`/`if_modified_since` (default, just don't override with a long `expires`) or an explicit short `expires 5m;`.
-  - [ ] 3.3 Add the `Authorization: WebID` stripping `map` block from `04-pocpod0.conf` (story 4.4.1) to both new server blocks.
-  - [ ] 3.4 Live-verify: fetch each app's `index.html`, confirm 200 + correct headers; spoof `Authorization: WebID <uri>` on each and confirm it's stripped before reaching any backend.
+- [x] **Task 3 — nginx vhosts + static serving (AC: 1, 3, 6)**
+  - [x] 3.1 Write nginx server blocks for `backoffice.nicolasdb.eu` and `valisette.nicolasdb.eu` in the hetzner-gateway repo (out-of-repo change, coordinate), serving each app's directory from disk (`root /srv/backoffice;` / `root /srv/valisette;`, `try_files $uri $uri/ =404;` — these are single-page-ish static apps, no SPA fallback needed per current `index.html` structure, confirm against actual routing before assuming otherwise).
+  - [x] 3.2 Set cache headers per AC6 — either nginx's own `etag on;`/`if_modified_since` (default, just don't override with a long `expires`) or an explicit short `expires 5m;`.
+  - [x] 3.3 Add the `Authorization: WebID` stripping `map` block from `04-pocpod0.conf` (story 4.4.1) to both new server blocks.
+  - [x] 3.4 Live-verify: fetch each app's `index.html`, confirm 200 + correct headers; spoof `Authorization: WebID <uri>` on each and confirm it's stripped before reaching any backend.
 
-- [ ] **Task 4 — Remove CSS-served copies (AC: 1, 5)**
-  - [ ] 4.1 Remove the backoffice `StaticAssetHandler` block (`relativeUrl: "/"` mapping and siblings) from `infra/css/config.json`.
-  - [ ] 4.2 Remove the Valisette `StaticAssetHandler` block from `infra/css/config.json`.
-  - [ ] 4.3 Remove the corresponding bind-mounts from `docker-compose.yml` (`./backoffice:/backoffice:ro`, `./valisette:/valisette:ro`) — CSS no longer needs read access to either directory.
-  - [ ] 4.4 Restart CSS, confirm `pod.nicolasdb.eu/` and `/valisette/` no longer serve the old apps and instead reflect the root container's real state (per AC5).
+- [x] **Task 4 — Remove CSS-served copies (AC: 1, 5)**
+  - [x] 4.1 Remove the backoffice `StaticAssetHandler` block (`relativeUrl: "/"` mapping and siblings) from `infra/css/config.json`.
+  - [x] 4.2 Remove the Valisette `StaticAssetHandler` block from `infra/css/config.json`.
+  - [x] 4.3 Remove the corresponding bind-mounts from `docker-compose.yml` (`./backoffice:/backoffice:ro`, `./valisette:/valisette:ro`) — CSS no longer needs read access to either directory.
+  - [x] 4.4 Restart CSS, confirm `pod.nicolasdb.eu/` and `/valisette/` no longer serve the old apps and instead reflect the root container's real state (per AC5).
 
-- [ ] **Task 5 — Deploy plumbing (AC: 8)**
-  - [ ] 5.1 Add Makefile target(s) (or extend existing `vps-*` targets, memory `infra_vps_deploy`) to rsync `backoffice/` → `/srv/backoffice` and `valisette/` → `/srv/valisette` on the VPS.
-  - [ ] 5.2 Confirm the deploy path doesn't accidentally sync `.git` or dev-only files (mirror whatever exclusion pattern the existing `vps-push` target already uses).
+- [x] **Task 5 — Deploy plumbing (AC: 8)**
+  - [x] 5.1 Add Makefile target(s) (or extend existing `vps-*` targets, memory `infra_vps_deploy`) to rsync `backoffice/` → `/srv/backoffice` and `valisette/` → `/srv/valisette` on the VPS.
+  - [x] 5.2 Confirm the deploy path doesn't accidentally sync `.git` or dev-only files (mirror whatever exclusion pattern the existing `vps-push` target already uses).
 
-- [ ] **Task 6 — Client code cleanup (AC: 2, 7, 9)**
-  - [ ] 6.1 In `backoffice/pod-api.js`: replace `Solid.namedSession`/`_backofficeSession`/`canRestore` machinery with a plain `new libs.authn.Session({}, BACKOFFICE_SESSION_ID)` and unconditional `restorePreviousSession: true`. Remove the now-inaccurate long comment block explaining the cross-app race (or replace it with a one-line note that the race no longer applies post-origin-split, for the next person's benefit).
-  - [ ] 6.2 In `valisette/valisette.js`: same simplification — drop the `canRestore` check in `initSolid()`, keep `SESSION_ID = "valisette"` for stability across reloads, restore unconditionally.
-  - [ ] 6.3 Update the code comments referencing `Solid.namedSession`/`canRestore` in both files (`valisette.js:6-10,212-216`) since the mechanism they describe is being removed, not just no longer needed.
-  - [ ] 6.4 Live-verify AC2: log into backoffice, then Valisette without logging out, confirm both stay logged in after reload.
+- [x] **Task 6 — Client code cleanup (AC: 2, 7, 9)**
+  - [x] 6.1 In `backoffice/pod-api.js`: replace `Solid.namedSession`/`_backofficeSession`/`canRestore` machinery with a plain `new libs.authn.Session({}, BACKOFFICE_SESSION_ID)` and unconditional `restorePreviousSession: true`. Remove the now-inaccurate long comment block explaining the cross-app race (or replace it with a one-line note that the race no longer applies post-origin-split, for the next person's benefit).
+  - [x] 6.2 In `valisette/valisette.js`: same simplification — drop the `canRestore` check in `initSolid()`, keep `SESSION_ID = "valisette"` for stability across reloads, restore unconditionally.
+  - [x] 6.3 Update the code comments referencing `Solid.namedSession`/`canRestore` in both files (`valisette.js:6-10,212-216`) since the mechanism they describe is being removed, not just no longer needed.
+  - [ ] 6.4 Live-verify AC2: log into backoffice, then Valisette without logging out, confirm both stay logged in after reload. **Needs a real browser session — cannot be done headlessly.** Flagged for Nicolas in completion report.
 
 - [ ] **Task 7 — Full regression pass (AC: 9)**
   - [ ] 7.1 Backoffice: login, file browse/CRUD/upload/ACL, client-credential mint/list/revoke, agent identity list (7.12) — all from `backoffice.nicolasdb.eu`.
   - [ ] 7.2 Valisette: login, gist container listing, swipe-triage flow, autosave — from `valisette.nicolasdb.eu`.
-  - [ ] 7.3 `pod.nicolasdb.eu`: confirm LDP/WAC/OIDC endpoints unaffected — this is the acceptance bar for "pod.nicolasdb.eu is a plain Solid provider now."
+  - [x] 7.3 `pod.nicolasdb.eu`: confirm LDP/WAC/OIDC endpoints unaffected — this is the acceptance bar for "pod.nicolasdb.eu is a plain Solid provider now."
 
 ## Dev Agent Record
 
-_(To be filled during implementation: root ACL finding from Task 2, any deviations, live verification results.)_
+### Task 2 — Root container ACL verification (2026-08-26)
+
+Fetched via HTTP as anonymous → 401 (expected, CSS hides `.acl` reads from non-owners). Read directly from disk instead (VPS: `pocpod0_css-data` docker volume, mountpoint `/var/lib/docker/volumes/pocpod0_css-data/_data/.acl`):
+
+```turtle
+# Root ACL resource for the agent account
+@prefix acl: <http://www.w3.org/ns/auth/acl#>.
+@prefix foaf: <http://xmlns.com/foaf/0.1/>.
+
+<#public>
+    a acl:Authorization;
+    acl:agentClass foaf:Agent;
+    acl:accessTo <./>;
+    acl:mode acl:Read.
+```
+
+**Verdict: sane, not the orphaned-lockout shape.** Grants public `Read` only on the root container — no write exposure, no owner lockout (the lockout pattern from `css_orphan_acl_lockout` was a resource `.acl` with `accessTo <./>` that 403'd everyone including the owner; this is a container ACL with a plain public-read grant, CSS's standard root default). Removing the backoffice `/` static mapping in Task 4 will unmask this container — after removal, unauthenticated `GET https://pod.nicolasdb.eu/` will return CSS's own root listing (200, readable), not a 403/500. AC5 confirmed safe to proceed.
+
+### Task 1 — DNS + certs (2026-08-26)
+
+DNS A records for both subdomains added by Nicolas → `128.140.72.105`, confirmed resolving via `dig`. Cert renewal ran via `hetzner-gateway/scripts/cloudflare-dns-auth.sh`/`cloudflare-dns-cleanup.sh` (Cloudflare DNS-01, `CF_API_TOKEN` sourced from `hetzner-gateway/.env` — note: running certbot manually outside the `renew-certs-cf.sh` wrapper needs that env exported by hand, the wrapper does this automatically). `certbot certonly --cert-name nicolasdb.eu --expand -d ... -d backoffice.nicolasdb.eu -d valisette.nicolasdb.eu` succeeded. New cert covers all 10 domains, expires 2026-11-24, saved at `/etc/letsencrypt/live/nicolasdb.eu/fullchain.pem` (unchanged path — `--expand` on the existing cert name, no new cert to wire up).
+
+### Task 6 — Client code cleanup (2026-08-26), including an unplanned fix
+
+Removed `Solid.namedSession`/`canRestore`/`KEY_CURRENT_SESSION` from `backoffice/pod-api.js`; `init()` now calls `handleIncomingRedirect({ restorePreviousSession: true })` unconditionally.
+
+**Deviation from the story's Task 6 description:** `valisette/valisette.js` did `import { Solid } from "/pod-api.js"` — a same-origin absolute path that only resolved because both apps were served together off `pod.nicolasdb.eu`. Once split onto separate origins (`valisette.nicolasdb.eu` has no `pod-api.js` at all), this import 404s. Not called out in the story's Context section — found live-testing after Task 3/4. Fixed by giving Valisette its own `loadLibs()` (same esm.sh `@inrupt/solid-client-authn-browser@2.3.0?bundle` + `@inrupt/solid-client@2.1.0?bundle` pattern as `pod-api.js`), removing the `pod-api.js` import entirely.
+
+Also found and fixed: `valisette/index.html` referenced `/valisette/core.css`, `/valisette/theme.css`, `/valisette/valisette.css`, `/valisette/valisette.js` — absolute paths baked in from when Valisette was served at `pod.nicolasdb.eu/valisette/`. On its own origin, files are served from `/`. Fixed all four to root-relative (`/core.css` etc). Verified live: `curl -o /dev/null -w '%{http_code}'` on all 5 backoffice/valisette assets → 200; `node --check` on both served `pod-api.js` and `valisette.js` → syntax OK. Full login flow (AC2) needs a real browser — see Task 6.4/7 note below.
+
+### Regression found in human live test — CSS's own identity pages broke (2026-08-26)
+
+Nicolas live-tested: Valisette login worked correctly (screenshot: styled consent page, correct green/beige theme). Backoffice login's consent page (same URL, `pod.nicolasdb.eu/.account/oidc/consent/`) rendered **unstyled** (plain black-on-white, no theme) — screenshots compared side by side.
+
+**Root cause:** `infra/css/main.html.ejs` (Story 7.2's identity-page restyle) loads `<%= baseUrl %>tokens.css` — i.e. `https://pod.nicolasdb.eu/tokens.css`. That was served by the backoffice's `StaticAssetHandler` block, which Task 4 removed as part of the origin split (along with the `./backoffice` bind-mount CSS relied on to read the file at all). CSS's *own* login/consent/registration page chrome was accidentally depending on an asset that only existed because backoffice happened to be co-hosted — an undocumented coupling this story's Context section didn't know about (Story 7.2 predates 7.13's investigation). The Valisette screenshot likely rendered correctly only because the browser had a cached copy of `tokens.css` from before Task 4's removal.
+
+**Fix:** `tokens.css` copied into `infra/css/tokens.css` (CSS's own copy, decoupled from `backoffice/`), bind-mounted into the CSS container at `/css-tokens.css`, served via a new dedicated `StaticAssetHandler` entry mapping `/tokens.css` → `/css-tokens.css`. Live-verified: `curl https://pod.nicolasdb.eu/tokens.css` → 200, correct content; root `/` still 200 (no regression from the container restart).
+
+**Files touched (not in original Task 4 scope, added here):** `infra/css/tokens.css` (new), `infra/css/config.json` (new `StaticAssetHandler` block), `docker-compose.yml` (new bind-mount).
+
+### Nicolas's live-test request: link the two apps from pod.nicolasdb.eu's welcome page (2026-08-26)
+
+Not in the original story scope, added on request after live testing (AC5 confirmed the root now shows CSS's plain welcome page instead of the old backoffice masking it — Nicolas wants it to point onward). `pod.nicolasdb.eu/`'s HTML representation is CSS's own **seeded resource**, not a live-rendered template — `templates/root/intro/base/index.html` is copied into the root storage container once at first boot (found via `docker exec ... grep -rl "Welcome to Solid"`), then served as a stored file like any other pod resource. No `.meta` sidecar exists for it. Edited the stored file directly (backed up first to `index.html.bak-7.13` in the same volume) to add an "Apps on this pod" paragraph linking `backoffice.nicolasdb.eu` and `valisette.nicolasdb.eu`. Live-verified via `curl -H "Accept: text/html"`.
+
+_(Further entries: Task 7 regression pass.)_
 
 ## File List
 
