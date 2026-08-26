@@ -97,7 +97,7 @@ development_status:
   story-7-12-agent-identity-lifecycle: done  # 2026-08-20: agent WebIDs in existing pod, deployed
   story-7-13-origin-split-portable-apps: done  # 2026-08-26: SSO-bounce fixed, live-verified by Nicolas both apps + full regression → see epics.md
   story-7-14-token-auth-provider-agnostic-pods: done  # 2026-08-26: descoped to /onboard CORS fix (cookie survives 7.13, token rewrite dropped) + relative-path bug fix, live-verified by Nicolas → see epics.md
-  story-7-15-valisette-rate-toml-writeback: review  # 2026-08-26: string-patch write-back live-verified on real pod file, 3 live bugs fixed (raw-block parser, retry-duplication, demo-path leak), anagnorisis reverted to flag not outcome, note+triage_flags added, ingested-field schema gap open
+  story-7-15-valisette-rate-toml-writeback: review  # 2026-08-26: string-patch write-back live-verified on real pod file, 3 live bugs fixed (raw-block parser, retry-duplication, demo-path leak), anagnorisis=validation-outcome/revisit+priority=triage_flags/note confirmed against schema-v1.md (finalized contract), no schema gap
   epic-7-retrospective: optional
 
   # Epic 8: Solid MCP Connector — origin/rationale → see epics.md Epic 8 header

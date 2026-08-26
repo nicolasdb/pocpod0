@@ -54,14 +54,16 @@ const TYPE_COLOR_VAR = {
 const VALIDATION_COLOR_VAR = {
   validated: "--fresh",
   rejected: "--pattern",
+  anagnorisis: "--anagnorisis",
 };
 
-// Independent tags, written to `triage_flags` — not a validation outcome and
-// not the pipeline's own `tags` (topical keywords, different field, don't
-// touch it). Unvalidated in practice yet; kept easy to retire or extend.
+// Independent tags, written to `triage_flags` per schema-v1.md — never the
+// pipeline's own `tags` (topical keywords, different field, don't touch it).
+// Only revisit/priority live here; anagnorisis is a validation outcome (see
+// VALIDATION_COLOR_VAR and FLIGHT), not a flag — schema-v1.md §4 is explicit
+// about that.
 const FLAGS = [
-  { key: "anagnorisis", emoji: "🏛️", label: "anagnorisis", colorVar: "--anagnorisis" },
-  { key: "followup", emoji: "🔂", label: "follow up", colorVar: "--temporal" },
+  { key: "revisit", emoji: "🔂", label: "revisit", colorVar: "--temporal" },
   { key: "priority", emoji: "⚠️", label: "priority", colorVar: "--convergence" },
 ];
 
@@ -787,7 +789,7 @@ function onUp() {
   resetCard();
 }
 
-const FLIGHT = { validated: [460, -24, 12], rejected: [-460, -24, -12] };
+const FLIGHT = { validated: [460, -24, 12], rejected: [-460, -24, -12], anagnorisis: [0, -620, 0] };
 
 // Optimistic: the card leaves on the gesture, the write follows. A write that
 // fails puts the gist back in the deck (see settleWrite) rather than pretending.
@@ -957,7 +959,7 @@ function renderDeck() {
   state.gists.forEach((gi, n) => {
     const d = state.decisions[gi.id];
     let colorVar = "--border-subtle";
-    if (d) colorVar = (gi.flags && gi.flags.length) ? "--anagnorisis" : (VALIDATION_COLOR_VAR[d] || "--fresh");
+    if (d) colorVar = VALIDATION_COLOR_VAR[d] || ((gi.flags && gi.flags.length) ? "--temporal" : "--fresh");
     else if (n === state.i) colorVar = "--text-tertiary";
     const mark = document.createElement("span");
     mark.className = "vz-mark";
@@ -999,6 +1001,7 @@ function renderDone() {
   const votes = Object.values(state.decisions);
   const nVal = votes.filter((v) => v === "validated").length;
   const nRej = votes.filter((v) => v === "rejected").length;
+  const nAna = votes.filter((v) => v === "anagnorisis").length;
   const nFlagged = state.history.filter((h) => h.flags && h.flags.length).length;
   const n = votes.length;
   const doneLine = `${words[n] || String(n)}${n === 1 ? " gist, " : " gists, "}all accounted for.`;
@@ -1015,6 +1018,7 @@ function renderDone() {
     : "nothing written";
   el("tally-validated").textContent = `${nVal} validated`;
   el("tally-rejected").textContent = `${nRej} rejected`;
+  el("tally-anagnorisis").textContent = `${nAna} anagnorisis`;
   el("tally-flagged").textContent = `${nFlagged} flagged`;
 }
 
@@ -1040,7 +1044,11 @@ el("undo-btn").addEventListener("click", undo);
 el("comment-input").addEventListener("input", (e) => { state.comment = e.target.value; });
 
 document.querySelectorAll(".vz-flag-btn").forEach((btn) => {
-  btn.addEventListener("click", () => toggleFlag(btn.dataset.flag));
+  // The anagnorisis button in the tray commits directly (it's a validation
+  // outcome, per schema-v1.md §4) — the other two are multi-select toggles
+  // that ride along with whichever swipe comes next.
+  if (btn.dataset.vote) btn.addEventListener("click", () => commit(btn.dataset.vote));
+  else btn.addEventListener("click", () => toggleFlag(btn.dataset.flag));
 });
 
 el("close-btn").addEventListener("click", () => {

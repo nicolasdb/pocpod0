@@ -79,11 +79,11 @@
 
     <div class="vz-tray-wrap">
       <div id="flag-tray">
-        <button class="vz-flag-btn" data-nodrag data-flag="anagnorisis" style="--flag-color: var(--anagnorisis)">
+        <button class="vz-flag-btn vz-flag-commit" data-nodrag data-vote="anagnorisis" style="--flag-color: var(--anagnorisis)" title="commit as anagnorisis">
           <span class="vz-flag-emoji">🏛️</span>anagnorisis</button>
-        <button class="vz-flag-btn" data-nodrag data-flag="followup" style="--flag-color: var(--temporal)">
-          <span class="vz-flag-emoji">🔂</span>follow up</button>
-        <button class="vz-flag-btn" data-nodrag data-flag="priority" style="--flag-color: var(--convergence)">
+        <button class="vz-flag-btn" data-nodrag data-flag="revisit" style="--flag-color: var(--temporal)" title="tag, then swipe to commit">
+          <span class="vz-flag-emoji">🔂</span>revisit</button>
+        <button class="vz-flag-btn" data-nodrag data-flag="priority" style="--flag-color: var(--convergence)" title="tag, then swipe to commit">
           <span class="vz-flag-emoji">⚠️</span>priority</button>
       </div>
     </div>
@@ -133,6 +133,7 @@
       <div class="vz-tally-row">
         <span id="tally-validated"></span>
         <span id="tally-rejected"></span>
+        <span id="tally-anagnorisis"></span>
         <span id="tally-flagged"></span>
       </div>
     </div>

@@ -61,6 +61,8 @@ plus three follow-up decisions taken live during dogfooding (see Dev Notes).
 | Multi-day backlog | 2+ non-ingested files | all `pending` gists loaded, newest file's gists first; older-day cards show full date | N/A |
 | All files ingested / no `.toml` present | scan finds nothing | distinct empty-state copy per cause (no files / none pending / read error) | back button on deck header returns to setup |
 | Batch closed mid-session | file's `ingested` flips true between swipes | write throws `batch-closed`; remaining gists in that file are dropped from further attempts this session | status strip: "batch closed by the rate — the rest rolls over" |
+| Anagnorisis tray tap | user taps 🏛️ in the flag tray | commits `validation = "anagnorisis"` directly, same write path as a swipe | N/A |
+| Revisit/priority toggle | user taps a flag chip, then swipes | `triage_flags` array written alongside `validation` on that same patch | N/A |
 | Single-line `raw = """text"""` | real pipeline output writes raw on one line | parsed and patched correctly | N/A — see Dev Notes, this was a live bug |
 | Raw containing the word `validation` | prose text inside a `raw` block | never mistaken for the `validation` field | N/A |
 
@@ -77,7 +79,7 @@ plus three follow-up decisions taken live during dogfooding (see Dev Notes).
 **Execution:**
 - [x] `valisette/valisette.js` -- `patchGistFields(text, id, validation, note, flags)` -- single string-level pass patches/inserts `validation`, `note`, `triage_flags`; everything else byte-identical
 - [x] `valisette/valisette.js` -- `collectPendingFiles`/`scanSource`/`loadGists` -- deck spans all non-ingested files, newest first, each gist tagged with its `sourceUrl`
-- [x] `valisette/valisette.js` -- swipe left/right commit `validated`/`rejected` directly; drag-up reopens a flag tray (anagnorisis/follow-up/priority, multi-select, non-exclusive)
+- [x] `valisette/valisette.js` -- swipe left/right commit `validated`/`rejected` directly; drag-up reopens a tray with 3 buttons — 🏛️ anagnorisis commits `validation = "anagnorisis"` immediately (a 4th exclusive outcome, per schema-v1.md §4), revisit/priority are multi-select toggles that ride along with the next swipe
 - [x] `valisette/valisette.js` -- `undo` -- re-gates on `history.length`, re-patches file back to prior `validation`/`note`/`triage_flags`, restores tray/comment for editing
 - [x] `valisette/valisette.js` -- drop `saveSessionToLocalStorage`/`restoreSessionFromLocalStorage` and the recents chip row; keep only source-folder persistence
 - [x] `valisette/valisette.js` -- demo mode patches an in-memory TOML string through the same code path, skips folder selection entirely (no pod behind it)
@@ -93,12 +95,19 @@ plus three follow-up decisions taken live during dogfooding (see Dev Notes).
 ## Spec Change Log
 
 - **2026-08-26, live dogfooding:** anagnorisis reverted from a 3rd validation
-  outcome back to a flag (see Dev Notes #4) — needs practice before locking a
-  schema around it as an outcome. `revisit`/`priority` flags restored
-  alongside it, contra the original "Never: no flags" line — superseded, see
-  Boundaries above.
+  outcome to a flag (mid-session), then reverted again to a validation
+  outcome after checking against `references/schema-v1.md` §4, the finalized
+  Tinder→Rate contract — that doc is explicit: `validation = "anagnorisis"`
+  is canonical. `revisit`/`priority` restored as a separate `triage_flags`
+  array (not `anagnorisis`, which schema-v1.md never lists there), contra the
+  original "Never: no flags" line — superseded, see Boundaries above.
 - **2026-08-26:** comment field restored, now written as `note` — contra the
-  original "no comment field" line — superseded.
+  original "no comment field" line — superseded. Confirmed by schema-v1.md
+  §"Champs `[[gist]]`", which documents `note` as an optional Valisette field.
+- **2026-08-26:** the "`ingested` missing from the live file" note (previously
+  filed here as an open schema gap) is retracted — schema-v1.md states the
+  field's default is `false`/absent, so the live file is spec-conformant, not
+  a gap.
 
 ## Design Notes
 
@@ -136,14 +145,17 @@ after the initial implementation passed on synthetic fixtures.
    retry (observed 17, then 23, on a 7-gist file — compounded by bug #2's
    near-constant failures). Fixed by moving the pointer back to the gist's
    existing array index instead of re-inserting.
-4. **Anagnorisis reverted from a 3rd validation outcome to a flag.** Initial
-   design made `validation` 3-way (`pending`/`validated`/`rejected`/
-   `anagnorisis`), swipe-up committing it directly. User feedback: needs
-   validating from practice before locking that into the schema, and the
-   original tray/flags UX (anagnorisis + follow-up + priority, multi-select,
-   non-exclusive) worked better. Reverted; flags now live in a new
-   `triage_flags` field, written only when non-empty, deliberately not the
-   pipeline's own `tags`.
+4. **Anagnorisis went 3-way outcome → flag → 3-way outcome again.** First cut
+   made `validation` 4-way (`pending`/`validated`/`rejected`/`anagnorisis`),
+   swipe-up committing it directly. Reverted to a flag on user feedback
+   ("needs validating from practice, the old tray worked better"). Then
+   `references/schema-v1.md` §4 (the finalized Tinder→Rate contract) was
+   checked and is explicit that `validation = "anagnorisis"` is canonical —
+   realigned to that: anagnorisis is a validation outcome again, committed by
+   tapping it in the tray (not a swipe gesture — the tray stayed, its
+   anagnorisis button just commits instead of toggling). `triage_flags` now
+   holds only `revisit`/`priority`, written only when non-empty, deliberately
+   not the pipeline's own `tags`.
 5. **Comment field restored**, now written as a `note` field on the gist
    (only when non-empty) — the original plan had dropped it since the Rate
    contract had nowhere for it to land; extended the contract instead.
@@ -155,18 +167,27 @@ after the initial implementation passed on synthetic fixtures.
    darker than `#session-date`'s `--text-secondary` on the same header row.
    Matched.
 
-## Known schema gap — needs a decision before this ships for real use
+## Schema alignment check — against `references/schema-v1.md` (2026-08-26, finalized)
 
-The handoff spec says the session header (`[gist_session]`) carries
-`ingested = false`, flipped to `true` by the Rate once done with a file.
-**The live file (`capture/gists/2026-08-21.toml`, written by the cleanup
-pass) has no `ingested` key at all** — confirmed by reading it directly on
-the VPS. Valisette's `isIngested()` defaults to `false` when the key is
-absent, so today it degrades safely (never treats a file as closed when it
-shouldn't) — but that's incidental, not a contract. Either the cleanup pass
-needs to start writing `ingested`, or Valisette needs a different signal for
-"this batch is closed." Blocks trusting the "batch closed mid-session" path
-in practice.
+Nicolas supplied the canonical schema doc after implementation; checked
+Valisette's behavior against it directly. One prior note in this file (an
+"`ingested` missing from the live file" gap) is retracted by this doc — see
+Spec Change Log. Everything else lines up:
+
+- `validation` is 4-way exclusive: `pending`/`validated`/`rejected`/
+  `anagnorisis` — matches current implementation (§4 quote: `validation =
+  "anagnorisis"  # ← statut canonique, porté par la validation`).
+- `triage_flags` is `["revisit", "priority"]` only, "extensions libres
+  Valisette... ignoré par la Rate" — matches; `anagnorisis` is correctly
+  excluded from it.
+- `note` is documented as an optional gist field, "Note ajoutée par Nicolas
+  lors du swipe (Valisette)" — matches.
+- `[gist_session].ingested` defaults to `false`/absent — matches, no gap.
+- One cosmetic gap, not fixed: schema-v1.md's `type` enum has 6 values
+  (`decision`, `apprentissage`, `signal_faible`, `protocole`, `frontiere`,
+  `meta`); Valisette's card-color mapping (`TYPE_COLOR_VAR`) only covers 3,
+  the other 3 fall back to a neutral color. No functional impact — low
+  priority.
 
 ## TOML Schema
 
@@ -176,12 +197,12 @@ in practice.
 [gist_session]
 version_schema = "v1"
 # ...other pipeline-authored session fields, read-only to Valisette
-# ingested = false        ← spec assumes this; NOT present in the live file today (see gap above)
+# ingested = false        ← default/absent = false, per schema-v1.md; the Rate sets it true
 
 [[gist]]
 id = "gist-20260821-001"            # required — patch target key
 timestamp = 1787291737               # untouched
-type = "decision"                    # untouched — decision | apprentissage | protocole
+type = "decision"                    # untouched — decision | apprentissage | signal_faible | protocole | frontiere | meta
 titre = "..."                        # untouched
 validation = "pending"               # required — must exist for the patcher to find its anchor line
 raw = """single line or multi-line""" # untouched — both forms parse correctly
@@ -192,8 +213,9 @@ confidence = 0.85                    # untouched
 moment = "2026-08-21 08:20 CEST"     # read by Valisette (display + date/backlog logic)
 tags = ["cron", "timezone"]          # untouched — PIPELINE topic tags, never written by Valisette
 routing = "automate"                 # untouched
+parent_id = null                     # untouched
 # note = "..."                       # optional — present if a prior Valisette session added one
-# triage_flags = ["anagnorisis"]     # optional — present if a prior Valisette session added one
+# triage_flags = ["revisit"]         # optional — present if a prior Valisette session added one
 ```
 
 Only two fields are load-bearing for Valisette to function: `id` (patch
@@ -208,14 +230,15 @@ line order and every other field:
 
 | Field | When written | Values |
 |---|---|---|
-| `validation` | always | `"pending"` → `"validated"` \| `"rejected"` |
+| `validation` | always | `"pending"` → `"validated"` \| `"rejected"` \| `"anagnorisis"` |
 | `note` | only if the comment box was non-empty | free text, TOML-escaped |
-| `triage_flags` | only if at least one flag was toggled | array of `"anagnorisis"` \| `"followup"` \| `"priority"` |
+| `triage_flags` | only if at least one flag was toggled | array of `"revisit"` \| `"priority"` |
 
-`anagnorisis` is **not** a `validation` value in the current implementation
-(see Dev Note #4) — it is one of three `triage_flags`, independent of
-validated/rejected. Undo reverses all three fields back to their pre-swipe
-values on the same gist.
+`anagnorisis` is a **validation outcome**, matching schema-v1.md §4 — tapping
+🏛️ in the tray commits it directly, same as a left/right swipe commits
+validated/rejected. `revisit`/`priority` are independent, non-exclusive
+toggles that ride along with whichever outcome comes next. Undo reverses all
+three fields back to their pre-swipe values on the same gist.
 
 ## Verification
 
