@@ -2,7 +2,7 @@
 title: 'Valisette — TOML Write-Back for Rate Compatibility'
 type: 'feature'
 created: '2026-08-26'
-status: 'review'
+status: 'done'
 context: []
 ---
 
@@ -239,6 +239,18 @@ line order and every other field:
 validated/rejected. `revisit`/`priority` are independent, non-exclusive
 toggles that ride along with whichever outcome comes next. Undo reverses all
 three fields back to their pre-swipe values on the same gist.
+
+### Review Findings
+
+- [x] [Review][Patch] state.i rewind race on overlapping failed/succeeded writes — fixed by walking forward from the failed gist's index to the first still-undecided gist, instead of landing blindly on it (avoids resurfacing an already-committed gist). [valisette/valisette.js: settleWrite]
+- [x] [Review][Patch] `not-found` write error (gist vanished from file) retries forever with no terminal state — fixed: `not-found` now drops the gist from the deck permanently this session with a distinct status message ("gist no longer in that file — skipped"). [valisette/valisette.js: settleWrite]
+- [x] [Review][Patch] Second 412 on a write doesn't set `batch-closed` — fixed: a second consecutive 412 now throws with `code: "batch-closed"` instead of a raw write-failed error. [valisette/valisette.js: writeValidation]
+- [x] [Review][Patch] Undo drops its history entry before the repair write settles — fixed: the entry is now only removed from `state.history` after the repair write succeeds; a failed undo keeps it retryable. [valisette/valisette.js: undo]
+- [x] [Review][Patch] `batchClosed` is a single global flag and closed-file gists aren't filtered from the deck — fixed: `state.closedFiles` tracks per-sourceUrl closure, and remaining undecided gists from a newly-closed file are dropped from `state.gists` immediately. [valisette/valisette.js: settleWrite]
+- [x] [Review][Patch] Per-file read failures inside `collectPendingFiles` are silently swallowed — fixed: the function now returns `{ files, failedCount }`; both `scanSource` and `loadGists` surface a failure count in the stack line / empty-state, and `loadState` becomes `"error"` when every file failed. [valisette/valisette.js: collectPendingFiles, scanSource, loadGists]
+- [x] [Review][Patch] Undo can't clear a `note`/`triage_flags` field it just created — fixed: `patchGistFields` now deletes an existing `note`/`triage_flags` line outright when the incoming value is empty, instead of only ever writing non-empty values. [valisette/valisette.js: patchGistFields]
+- [x] [Review][Patch] Done-screen "flagged" tally silently corrupted after any single write failure — fixed: `settleWrite` now removes only the failed commit's own history entry (`state.history.filter(h => h.gist !== gist)`) instead of wiping the whole array. [valisette/valisette.js: settleWrite]
+- [x] [Review][Defer] Bare `"""` on its own line inside a `raw` prose body closes the raw block early — deferred, pre-existing TOML-validity assumption: content with an unescaped bare `"""` would already be invalid TOML from the producer side, not something Valisette can be expected to guard against.
 
 ## Verification
 

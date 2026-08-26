@@ -295,17 +295,25 @@ function patchGistFields(text, gistId, validation, note, flags) {
   lines[target.valLine] = `${indent}validation = ${tomlString(validation)}`;
 
   // Insert after validation, in a stable order, so a fresh insert doesn't
-  // shift a line the other field already patched this same call.
+  // shift a line the other field already patched this same call. An empty
+  // note/flags value removes an existing line outright — undo has to be able
+  // to erase a field a swipe just added, not merely leave it untouched.
   let insertAt = target.valLine + 1;
   if (note) {
     const noteText = `${indent}note = ${tomlString(note)}`;
     if (target.noteLine !== -1) { lines[target.noteLine] = noteText; }
     else { lines.splice(insertAt, 0, noteText); insertAt++; if (target.flagsLine >= insertAt - 1 && target.flagsLine !== -1) target.flagsLine++; }
+  } else if (target.noteLine !== -1) {
+    lines.splice(target.noteLine, 1);
+    if (target.flagsLine > target.noteLine) target.flagsLine--;
+    if (insertAt > target.noteLine) insertAt--;
   }
   if (flags && flags.length) {
     const flagsText = `${indent}triage_flags = ${tomlStringArray(flags)}`;
     if (target.flagsLine !== -1) lines[target.flagsLine] = flagsText;
     else lines.splice(insertAt, 0, flagsText);
+  } else if (target.flagsLine !== -1) {
+    lines.splice(target.flagsLine, 1);
   }
   return lines.join("\n");
 }
@@ -343,7 +351,8 @@ const state = {
   history: [],
   writing: 0,
   writeError: null,
-  batchClosed: false,
+  batchClosed: false,     // true only while the deck's own current file is closed
+  closedFiles: new Set(), // sourceUrls that came back batch-closed this session
   lastWriteAt: null,
   failures: 0,
   now: Date.now(),
@@ -502,7 +511,14 @@ async function writeValidation(gist, value, note = "", flags = []) {
       return;
     } catch (e) {
       // 412 — the file moved under us. Re-read once and patch the new one.
-      if (e.status === 412 && attempt === 0) continue;
+      if (e.status === 412) {
+        if (attempt === 0) continue;
+        // Two stale writes in a row means something is actively contending
+        // for this file — treat it the same as an ingested batch closing.
+        const closed = new Error("this batch keeps moving under us — remaining gists roll to the next one");
+        closed.code = "batch-closed";
+        throw closed;
+      }
       throw e;
     }
   }
@@ -624,9 +640,9 @@ async function scanSource() {
   const folder = state.sourcePath.replace(/\/?$/, "/");
   el("stack-line").textContent = "looking…";
 
-  let files = [];
+  let files = [], failedCount = 0;
   try {
-    files = await collectPendingFiles(folder);
+    ({ files, failedCount } = await collectPendingFiles(folder));
   } catch (e) {
     if (token !== scanToken) return;
     state.scan = null;
@@ -635,23 +651,29 @@ async function scanSource() {
   }
   if (token !== scanToken) return;
 
-  state.scan = { folder, files };
+  state.scan = { folder, files, failedCount };
   const total = files.reduce((n, f) => n + f.gists.length, 0);
-  if (!files.length) {
+  const failNote = failedCount ? ` (${failedCount} file${failedCount > 1 ? "s" : ""} unreadable)` : "";
+  if (!files.length && failedCount) {
+    el("stack-line").textContent = "couldn't read any files here" + failNote;
+  } else if (!files.length) {
     el("stack-line").textContent = "no open batches here";
   } else if (!total) {
-    el("stack-line").textContent = "nothing pending — all swiped";
+    el("stack-line").textContent = "nothing pending — all swiped" + failNote;
   } else {
     const shape = files.filter((f) => f.gists.length).map((f) => `${f.date} ${f.gists.length}`).join(" · ");
-    el("stack-line").textContent = `${total} pending — ${shape}`;
+    el("stack-line").textContent = `${total} pending — ${shape}${failNote}`;
   }
 }
 
+// Returns `{ files, failedCount }` — a single unreadable file must never
+// silently vanish from the scan; its failure has to be visible even when
+// other files in the same folder loaded fine.
 async function collectPendingFiles(folder) {
   if (state.demo) {
     const gists = parseGistTOML(DEMO_TOML).filter((g) => g.validation === "pending");
     gists.forEach((g) => { g.sourceUrl = DEMO_FILE_URL; });
-    return [{ url: DEMO_FILE_URL, date: "2026-08-21", gists }];
+    return { files: [{ url: DEMO_FILE_URL, date: "2026-08-21", gists }], failedCount: 0 };
   }
   const items = await listContainer(folder);
   const tomls = items
@@ -659,16 +681,17 @@ async function collectPendingFiles(folder) {
     .sort((a, b) => b.name.localeCompare(a.name)); // YYYY-MM-DD.toml sorts newest-first
 
   const files = [];
+  let failedCount = 0;
   for (const item of tomls) {
     let text;
-    try { ({ text } = await readFile(item.url)); } catch (e) { continue; }
+    try { ({ text } = await readFile(item.url)); } catch (e) { failedCount++; continue; }
     if (isIngested(text)) continue; // the Rate has taken this batch
     const parsed = parseGistTOML(text);
     const pending = parsed.filter((g) => g.validation === "pending");
     pending.forEach((g) => { g.sourceUrl = item.url; });
     files.push({ url: item.url, date: dateOfFile(item.name, parsed), gists: pending });
   }
-  return files;
+  return { files, failedCount };
 }
 
 // ── loading the deck ───────────────────────────────────────────────────
@@ -676,13 +699,13 @@ async function loadGists() {
   saveSetupToLocalStorage();
   const folder = state.sourcePath.replace(/\/?$/, "/");
 
-  let files;
+  let files, failedCount;
   const cached = state.scan;
   if (cached && cached.folder === folder) {
-    files = cached.files;
+    ({ files, failedCount } = cached);
   } else {
     try {
-      files = await collectPendingFiles(folder);
+      ({ files, failedCount } = await collectPendingFiles(folder));
     } catch (e) {
       state.gists = [];
       state.fileDates = [];
@@ -695,7 +718,11 @@ async function loadGists() {
 
   state.gists = files.flatMap((f) => f.gists);
   state.fileDates = files.filter((f) => f.gists.length).map((f) => f.date);
-  state.loadState = !files.length ? "no-files" : (state.gists.length ? "ok" : "none-pending");
+  // A file that failed to read is not the same as "nothing pending" — it
+  // has to read as an error, even when other files in the folder loaded.
+  state.loadState = !files.length
+    ? (failedCount ? "error" : "no-files")
+    : (state.gists.length ? "ok" : (failedCount ? "error" : "none-pending"));
   resetDeckState();
   showScreen("deck");
 }
@@ -707,6 +734,7 @@ function resetDeckState() {
   state.writing = 0;
   state.writeError = null;
   state.batchClosed = false;
+  state.closedFiles = new Set();
   state.lastWriteAt = null;
   state.failures = 0;
   state.comment = "";
@@ -841,27 +869,56 @@ function commit(vote) {
 
 // A write either landed or it didn't. If it didn't, the gist goes back into
 // the deck as the next card up — the pod still says "pending", so re-swiping
-// it is the whole repair. Undo history is cleared because the indices it
-// refers to have just shifted.
+// it is the whole repair. Only the failed commit's own history entry is
+// dropped (indices on other entries are independent of state.i and stay
+// valid), so the done-screen tally isn't corrupted by an unrelated failure.
 function settleWrite(gist, err) {
   state.writing = Math.max(0, state.writing - 1);
   if (!err) {
     state.lastWriteAt = Date.now();
+    if (state.screen === "deck") renderDeck();
+    if (state.screen === "done") renderDone();
+    return;
+  }
+  state.failures += 1;
+  delete state.decisions[gist.id];
+  state.history = state.history.filter((h) => h.gist !== gist);
+
+  if (err.code === "batch-closed") {
+    state.closedFiles.add(gist.sourceUrl);
+    // Nothing else from this file can ever succeed — drop its remaining
+    // gists from the deck instead of letting each one fail one at a time.
+    const before = state.gists.length;
+    state.gists = state.gists.filter((g) => g.sourceUrl !== gist.sourceUrl || state.decisions[g.id]);
+    const dropped = before - state.gists.length;
+    if (dropped) state.i = Math.max(0, state.i - dropped);
+    state.batchClosed = true;
+    state.writeError = err.message;
+  } else if (err.code === "not-found") {
+    // The gist is permanently gone from its file — retrying can never
+    // succeed, so drop it from the deck instead of resurfacing it forever.
+    const idx = state.gists.indexOf(gist);
+    if (idx !== -1) {
+      state.gists = state.gists.filter((g) => g !== gist);
+      if (idx < state.i) state.i -= 1;
+      else if (idx === state.i) { /* pointer already sits on the next card */ }
+    }
+    state.writeError = "gist no longer in that file — skipped";
   } else {
-    state.failures += 1;
-    delete state.decisions[gist.id];
-    state.history = [];
-    if (err.code === "batch-closed") {
-      state.batchClosed = true;
-      state.writeError = err.message;
-    } else {
-      state.writeError = String(err.message || err).slice(0, 70);
-      // The gist was never removed from state.gists (commit() only advances
-      // the pointer) — it's still sitting at its original index, so putting
-      // it back up next is a pointer move, not a re-insertion. Re-inserting
-      // here would duplicate it and the deck total would grow every retry.
-      const idx = state.gists.indexOf(gist);
-      if (idx !== -1) state.i = idx;
+    state.writeError = String(err.message || err).slice(0, 70);
+    // The gist was never removed from state.gists (commit() only advances
+    // the pointer) — it's still sitting at its original index, so putting
+    // it back up next is a pointer move, not a re-insertion. Re-inserting
+    // here would duplicate it and the deck total would grow every retry.
+    // A later swipe may already have advanced past this index and
+    // succeeded, so walk forward from idx to the first still-undecided
+    // gist rather than landing blindly on idx — that avoids resurfacing an
+    // already-committed gist for a duplicate swipe.
+    const idx = state.gists.indexOf(gist);
+    if (idx !== -1) {
+      let target = idx;
+      while (target < state.gists.length && state.decisions[state.gists[target].id]) target++;
+      state.i = target;
     }
   }
   if (state.screen === "deck") renderDeck();
@@ -878,7 +935,8 @@ function undo() {
   const decisions = { ...state.decisions };
   if (last.prevVote) decisions[last.id] = last.prevVote; else delete decisions[last.id];
   state.decisions = decisions;
-  state.history = state.history.slice(0, -1);
+  // History keeps the entry until the repair write actually lands — a
+  // failed undo has to stay retryable, not vanish along with its record.
   state.i = last.index;
   state.writeError = null;
   state.writing += 1;
@@ -894,7 +952,12 @@ function undo() {
   renderFlagTray();
 
   writeValidation(last.gist, target, last.prevNote, last.prevFlags).then(
-    () => { state.writing = Math.max(0, state.writing - 1); state.lastWriteAt = Date.now(); renderDeck(); },
+    () => {
+      state.writing = Math.max(0, state.writing - 1);
+      state.lastWriteAt = Date.now();
+      state.history = state.history.filter((h) => h !== last);
+      renderDeck();
+    },
     (err) => {
       state.writing = Math.max(0, state.writing - 1);
       state.writeError = `couldn't take that back — ${String(err.message || err).slice(0, 50)}`;
