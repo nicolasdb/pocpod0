@@ -301,6 +301,7 @@ const anagnorisisEl = el("anagnorisis-overlay");
 // source of truth, and a stale mirror could resurrect a swiped gist or hide
 // a pending one.
 function saveSetupToLocalStorage() {
+  if (state.demo) return; // demo has no pod — its synthetic path must never leak into a real login
   try {
     localStorage.setItem("valisette:setup", JSON.stringify({ sourcePath: state.sourcePath }));
   } catch (e) { /* ignore */ }
@@ -310,7 +311,8 @@ function restoreSetupFromLocalStorage() {
     const raw = localStorage.getItem("valisette:setup");
     if (!raw) return false;
     const saved = JSON.parse(raw);
-    if (saved.sourcePath) state.sourcePath = saved.sourcePath;
+    // Guard against a demo path saved before this fix existed.
+    if (saved.sourcePath && !saved.sourcePath.startsWith("demo:")) state.sourcePath = saved.sourcePath;
     return true;
   } catch (e) { return false; }
 }
