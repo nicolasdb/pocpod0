@@ -171,6 +171,20 @@ input::placeholder, textarea::placeholder { color: var(--text-tertiary); }
 .vz-marks { display: flex; gap: 3px; align-items: center; }
 .vz-mark { flex: 1; height: 4px; border-radius: 2px; background: var(--border-subtle); transition: background .3s; }
 
+.vz-tray-wrap { flex-shrink: 0; padding: 0 18px; overflow: hidden; }
+#vote-tray {
+  display: flex; gap: 6px; padding: 11px 0 3px; opacity: 0; transform: translateY(-6px);
+  transition: opacity .18s ease, transform .18s ease;
+}
+.vz-vote-btn {
+  flex: 1; min-height: 46px; padding: 7px 6px; border-radius: 3px; font-size: 12px; font-weight: 500;
+  cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 3px;
+  background: var(--surface-elevated); border: 1px solid var(--vote-color); color: var(--vote-color);
+  transition: background .15s; font-family: var(--font-body);
+}
+.vz-vote-btn:active { background: color-mix(in oklab, var(--vote-color) 22%, transparent); }
+.vz-vote-btn .vz-vote-emoji { font-size: 16px; line-height: 1; }
+
 .vz-card-area {
   flex: 1; display: flex; align-items: center; justify-content: center; padding: 14px 18px;
   position: relative; touch-action: pan-y; min-height: 0;
@@ -208,17 +222,12 @@ input::placeholder, textarea::placeholder { color: var(--text-tertiary); }
   background: color-mix(in oklab, var(--fresh) 12%, transparent); border: 1px solid var(--fresh);
   justify-content: flex-start;
 }
-#anagnorisis-overlay {
-  background: color-mix(in oklab, var(--anagnorisis) 14%, transparent); border: 1px solid var(--anagnorisis);
-  justify-content: center; align-items: flex-start;
-}
 .vz-swipe-badge {
   font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase;
   background: var(--surface-elevated); padding: 5px 9px; border-radius: 3px;
 }
 #reject-overlay .vz-swipe-badge { color: var(--pattern); border: 1px solid var(--pattern); }
 #validate-overlay .vz-swipe-badge { color: var(--fresh); border: 1px solid var(--fresh); }
-#anagnorisis-overlay .vz-swipe-badge { color: var(--anagnorisis); border: 1px solid var(--anagnorisis); }
 
 .vz-action-row { flex-shrink: 0; padding: 6px 18px 0; display: flex; gap: 8px; align-items: stretch; }
 #undo-btn {

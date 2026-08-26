@@ -288,6 +288,7 @@ const state = {
   lastWriteAt: null,
   failures: 0,
   now: Date.now(),
+  trayOpen: false,
 };
 
 let session = null; // this app's own isolated Inrupt Session (see header comment)
@@ -300,7 +301,7 @@ const screens = { login: el("screen-login"), setup: el("screen-setup"), deck: el
 const cardEl = el("gist-card");
 const rejectEl = el("reject-overlay");
 const validateEl = el("validate-overlay");
-const anagnorisisEl = el("anagnorisis-overlay");
+const trayEl = el("vote-tray");
 
 // ── persistence ────────────────────────────────────────────────────────
 // Only the source folder is remembered. There is no
@@ -646,14 +647,24 @@ function resetDeckState() {
 }
 
 // ── swipe mechanics — DOM writes only, no re-render mid-drag ────────────
+function paintTray(up) {
+  const k = Math.min(1, up / 72);
+  const open = state.trayOpen;
+  const a = Math.max(open ? 1 : 0, k);
+  trayEl.style.opacity = String(a);
+  trayEl.style.transform = `translateY(${(-6 + 6 * a).toFixed(2)}px)`;
+  trayEl.style.pointerEvents = (open || k > 0.9) ? "auto" : "none";
+}
+
 function paint() {
   if (!drag) return;
   const { x, y } = drag;
   const up = Math.max(0, -y);
-  cardEl.style.transform = `translate(${x.toFixed(1)}px,${(y * 0.55).toFixed(1)}px) rotate(${(x * 0.035).toFixed(2)}deg)`;
+  const lean = up * 0.42;
+  cardEl.style.transform = `translate(${x.toFixed(1)}px,${(-lean + Math.max(0, y) * 0.2).toFixed(1)}px) rotate(${(x * 0.035).toFixed(2)}deg)`;
   rejectEl.style.opacity = String(Math.min(1, Math.max(0, -x) / 105));
   validateEl.style.opacity = String(Math.min(1, Math.max(0, x) / 105));
-  anagnorisisEl.style.opacity = String(Math.min(1, up / 105));
+  paintTray(up);
 }
 
 function resetCard() {
@@ -662,7 +673,7 @@ function resetCard() {
   cardEl.style.opacity = "1";
   rejectEl.style.opacity = "0";
   validateEl.style.opacity = "0";
-  anagnorisisEl.style.opacity = "0";
+  paintTray(0);
 }
 
 function onDown(e) {
@@ -682,10 +693,9 @@ function onUp() {
   if (!drag) return;
   const { x, y } = drag;
   drag = null;
-  // Three peers, three directions. Up is a decision now, not a mode switch.
-  if (-y > 100 && Math.abs(y) > Math.abs(x)) return commit("anagnorisis");
   if (x > 100) return commit("validated");
   if (x < -100) return commit("rejected");
+  if (-y > 64) { state.trayOpen = true; resetCard(); return; }
   resetCard();
 }
 
@@ -709,6 +719,7 @@ function commit(vote) {
   state.i = i + 1;
   state.writeError = null;
   state.writing += 1;
+  state.trayOpen = false;
 
   writeValidation(g, vote).then(
     () => settleWrite(g, null),
@@ -722,7 +733,7 @@ function commit(vote) {
     cardEl.style.opacity = "1";
     rejectEl.style.opacity = "0";
     validateEl.style.opacity = "0";
-    anagnorisisEl.style.opacity = "0";
+    paintTray(0);
     if (state.i >= state.gists.length) showScreen("done");
     else renderDeck();
   }, 230);
@@ -771,6 +782,7 @@ function undo() {
   state.i = last.index;
   state.writeError = null;
   state.writing += 1;
+  state.trayOpen = false;
 
   writeValidation(last.gist, target).then(
     () => { state.writing = Math.max(0, state.writing - 1); state.lastWriteAt = Date.now(); renderDeck(); },
@@ -911,6 +923,10 @@ el("card-area").addEventListener("pointerup", onUp);
 el("card-area").addEventListener("pointercancel", onUp);
 el("undo-btn").addEventListener("click", undo);
 
+document.querySelectorAll(".vz-vote-btn").forEach((btn) => {
+  btn.addEventListener("click", () => commit(btn.dataset.vote));
+});
+
 el("close-btn").addEventListener("click", () => {
   state.gists = [];
   resetDeckState();
@@ -923,7 +939,7 @@ document.addEventListener("keydown", (e) => {
   if (tag === "INPUT" || tag === "TEXTAREA") return;
   if (e.key === "ArrowLeft") commit("rejected");
   else if (e.key === "ArrowRight") commit("validated");
-  else if (e.key === "ArrowUp") { e.preventDefault(); commit("anagnorisis"); }
+  else if (e.key === "ArrowUp") { e.preventDefault(); state.trayOpen = true; resetCard(); }
   else if (e.key === "ArrowDown" || e.key === "Backspace") { e.preventDefault(); undo(); }
 });
 

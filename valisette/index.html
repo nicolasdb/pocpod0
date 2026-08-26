@@ -77,6 +77,17 @@
       <div id="marks" class="vz-marks"></div>
     </div>
 
+    <div class="vz-tray-wrap">
+      <div id="vote-tray">
+        <button class="vz-vote-btn" data-nodrag data-vote="validated" style="--vote-color: var(--fresh)">
+          <span class="vz-vote-emoji">✅</span>validated</button>
+        <button class="vz-vote-btn" data-nodrag data-vote="rejected" style="--vote-color: var(--pattern)">
+          <span class="vz-vote-emoji">👎</span>rejected</button>
+        <button class="vz-vote-btn" data-nodrag data-vote="anagnorisis" style="--vote-color: var(--anagnorisis)">
+          <span class="vz-vote-emoji">🏛️</span>anagnorisis</button>
+      </div>
+    </div>
+
     <div id="card-area" class="vz-card-area">
       <div class="vz-ghost-card"></div>
       <div id="gist-card">
@@ -88,7 +99,6 @@
         <div id="gist-raw"></div>
         <div id="reject-overlay" class="vz-swipe-overlay"><span class="vz-swipe-badge">reject</span></div>
         <div id="validate-overlay" class="vz-swipe-overlay"><span class="vz-swipe-badge">validate</span></div>
-        <div id="anagnorisis-overlay" class="vz-swipe-overlay"><span class="vz-swipe-badge">anagnorisis</span></div>
       </div>
       <div id="empty-stack" class="vz-empty-stack" hidden>
         <div></div>
@@ -101,7 +111,7 @@
 
     <div class="vz-status-strip">
       <span id="save-text"></span>
-      <span>swipe up for anagnorisis</span>
+      <span>drag up to choose</span>
     </div>
   </section>
 
