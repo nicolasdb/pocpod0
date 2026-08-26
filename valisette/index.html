@@ -43,24 +43,15 @@
       <span class="vz-dot"></span>
       <span id="webid-short"></span>
     </div>
-    <div class="vz-title">Two paths, then you're set.</div>
-    <div class="vz-subtitle">Asked once. Valisette remembers them on this device.</div>
+    <div class="vz-title">One folder, then you're set.</div>
+    <div class="vz-subtitle">Asked once. Valisette remembers it on this device.</div>
 
     <div class="vz-group vz-source">
-      <div class="vz-label">source — gists to triage</div>
+      <div class="vz-label">source — capture/gists/</div>
       <input id="source-input" class="vz-input" data-nodrag spellcheck="false">
       <div id="source-recents" class="vz-chips" hidden></div>
       <div id="source-breadcrumb" class="vz-breadcrumb"></div>
       <div id="source-chips" class="vz-chips"></div>
-    </div>
-
-    <div class="vz-group vz-output">
-      <div class="vz-label">output — where calls are written</div>
-      <input id="output-input" class="vz-input" data-nodrag spellcheck="false">
-      <div id="output-recents" class="vz-chips" hidden></div>
-      <div id="output-breadcrumb" class="vz-breadcrumb"></div>
-      <div id="output-chips" class="vz-chips"></div>
-      <div id="out-preview" class="vz-out-preview"></div>
     </div>
 
     <div class="vz-spacer"></div>
@@ -87,17 +78,6 @@
       <div id="marks" class="vz-marks"></div>
     </div>
 
-    <div class="vz-tray-wrap">
-      <div id="flag-tray">
-        <button class="vz-flag-btn" data-nodrag data-flag="anagnorisis" style="--flag-color: var(--anagnorisis)">
-          <span class="vz-flag-emoji">💡</span>anagnorisis</button>
-        <button class="vz-flag-btn" data-nodrag data-flag="revisit" style="--flag-color: var(--temporal)">
-          <span class="vz-flag-emoji">🔂</span>revisit</button>
-        <button class="vz-flag-btn" data-nodrag data-flag="priority" style="--flag-color: var(--convergence)">
-          <span class="vz-flag-emoji">⚠️</span>priority</button>
-      </div>
-    </div>
-
     <div id="card-area" class="vz-card-area">
       <div class="vz-ghost-card"></div>
       <div id="gist-card">
@@ -107,23 +87,22 @@
         </div>
         <h2 id="gist-title"></h2>
         <div id="gist-raw"></div>
-        <div id="active-flags"></div>
         <div id="reject-overlay" class="vz-swipe-overlay"><span class="vz-swipe-badge">reject</span></div>
         <div id="validate-overlay" class="vz-swipe-overlay"><span class="vz-swipe-badge">validate</span></div>
+        <div id="anagnorisis-overlay" class="vz-swipe-overlay"><span class="vz-swipe-badge">anagnorisis</span></div>
       </div>
       <div id="empty-stack" class="vz-empty-stack" hidden>
-        <div>couldn't find any gists to triage in this source.</div>
+        <div></div>
       </div>
     </div>
 
     <div class="vz-action-row">
       <button id="undo-btn" data-nodrag title="undo last swipe">↺</button>
-      <input id="comment-input" data-nodrag placeholder="Comment — optional">
     </div>
 
     <div class="vz-status-strip">
       <span id="save-text"></span>
-      <span>drag up for flags</span>
+      <span>swipe up for anagnorisis</span>
     </div>
   </section>
 
@@ -143,7 +122,7 @@
       <div class="vz-tally-row">
         <span id="tally-validated"></span>
         <span id="tally-rejected"></span>
-        <span id="tally-flagged"></span>
+        <span id="tally-anagnorisis"></span>
       </div>
     </div>
     <button id="close-btn" data-nodrag>Close</button>

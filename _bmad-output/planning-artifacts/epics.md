@@ -434,6 +434,17 @@ As a pod owner, I want the backoffice to authenticate with a portable `Authoriza
 - **Depends on 7.13** shipping first (origin split is what makes the cookie's limits visible/blocking in the first place, and `/onboard/`'s CORS gap only bites once backoffice is cross-origin).
 - See `7-14-token-auth-provider-agnostic-pods.md`.
 
+### Story 7.15: Valisette — TOML Write-Back for Rate Compatibility _(ADDED 2026-08-26 — Rate pipeline handoff, party-mode UX review)_
+
+As the person triaging Otis gists in Valisette, I want each swipe to patch the `validation` field of the gist directly in the grouped `capture/gists/YYYY-MM-DD.toml` file the cleanup pass already writes, so the 9h Rate pipeline can ingest straight from that one buffer instead of a separate aggregate file Valisette used to build.
+
+- **Contract change:** Valisette no longer rebuilds and writes its own `triage-YYYY-MM-DD.toml` into a separate `triage/` folder (`buildTOML`, deleted). It string-patches the single `validation = "..."` line for one gist, in place, in the source file — read → patch → PUT with `If-Match`, re-read on every swipe (never a cached copy) so a Rate run landing mid-session can't be clobbered.
+- **Deck scope widened:** loads every `pending` gist across all non-ingested `.toml` files in the source folder, newest file first — a backlog never gates tonight's fresh gists, and never disappears unannounced (resurfaced gists show their original date).
+- **Third outcome:** swipe-up now commits `anagnorisis` directly (peer to validated/rejected), replacing the old multi-select flag tray. Flags (`revisit`/`priority`) and the comment field are dropped — nothing in the new contract has anywhere for them to land.
+- **Undo re-patches** the file back to `pending` rather than only rolling back local state, and its enable-gate moved off "unsaved batch" (which no longer exists) onto "there is a last swipe."
+- **Rate-side dependency (assumed, not built here):** the Rate must stamp a file's `ingested = true` only once no gist in it remains `pending`, so nothing is stranded behind an early stamp. Out of scope for this story.
+- See `7-15-valisette-rate-toml-writeback.md`.
+
 ## Epic 1: Pod Sovereignty & Access Control
 
 Learners own their data in Solid Pods with enforceable, auditable access control — the fundamental sovereignty primitive is proven and adversarially validated.
