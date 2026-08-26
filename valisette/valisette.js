@@ -173,9 +173,13 @@ function parseGistTOML(text) {
       continue;
     }
     if (t.startsWith(RAW_OPEN)) {
-      inRaw = true; rawBuffer = "";
       const after = t.slice(RAW_OPEN.length);
-      if (after && after !== '"""') rawBuffer = after + "\n";
+      if (after.endsWith('"""')) {
+        // Opens and closes on the same line — the common case in practice.
+        current.raw = after.slice(0, -3);
+      } else {
+        inRaw = true; rawBuffer = after ? after + "\n" : "";
+      }
       continue;
     }
     const eq = t.indexOf("="); if (eq === -1) continue;
@@ -225,7 +229,10 @@ function patchValidationLine(text, gistId, value) {
     // never mistaken for the field.
     if (inRaw) { if (t === '"""') inRaw = false; continue; }
     if (t.startsWith(RAW_OPEN)) {
-      if (t.slice(RAW_OPEN.length).trim() !== '"""') inRaw = true;
+      // Opens and closes on the same line unless it doesn't end in `"""` —
+      // must match parseGistTOML's rule exactly or the two disagree on where
+      // a block ends.
+      if (!t.slice(RAW_OPEN.length).endsWith('"""')) inRaw = true;
       continue;
     }
     if (t === "[[gist]]") { closeBlock(); inGist = true; continue; }
@@ -738,7 +745,12 @@ function settleWrite(gist, err) {
       state.writeError = err.message;
     } else {
       state.writeError = String(err.message || err).slice(0, 70);
-      state.gists = state.gists.slice(0, state.i).concat([gist], state.gists.slice(state.i));
+      // The gist was never removed from state.gists (commit() only advances
+      // the pointer) — it's still sitting at its original index, so putting
+      // it back up next is a pointer move, not a re-insertion. Re-inserting
+      // here would duplicate it and the deck total would grow every retry.
+      const idx = state.gists.indexOf(gist);
+      if (idx !== -1) state.i = idx;
     }
   }
   if (state.screen === "deck") renderDeck();
