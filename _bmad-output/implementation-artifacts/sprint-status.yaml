@@ -96,7 +96,7 @@ development_status:
   story-7-11b-roles-and-collective-access: deferred-post-poc  # 2026-08-11: deferred half of 7.11 split → see epics.md
   story-7-12-agent-identity-lifecycle: done  # 2026-08-20: agent WebIDs in existing pod, deployed
   story-7-13-origin-split-portable-apps: done  # 2026-08-26: SSO-bounce fixed, live-verified by Nicolas both apps + full regression → see epics.md
-  story-7-14-token-auth-provider-agnostic-pods: ready-for-dev  # 2026-08-26: depends on 7.13, cookie→token + provider-agnostic pod mgmt → see epics.md
+  story-7-14-token-auth-provider-agnostic-pods: done  # 2026-08-26: descoped to /onboard CORS fix (cookie survives 7.13, token rewrite dropped) + relative-path bug fix, live-verified by Nicolas → see epics.md
   epic-7-retrospective: optional
 
   # Epic 8: Solid MCP Connector — origin/rationale → see epics.md Epic 8 header

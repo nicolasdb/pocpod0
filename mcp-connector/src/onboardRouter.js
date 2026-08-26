@@ -6,10 +6,14 @@
  * browser-reachable pod.nicolasdb.eu vhost (see hetzner-gateway's
  * 04-pocpod0.conf), never the IP-allowlisted solid-mcp.nicolasdb.eu vhost.
  *
- * The browser forwards its `css-account` cookie (same-origin, no CORS);
- * this server uses it for exactly one CSS Account API call sequence per
- * request, never logs it, never persists it, discards it at end of request
- * (AC17). The clientSecret CSS returns is written straight to
+ * The browser forwards its `css-account` cookie. Story 7.13 put the backoffice
+ * UI on backoffice.nicolasdb.eu, cross-origin (same-site) from here — the
+ * cookie itself still arrives fine (SameSite=Lax allows same-site
+ * cross-origin), but the browser needs an explicit CORS grant to let JS read
+ * the response; see the ONBOARD_CORS_ORIGINS middleware below (Story 7.14).
+ * This server uses the cookie for exactly one CSS Account API call sequence
+ * per request, never logs it, never persists it, discards it at end of
+ * request (AC17). The clientSecret CSS returns is written straight to
  * identities.json and never serialized into any response (AC2).
  */
 
@@ -140,6 +144,34 @@ function buildOnboardRouter(identities) {
   // a safe no-op, but keep it explicit in case this router is ever mounted
   // standalone outside that app.
   router.use(express.json());
+
+  // Story 7.14 (descoped): Story 7.13's origin split put the backoffice UI on
+  // backoffice.nicolasdb.eu, cross-origin from this router (reached via
+  // pod.nicolasdb.eu). Cross-origin fetch()/XHR needs an explicit CORS grant
+  // regardless of same-site cookie behavior — the cookie itself still rides
+  // along fine (SameSite=Lax permits same-site cross-origin requests), but the
+  // browser blocks the response from reaching JS without Access-Control-*
+  // headers. Confirmed live pre-fix: cross-origin probe -> 401, zero
+  // access-control-* headers at all (CORS-blocked, not an auth failure).
+  // Explicit allowlist, not "*" — this router mints credentials (AC2/AC5 of
+  // the original 7.14 draft still apply as a design constraint even though
+  // the token-header rewrite itself was descoped).
+  const ONBOARD_CORS_ORIGINS = (process.env.ONBOARD_CORS_ORIGINS || "https://backoffice.nicolasdb.eu")
+    .split(",").map((o) => o.trim()).filter(Boolean);
+  router.use((req, res, next) => {
+    const origin = req.headers.origin;
+    if (origin && ONBOARD_CORS_ORIGINS.includes(origin)) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader("Access-Control-Allow-Credentials", "true");
+      res.setHeader("Vary", "Origin");
+    }
+    if (req.method === "OPTIONS") {
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "content-type");
+      return res.status(204).end();
+    }
+    next();
+  });
 
   // AC2.11: independent of mcpLimiter/unknownSlugLimiter.
   const onboardLimiter = rateLimit({

@@ -793,16 +793,17 @@ class RealBackend {
 
   // ---- Connector onboarding (Story 7.9) ----
   // Talks to mcp-connector's /onboard/ endpoint, proxied via pod.nicolasdb.eu
-  // (see hetzner-gateway's 04-pocpod0.conf). Post-Story-7.13, backoffice is
-  // cross-origin from pod.nicolasdb.eu, not same-origin — this relies on the
-  // cookie/CORS setup permitting it, and
+  // (see hetzner-gateway's 04-pocpod0.conf). Story 7.13 moved backoffice to
+  // its own origin (backoffice.nicolasdb.eu), so these MUST be absolute URLs
+  // against ISSUER now — a bare "/onboard/..." resolves against backoffice's
+  // own origin instead and 404s there (found live, Story 7.14, 2026-08-26).
   // the css-account cookie rides along automatically with credentials:
-  // 'include', same as every other account-scoped call in this file. The
-  // server does the actual CSS credential mint; the secret it produces
-  // never reaches this browser at all — only { connectorUrl, podRootUrl }
-  // ever comes back (AC2).
+  // 'include' since it's same-site (SameSite=Lax); mcp-connector's CORS
+  // middleware (Story 7.14) grants the cross-origin read. The server does the
+  // actual CSS credential mint; the secret it produces never reaches this
+  // browser at all — only { connectorUrl, podRootUrl } ever comes back (AC2).
   async mintConnector(webId, label) {
-    const res = await fetch("/onboard/mint", {
+    const res = await fetch(new URL("/onboard/mint", ISSUER), {
       method: "POST",
       credentials: "include",
       headers: { "content-type": "application/json" },
@@ -813,14 +814,14 @@ class RealBackend {
     return await res.json(); // { connectorUrl, podRootUrl }
   }
   async listGrants() {
-    const res = await fetch("/onboard/grants", { credentials: "include" });
+    const res = await fetch(new URL("/onboard/grants", ISSUER), { credentials: "include" });
     if (res.status === 401) throw new Error("SESSION_EXPIRED");
     if (!res.ok) throw new Error(`Could not list connector grants (HTTP ${res.status}).`);
     const { grants } = await res.json();
     return grants || [];
   }
   async revokeGrant(grantId) {
-    const res = await fetch("/onboard/revoke", {
+    const res = await fetch(new URL("/onboard/revoke", ISSUER), {
       method: "POST",
       credentials: "include",
       headers: { "content-type": "application/json" },

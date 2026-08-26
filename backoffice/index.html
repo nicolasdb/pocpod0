@@ -987,7 +987,7 @@ class Component extends DCLogic {
   async componentDidMount() {
     this.setVars();
     try {
-      this.api = await import('./pod-api.js?v=7-12-3');
+      this.api = await import('./pod-api.js?v=7-14-1');
     } catch (e) {
       this.api = null;
     }
