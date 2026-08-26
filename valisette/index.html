@@ -78,13 +78,13 @@
     </div>
 
     <div class="vz-tray-wrap">
-      <div id="vote-tray">
-        <button class="vz-vote-btn" data-nodrag data-vote="validated" style="--vote-color: var(--fresh)">
-          <span class="vz-vote-emoji">✅</span>validated</button>
-        <button class="vz-vote-btn" data-nodrag data-vote="rejected" style="--vote-color: var(--pattern)">
-          <span class="vz-vote-emoji">👎</span>rejected</button>
-        <button class="vz-vote-btn" data-nodrag data-vote="anagnorisis" style="--vote-color: var(--anagnorisis)">
-          <span class="vz-vote-emoji">🏛️</span>anagnorisis</button>
+      <div id="flag-tray">
+        <button class="vz-flag-btn" data-nodrag data-flag="anagnorisis" style="--flag-color: var(--anagnorisis)">
+          <span class="vz-flag-emoji">🏛️</span>anagnorisis</button>
+        <button class="vz-flag-btn" data-nodrag data-flag="followup" style="--flag-color: var(--temporal)">
+          <span class="vz-flag-emoji">🔂</span>follow up</button>
+        <button class="vz-flag-btn" data-nodrag data-flag="priority" style="--flag-color: var(--convergence)">
+          <span class="vz-flag-emoji">⚠️</span>priority</button>
       </div>
     </div>
 
@@ -97,6 +97,7 @@
         </div>
         <h2 id="gist-title"></h2>
         <div id="gist-raw"></div>
+        <div id="active-flags"></div>
         <div id="reject-overlay" class="vz-swipe-overlay"><span class="vz-swipe-badge">reject</span></div>
         <div id="validate-overlay" class="vz-swipe-overlay"><span class="vz-swipe-badge">validate</span></div>
       </div>
@@ -112,7 +113,7 @@
 
     <div class="vz-status-strip">
       <span id="save-text"></span>
-      <span>drag up to choose</span>
+      <span>drag up for flags</span>
     </div>
   </section>
 
@@ -132,7 +133,7 @@
       <div class="vz-tally-row">
         <span id="tally-validated"></span>
         <span id="tally-rejected"></span>
-        <span id="tally-anagnorisis"></span>
+        <span id="tally-flagged"></span>
       </div>
     </div>
     <button id="close-btn" data-nodrag>Close</button>

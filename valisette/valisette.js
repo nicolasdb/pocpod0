@@ -54,8 +54,16 @@ const TYPE_COLOR_VAR = {
 const VALIDATION_COLOR_VAR = {
   validated: "--fresh",
   rejected: "--pattern",
-  anagnorisis: "--anagnorisis",
 };
+
+// Independent tags, written to `triage_flags` — not a validation outcome and
+// not the pipeline's own `tags` (topical keywords, different field, don't
+// touch it). Unvalidated in practice yet; kept easy to retire or extend.
+const FLAGS = [
+  { key: "anagnorisis", emoji: "🏛️", label: "anagnorisis", colorVar: "--anagnorisis" },
+  { key: "followup", emoji: "🔂", label: "follow up", colorVar: "--temporal" },
+  { key: "priority", emoji: "⚠️", label: "priority", colorVar: "--convergence" },
+];
 
 // Demo stack. Held as a TOML *string* rather than plain objects so the
 // offline path exercises the real parse/patch code instead of a parallel one.
@@ -156,6 +164,16 @@ function unquote(v) {
   return t.slice(1, -1).replace(/\\(.)/g, "$1");
 }
 
+// Only needs to handle a flat array of quoted strings — the shape both
+// `tags` and `triage_flags` use.
+function parseArrayLiteral(v) {
+  const t = v.trim();
+  if (!t.startsWith("[") || !t.endsWith("]")) return [];
+  const inner = t.slice(1, -1).trim();
+  if (!inner) return [];
+  return inner.split(",").map((s) => unquote(s.trim())).filter(Boolean);
+}
+
 function parseGistTOML(text) {
   const gists = [];
   let current = null, rawBuffer = null, inRaw = false, inGist = false;
@@ -185,7 +203,9 @@ function parseGistTOML(text) {
     }
     const eq = t.indexOf("="); if (eq === -1) continue;
     const key = t.slice(0, eq).trim();
-    const val = unquote(t.slice(eq + 1));
+    const rawVal = t.slice(eq + 1);
+    if (key === "triage_flags") { current.flags = parseArrayLiteral(rawVal); continue; }
+    const val = unquote(rawVal);
     if (key === "id") current.id = val;
     else if (key === "timestamp") current.timestamp = parseInt(val, 10);
     else if (key === "type") current.type = val;
@@ -224,16 +244,24 @@ function tomlString(v) {
 // when non-empty) fields — deliberately NOT parse-then-rebuild, so every
 // other field (including pipeline-added ones like `ingested`) survives
 // byte-identical. Returns null when the gist isn't in this file.
-function patchGistFields(text, gistId, validation, note) {
+function tomlStringArray(items) {
+  return `[${items.map(tomlString).join(", ")}]`;
+}
+
+// `triage_flags` is Valisette's own field — deliberately not the pipeline's
+// `tags` (topical keywords like ["cron","timezone"], already present on every
+// gist and meaning something entirely different). Reusing that key would
+// corrupt real pipeline data on the next patch.
+function patchGistFields(text, gistId, validation, note, flags) {
   const lines = text.split("\n");
-  let inRaw = false, inGist = false, curId = null, valLine = -1, noteLine = -1, blockEnd = -1;
+  let inRaw = false, inGist = false, curId = null, valLine = -1, noteLine = -1, flagsLine = -1;
   let target = null;
 
   const closeBlock = () => {
     if (inGist && curId === gistId && valLine !== -1 && !target) {
-      target = { valLine, noteLine };
+      target = { valLine, noteLine, flagsLine };
     }
-    curId = null; valLine = -1; noteLine = -1;
+    curId = null; valLine = -1; noteLine = -1; flagsLine = -1;
   };
 
   for (let n = 0; n < lines.length && !target; n++) {
@@ -256,16 +284,26 @@ function patchGistFields(text, gistId, validation, note) {
     if (key === "id") curId = unquote(t.slice(eq + 1));
     else if (key === "validation") valLine = n;
     else if (key === "note") noteLine = n;
+    else if (key === "triage_flags") flagsLine = n;
   }
   if (!target) closeBlock();
 
   if (!target) return null;
   const indent = lines[target.valLine].match(/^\s*/)[0];
   lines[target.valLine] = `${indent}validation = ${tomlString(validation)}`;
+
+  // Insert after validation, in a stable order, so a fresh insert doesn't
+  // shift a line the other field already patched this same call.
+  let insertAt = target.valLine + 1;
   if (note) {
     const noteText = `${indent}note = ${tomlString(note)}`;
-    if (target.noteLine !== -1) lines[target.noteLine] = noteText;
-    else lines.splice(target.valLine + 1, 0, noteText);
+    if (target.noteLine !== -1) { lines[target.noteLine] = noteText; }
+    else { lines.splice(insertAt, 0, noteText); insertAt++; if (target.flagsLine >= insertAt - 1 && target.flagsLine !== -1) target.flagsLine++; }
+  }
+  if (flags && flags.length) {
+    const flagsText = `${indent}triage_flags = ${tomlStringArray(flags)}`;
+    if (target.flagsLine !== -1) lines[target.flagsLine] = flagsText;
+    else lines.splice(insertAt, 0, flagsText);
   }
   return lines.join("\n");
 }
@@ -309,6 +347,7 @@ const state = {
   now: Date.now(),
   trayOpen: false,
   comment: "",
+  flags: {}, // { [flagKey]: true } — toggled in the tray, committed with the next swipe
 };
 
 let session = null; // this app's own isolated Inrupt Session (see header comment)
@@ -325,7 +364,7 @@ const screens = { login: el("screen-login"), setup: el("screen-setup"), deck: el
 const cardEl = el("gist-card");
 const rejectEl = el("reject-overlay");
 const validateEl = el("validate-overlay");
-const trayEl = el("vote-tray");
+const trayEl = el("flag-tray");
 
 // ── persistence ────────────────────────────────────────────────────────
 // Only the source folder is remembered. There is no
@@ -442,7 +481,7 @@ async function writeFile(url, text, etag) {
 // Read → patch → PUT, every time. The file string is never held across
 // swipes: a Rate run landing mid-session would otherwise be overwritten by a
 // stale copy, erasing `ingested = true`.
-async function writeValidation(gist, value, note = "") {
+async function writeValidation(gist, value, note = "", flags = []) {
   for (let attempt = 0; attempt < 2; attempt++) {
     const { text, etag } = await readFile(gist.sourceUrl);
     if (isIngested(text)) {
@@ -450,7 +489,7 @@ async function writeValidation(gist, value, note = "") {
       e.code = "batch-closed";
       throw e;
     }
-    const patched = patchGistFields(text, gist.id, value, note);
+    const patched = patchGistFields(text, gist.id, value, note, flags);
     if (patched === null) {
       const e = new Error("gist is no longer in that file");
       e.code = "not-found";
@@ -669,6 +708,7 @@ function resetDeckState() {
   state.lastWriteAt = null;
   state.failures = 0;
   state.comment = "";
+  state.flags = {};
   commentLoadedFor = null;
 }
 
@@ -680,6 +720,28 @@ function paintTray(up) {
   trayEl.style.opacity = String(a);
   trayEl.style.transform = `translateY(${(-6 + 6 * a).toFixed(2)}px)`;
   trayEl.style.pointerEvents = (open || k > 0.9) ? "auto" : "none";
+}
+
+// Flags are toggled, not committed — they ride along with whichever swipe
+// comes next (see commit()), same as the pre-Rate design.
+function toggleFlag(key) {
+  state.flags = { ...state.flags, [key]: !state.flags[key] };
+  renderFlagTray();
+}
+
+function renderFlagTray() {
+  document.querySelectorAll(".vz-flag-btn").forEach((btn) => {
+    btn.classList.toggle("vz-flag-on", !!state.flags[btn.dataset.flag]);
+  });
+  const activeEl = el("active-flags");
+  activeEl.innerHTML = "";
+  FLAGS.filter((f) => state.flags[f.key]).forEach((f) => {
+    const span = document.createElement("span");
+    span.className = "vz-active-flag";
+    span.style.setProperty("--flag-color", `var(${f.colorVar})`);
+    span.textContent = `${f.emoji} ${f.label}`;
+    activeEl.appendChild(span);
+  });
 }
 
 function paint() {
@@ -725,7 +787,7 @@ function onUp() {
   resetCard();
 }
 
-const FLIGHT = { validated: [460, -24, 12], rejected: [-460, -24, -12], anagnorisis: [0, -620, 0] };
+const FLIGHT = { validated: [460, -24, 12], rejected: [-460, -24, -12] };
 
 // Optimistic: the card leaves on the gesture, the write follows. A write that
 // fails puts the gist back in the deck (see settleWrite) rather than pretending.
@@ -741,19 +803,23 @@ function commit(vote) {
 
   const prevVote = state.decisions[g.id] || null;
   const prevNote = g.note || "";
+  const prevFlags = g.flags || [];
   const note = state.comment.trim();
+  const flags = FLAGS.map((f) => f.key).filter((k) => state.flags[k]);
   state.decisions = { ...state.decisions, [g.id]: vote };
-  state.history = state.history.concat([{ id: g.id, index: i, prevVote, prevNote, note, gist: g }]);
+  state.history = state.history.concat([{ id: g.id, index: i, prevVote, prevNote, prevFlags, note, flags, gist: g }]);
   g.note = note;
+  g.flags = flags;
   state.i = i + 1;
   state.writeError = null;
   state.writing += 1;
   state.trayOpen = false;
   state.comment = "";
+  state.flags = {};
   el("comment-input").value = "";
   commentLoadedFor = null;
 
-  writeValidation(g, vote, note).then(
+  writeValidation(g, vote, note, flags).then(
     () => settleWrite(g, null),
     (err) => settleWrite(g, err),
   );
@@ -816,11 +882,16 @@ function undo() {
   state.writing += 1;
   state.trayOpen = false;
   last.gist.note = last.prevNote;
+  last.gist.flags = last.prevFlags;
   state.comment = last.note;
   commentLoadedFor = last.gist.id; // keep the just-typed note visible, don't let renderDeck reload it from prevNote
   el("comment-input").value = state.comment;
+  const flagsMap = {};
+  (last.flags || []).forEach((k) => { flagsMap[k] = true; });
+  state.flags = flagsMap; // put the just-picked flags back in the tray for editing
+  renderFlagTray();
 
-  writeValidation(last.gist, target, last.prevNote).then(
+  writeValidation(last.gist, target, last.prevNote, last.prevFlags).then(
     () => { state.writing = Math.max(0, state.writing - 1); state.lastWriteAt = Date.now(); renderDeck(); },
     (err) => {
       state.writing = Math.max(0, state.writing - 1);
@@ -886,7 +957,7 @@ function renderDeck() {
   state.gists.forEach((gi, n) => {
     const d = state.decisions[gi.id];
     let colorVar = "--border-subtle";
-    if (d) colorVar = VALIDATION_COLOR_VAR[d] || "--fresh";
+    if (d) colorVar = (gi.flags && gi.flags.length) ? "--anagnorisis" : (VALIDATION_COLOR_VAR[d] || "--fresh");
     else if (n === state.i) colorVar = "--text-tertiary";
     const mark = document.createElement("span");
     mark.className = "vz-mark";
@@ -920,6 +991,7 @@ function renderDeck() {
     commentLoadedFor = null;
   }
 
+  renderFlagTray();
   renderDeckStatus();
 }
 
@@ -927,7 +999,7 @@ function renderDone() {
   const votes = Object.values(state.decisions);
   const nVal = votes.filter((v) => v === "validated").length;
   const nRej = votes.filter((v) => v === "rejected").length;
-  const nAna = votes.filter((v) => v === "anagnorisis").length;
+  const nFlagged = state.history.filter((h) => h.flags && h.flags.length).length;
   const n = votes.length;
   const doneLine = `${words[n] || String(n)}${n === 1 ? " gist, " : " gists, "}all accounted for.`;
   const podWrite = !!(session && state.webId && !state.demo);
@@ -943,7 +1015,7 @@ function renderDone() {
     : "nothing written";
   el("tally-validated").textContent = `${nVal} validated`;
   el("tally-rejected").textContent = `${nRej} rejected`;
-  el("tally-anagnorisis").textContent = `${nAna} anagnorisis`;
+  el("tally-flagged").textContent = `${nFlagged} flagged`;
 }
 
 // ── wiring ─────────────────────────────────────────────────────────────
@@ -967,8 +1039,8 @@ el("card-area").addEventListener("pointercancel", onUp);
 el("undo-btn").addEventListener("click", undo);
 el("comment-input").addEventListener("input", (e) => { state.comment = e.target.value; });
 
-document.querySelectorAll(".vz-vote-btn").forEach((btn) => {
-  btn.addEventListener("click", () => commit(btn.dataset.vote));
+document.querySelectorAll(".vz-flag-btn").forEach((btn) => {
+  btn.addEventListener("click", () => toggleFlag(btn.dataset.flag));
 });
 
 el("close-btn").addEventListener("click", () => {
