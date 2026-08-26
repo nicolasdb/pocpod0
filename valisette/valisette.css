@@ -1,0 +1,284 @@
+/* Valisette — app layout. Structure from core.css, identity from theme.css.
+   Values ported 1:1 from the design handoff (Valisette Mobile.dc.html +
+   README.md "Screens / views" and "Design tokens" tables). */
+
+html, body {
+  height: 100%;
+  overscroll-behavior: none;
+}
+body {
+  background: var(--surface-recessed);
+}
+a { color: var(--convergence); text-decoration: none; }
+a:hover { color: var(--convergence); }
+input::placeholder, textarea::placeholder { color: var(--text-tertiary); }
+
+@keyframes vz-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+.vz-shell-outer {
+  min-height: 100vh;
+  background: var(--surface-recessed);
+  display: flex;
+  justify-content: center;
+  font-family: var(--font-body);
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+.vz-shell {
+  width: 100%;
+  max-width: 440px;
+  min-height: 100vh;
+  background: var(--surface);
+  border-left: 1px solid var(--border-subtle);
+  border-right: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+}
+.vz-screen { display: none; }
+.vz-screen.vz-active {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  animation: vz-rise .35s ease both;
+}
+
+/* ── shared bits ─────────────────────────────────────────── */
+.vz-wordmark { display: flex; align-items: baseline; gap: 10px; }
+.vz-star { font-family: var(--font-heading); color: var(--convergence); }
+.vz-input {
+  width: 100%;
+  background: var(--surface-recessed);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 13px 14px;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  outline: none;
+}
+.vz-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.vz-btn-primary {
+  width: 100%;
+  min-height: 52px;
+  background: var(--convergence);
+  border: none;
+  border-radius: 3px;
+  color: var(--surface);
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.vz-btn-text {
+  background: none;
+  border: none;
+  padding: 8px 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.vz-spacer { flex: 1; }
+
+/* ── login ────────────────────────────────────────────────── */
+#screen-login { padding: 56px 24px 28px; }
+#screen-login .vz-star { font-size: 20px; }
+#screen-login .vz-wordmark-text {
+  font-family: var(--font-heading); font-size: 26px; font-weight: 700; letter-spacing: -0.01em;
+}
+#screen-login .vz-subtitle {
+  margin-top: 8px; font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--text-tertiary);
+}
+#screen-login .vz-intro {
+  margin-top: 44px; font-size: 15px; color: var(--text-secondary); max-width: 30ch; text-wrap: pretty;
+}
+#screen-login .vz-field { margin-top: 32px; display: flex; flex-direction: column; gap: 10px; }
+#screen-login .vz-input { font-size: 13px; }
+#screen-login .vz-btn-primary { margin-top: 24px; }
+#login-status { margin-top: 14px; min-height: 18px; font-family: var(--font-mono); font-size: 11px; }
+#screen-login .vz-footer {
+  display: flex; align-items: center; gap: 8px; padding-top: 20px; border-top: 1px solid var(--border-subtle);
+}
+#screen-login .vz-footer-note { font-family: var(--font-mono); font-size: 11px; color: var(--text-tertiary); }
+
+/* ── setup ────────────────────────────────────────────────── */
+#screen-setup { padding: 44px 24px 28px; }
+.vz-identity-row {
+  display: flex; align-items: center; gap: 8px; font-family: var(--font-mono);
+  font-size: 11px; color: var(--text-tertiary);
+}
+.vz-dot { width: 6px; height: 6px; border-radius: 9999px; background: var(--fresh); display: inline-block; }
+#screen-setup .vz-title {
+  margin-top: 24px; font-family: var(--font-heading); font-size: 24px; font-weight: 700;
+  line-height: 1.25; letter-spacing: -0.01em; max-width: 22ch; text-wrap: pretty;
+}
+#screen-setup .vz-subtitle { margin-top: 10px; font-size: 14px; color: var(--text-secondary); max-width: 32ch; }
+.vz-group { display: flex; flex-direction: column; gap: 9px; }
+#screen-setup .vz-group.vz-source { margin-top: 32px; }
+#screen-setup .vz-group.vz-output { margin-top: 26px; }
+#screen-setup .vz-input { font-size: 12.5px; }
+.vz-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.vz-chip {
+  padding: 6px 9px; min-height: 32px; background: var(--surface-elevated); border: 1px solid var(--border);
+  border-radius: 3px; font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); cursor: pointer;
+}
+.vz-out-preview { font-family: var(--font-mono); font-size: 11px; color: var(--text-tertiary); }
+
+.vz-chip-recent { border-color: var(--convergence); color: var(--convergence); }
+
+.vz-breadcrumb {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 2px;
+  font-family: var(--font-mono); font-size: 11px; color: var(--text-tertiary);
+}
+.vz-crumb {
+  background: none; border: none; padding: 2px 1px; font-family: var(--font-mono); font-size: 11px;
+  color: var(--text-secondary); cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
+}
+.vz-crumb:last-child { color: var(--text-primary); text-decoration: none; cursor: default; }
+.vz-crumb-sep { color: var(--border); }
+.vz-chip-empty { font-family: var(--font-mono); font-size: 11px; color: var(--text-tertiary); padding: 6px 0; }
+.vz-setup-footer {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px;
+}
+.vz-setup-footer .vz-stack-line { font-family: var(--font-mono); font-size: 11px; color: var(--text-tertiary); }
+.vz-signout {
+  background: none; border: none; font-size: 12px; color: var(--text-tertiary); cursor: pointer; padding: 6px 0;
+}
+
+/* ── deck ─────────────────────────────────────────────────── */
+#screen-deck { min-height: 100vh; user-select: none; }
+.vz-deck-header {
+  flex-shrink: 0; padding: 16px 18px 12px; border-bottom: 1px solid var(--border-subtle);
+  display: flex; flex-direction: column; gap: 11px;
+}
+.vz-deck-header-row1 { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.vz-deck-header-left { display: flex; align-items: baseline; gap: 9px; }
+.vz-deck-header-left .vz-star { font-size: 15px; }
+#session-date { font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); }
+.vz-deck-header-right { display: flex; align-items: center; gap: 8px; }
+#counter-text { font-family: var(--font-mono); font-size: 11px; color: var(--text-tertiary); }
+.vz-marks { display: flex; gap: 3px; align-items: center; }
+.vz-mark { flex: 1; height: 4px; border-radius: 2px; background: var(--border-subtle); transition: background .3s; }
+
+.vz-tray-wrap { flex-shrink: 0; padding: 0 18px; overflow: hidden; }
+#flag-tray {
+  display: flex; gap: 6px; padding: 11px 0 3px; opacity: 0; transform: translateY(-6px);
+  transition: opacity .18s ease, transform .18s ease;
+}
+.vz-flag-btn {
+  flex: 1; min-height: 46px; padding: 7px 6px; border-radius: 3px; font-size: 12px; font-weight: 500;
+  cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 3px;
+  background: var(--surface-elevated); border: 1px solid var(--border); color: var(--text-secondary);
+  transition: background .15s, border-color .15s, color .15s; font-family: var(--font-body);
+}
+.vz-flag-btn .vz-flag-emoji { font-size: 16px; line-height: 1; }
+.vz-flag-btn.vz-flag-on { background: color-mix(in oklab, var(--flag-color) 22%, transparent); border-color: var(--flag-color); color: var(--flag-color); }
+
+.vz-card-area {
+  flex: 1; display: flex; align-items: center; justify-content: center; padding: 14px 18px;
+  position: relative; touch-action: pan-y; min-height: 0;
+}
+.vz-ghost-card {
+  position: absolute; inset: 14px 18px; border: 1px solid var(--border-subtle); border-radius: 3px;
+  transform: translateY(9px) scale(0.97); opacity: .5;
+}
+#gist-card {
+  position: relative; width: 100%; background: var(--surface-elevated); border: 1px solid var(--border);
+  border-radius: 3px; padding: 22px 20px; cursor: grab; will-change: transform;
+}
+.vz-card-header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+#gist-type {
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+}
+#gist-moment { font-family: var(--font-mono); font-size: 11px; color: var(--text-tertiary); }
+#gist-title {
+  margin: 14px 0 0; font-family: var(--font-heading); font-size: 21px; font-weight: 700;
+  line-height: 1.3; letter-spacing: -0.01em; text-wrap: pretty;
+}
+#gist-raw {
+  margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); font-size: 14px;
+  line-height: 1.65; color: var(--text-secondary); max-height: 26vh; overflow-y: auto; white-space: pre-wrap;
+}
+#active-flags { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 5px; min-height: 0; }
+.vz-active-flag {
+  font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.04em; padding: 4px 7px;
+  border-radius: 3px; border: 1px solid var(--flag-color); color: var(--flag-color);
+}
+.vz-swipe-overlay {
+  position: absolute; inset: 0; border-radius: 3px; pointer-events: none; opacity: 0;
+  display: flex; align-items: flex-start; padding: 64px 18px 18px;
+}
+#reject-overlay {
+  background: color-mix(in oklab, var(--pattern) 14%, transparent); border: 1px solid var(--pattern);
+  justify-content: flex-end;
+}
+#validate-overlay {
+  background: color-mix(in oklab, var(--fresh) 12%, transparent); border: 1px solid var(--fresh);
+  justify-content: flex-start;
+}
+.vz-swipe-badge {
+  font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase;
+  background: var(--surface-elevated); padding: 5px 9px; border-radius: 3px;
+}
+#reject-overlay .vz-swipe-badge { color: var(--pattern); border: 1px solid var(--pattern); }
+#validate-overlay .vz-swipe-badge { color: var(--fresh); border: 1px solid var(--fresh); }
+
+.vz-action-row { flex-shrink: 0; padding: 6px 18px 0; display: flex; gap: 8px; align-items: stretch; }
+#undo-btn {
+  flex: 0 0 auto; width: 46px; min-height: 46px; background: transparent; border: 1px solid var(--border);
+  border-radius: 3px; font-size: 16px; cursor: pointer; color: var(--border);
+}
+#undo-btn.vz-undo-active { color: var(--text-secondary); }
+#comment-input {
+  flex: 1; min-width: 0; background: var(--surface-recessed); border: 1px solid var(--border);
+  border-radius: 3px; padding: 12px 14px; font-size: 13.5px; outline: none; font-family: var(--font-body);
+}
+
+.vz-status-strip {
+  flex-shrink: 0; padding: 11px 18px calc(14px + env(safe-area-inset-bottom));
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  font-family: var(--font-mono); font-size: 11px; color: var(--text-tertiary);
+}
+
+.vz-empty-stack { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 24px; text-align: center; color: var(--text-secondary); }
+.vz-empty-stack[hidden] { display: none; }
+
+/* ── done ─────────────────────────────────────────────────── */
+#screen-done { padding: 56px 24px 32px; }
+#screen-done .vz-wordmark { gap: 10px; }
+#screen-done .vz-star { font-size: 16px; }
+#screen-done .vz-session-date {
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-tertiary);
+}
+.vz-done-mid { margin-top: auto; margin-bottom: auto; display: flex; flex-direction: column; gap: 26px; }
+#done-line {
+  font-family: var(--font-heading); font-size: 27px; font-weight: 400; line-height: 1.35;
+  letter-spacing: -0.01em; max-width: 20ch; text-wrap: pretty;
+}
+.vz-receipt {
+  display: flex; flex-direction: column; gap: 7px; padding: 16px 0;
+  border-top: 1px solid var(--border-subtle); border-bottom: 1px solid var(--border-subtle);
+}
+#write-status { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-tertiary); }
+#saved-path { font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); word-break: break-all; line-height: 1.55; }
+#saved-stamp { font-family: var(--font-mono); font-size: 11px; color: var(--text-tertiary); }
+.vz-tally-row { display: flex; gap: 16px; font-family: var(--font-mono); font-size: 11px; color: var(--text-tertiary); }
+#close-btn {
+  width: 100%; min-height: 48px; background: transparent; border: 1px solid var(--border); border-radius: 3px;
+  color: var(--text-secondary); font-size: 14px; cursor: pointer;
+}

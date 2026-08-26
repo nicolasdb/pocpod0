@@ -119,6 +119,53 @@
           "filePath": "/backoffice/tokens.css"
         }
       ]
+    },
+    {
+      "comment": [
+        "Valisette (gist swipe-triage app): served at /valisette/ alongside the backoffice",
+        "at the root. Same StaticAssetHandler @id as above — Components.js concatenates the",
+        "array-valued `assets` property across definitions sharing an @id."
+      ],
+      "@id": "urn:solid-server:default:StaticAssetHandler",
+      "@type": "StaticAssetHandler",
+      "assets": [
+        {
+          "@id": "urn:solid-server:pocpod0:ValisetteIndexAsset",
+          "@type": "StaticAssetEntry",
+          "relativeUrl": "/valisette/",
+          "filePath": "/valisette/index.html"
+        },
+        {
+          "@id": "urn:solid-server:pocpod0:ValisetteIndexHtmlAsset",
+          "@type": "StaticAssetEntry",
+          "relativeUrl": "/valisette/index.html",
+          "filePath": "/valisette/index.html"
+        },
+        {
+          "@id": "urn:solid-server:pocpod0:ValisetteJsAsset",
+          "@type": "StaticAssetEntry",
+          "relativeUrl": "/valisette/valisette.js",
+          "filePath": "/valisette/valisette.js"
+        },
+        {
+          "@id": "urn:solid-server:pocpod0:ValisetteCssAsset",
+          "@type": "StaticAssetEntry",
+          "relativeUrl": "/valisette/valisette.css",
+          "filePath": "/valisette/valisette.css"
+        },
+        {
+          "@id": "urn:solid-server:pocpod0:ValisetteCoreCssAsset",
+          "@type": "StaticAssetEntry",
+          "relativeUrl": "/valisette/core.css",
+          "filePath": "/valisette/core.css"
+        },
+        {
+          "@id": "urn:solid-server:pocpod0:ValisetteThemeCssAsset",
+          "@type": "StaticAssetEntry",
+          "relativeUrl": "/valisette/theme.css",
+          "filePath": "/valisette/theme.css"
+        }
+      ]
     }
   ]
 }

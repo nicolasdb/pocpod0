@@ -1,0 +1,212 @@
+/*──────────────────────────────────────────────────────────────
+  DESIGN SYSTEM — CORE TOKENS
+  
+  Project-agnostic. Never edit this file per-project.
+  Defines STRUCTURE, not identity: spacing scale, radii,
+  the dual-density type mechanism, base reset, and the
+  *slots* that a theme file must fill in.
+  
+  Usage:
+    @import 'core/core.css';
+    @import 'themes/<project>/theme.css';   /* fills the slots */
+  
+  A theme file supplies:
+    - font families (--font-heading / --font-body / --font-mono)
+    - a semantic color palette (however many roles the project needs)
+    - surface/text/border values for each density class
+    - the type scale values for each density class (core defines
+      the STEPS, theme decides how many densities exist and their
+      pixel values)
+──────────────────────────────────────────────────────────────*/
+
+
+/* ══════════════════════════════════════════════════════════
+   1. SPACING — universal 4px base unit
+   ══════════════════════════════════════════════════════════ */
+
+:root {
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+}
+
+/*
+  Density-specific spacing (page padding, card padding, gaps)
+  is a THEME concern — different projects want different
+  densities. Core only supplies the raw scale above.
+*/
+
+
+/* ══════════════════════════════════════════════════════════
+   2. BORDERS & RADII
+   ══════════════════════════════════════════════════════════ */
+
+:root {
+  --radius-none: 0;
+  --radius-sm:   2px;
+  --radius-md:   3px;
+  --radius-lg:   4px;
+  --radius-full: 9999px;
+  --border-width: 1px;
+}
+
+/*
+  DEFAULT RULE (override in theme if the brand wants bubblier UI):
+  Max 4px radius on rectangular elements. radius-full reserved
+  for circular elements (dots, avatars, status indicators).
+*/
+
+
+/* ══════════════════════════════════════════════════════════
+   3. BASE RESET
+   ══════════════════════════════════════════════════════════ */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  background: var(--surface);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  line-height: var(--leading-body, 1.6);
+}
+
+::selection {
+  background: var(--selection, oklch(0.85 0.1 75));
+}
+
+button, input, textarea {
+  font-family: inherit;
+  color: inherit;
+}
+
+
+/* ══════════════════════════════════════════════════════════
+   4. TYPE SCALE MECHANISM
+   ══════════════════════════════════════════════════════════ */
+
+/*
+  Core defines the ROLE NAMES every project's type scale must
+  expose. Themes fill in the actual px/rem values per density
+  class (see themes/<project>/theme.css for an example).
+  
+  Required roles (a theme must define ALL of these, per
+  density class it introduces):
+  
+    --text-display   hero / largest display text
+    --text-h1        page titles
+    --text-h2        section titles
+    --text-h3        subsection / card titles
+    --text-h4        minor headings
+    --text-body      running text
+    --text-small     secondary body text
+    --text-meta      metadata, labels, timestamps
+    --text-micro     quietest annotation text
+  
+  Optional but recommended:
+    --leading-display / --leading-heading / --leading-body
+    --tracking-display / --tracking-heading / --tracking-label
+    --measure-body / --measure-narrow / --measure-wide
+  
+  Fonts (always three roles, any project):
+    --font-heading   display/heading typeface
+    --font-body      running text typeface
+    --font-mono      metadata/code typeface
+  
+  MULTI-DENSITY PATTERN:
+  If a project has multiple "rooms" with different density
+  needs (e.g. a public light-reading surface vs. a private
+  dense-tool surface), scope the above tokens under a class
+  on <html> or a wrapping element:
+  
+    .density-relaxed { --text-body: 15px; ... }
+    .density-compact  { --text-body: 14px; ... }
+  
+  A single-surface project just defines these once on :root.
+*/
+
+
+/* ══════════════════════════════════════════════════════════
+   5. SEMANTIC COLOR SLOT CONTRACT
+   ══════════════════════════════════════════════════════════ */
+
+/*
+  Core does NOT define color values — that's identity, and
+  identity is a theme decision. But every theme should expose
+  these structural slots so components can be written once
+  and themed freely:
+  
+    --surface              page background
+    --surface-elevated     card/panel background (above surface)
+    --surface-recessed     inset background (below surface) — optional
+    --text-primary
+    --text-secondary
+    --text-tertiary
+    --border
+    --border-subtle
+    --selection            text selection highlight
+  
+  On top of these structural slots, a theme adds its own
+  domain-specific semantic palette — colors that mean something
+  in THAT project. ndb's example: pearl / convergence / pattern /
+  temporal / frontier / fresh. A different project might need
+  none of these, or a completely different set (e.g. a finance
+  app might want: gain / loss / neutral / pending).
+  
+  Don't reuse ndb's semantic names in other projects unless the
+  same concepts genuinely apply. Name new semantic tokens after
+  what they MEAN in that project's domain, not after ndb's.
+*/
+
+
+/* ══════════════════════════════════════════════════════════
+   6. UTILITY CLASSES — generic, theme-independent
+   ══════════════════════════════════════════════════════════ */
+
+.font-heading { font-family: var(--font-heading); }
+.font-body    { font-family: var(--font-body); }
+.font-mono    { font-family: var(--font-mono); }
+
+.label-mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-micro, 11px);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-tertiary);
+}
+
+.meta {
+  font-family: var(--font-mono);
+  font-size: var(--text-meta, 12px);
+  color: var(--text-tertiary);
+}
+
+.meta-sep {
+  color: var(--border);
+  margin: 0 var(--space-2);
+}
+
+.no-decoration {
+  /* opt-in marker class — reminds contributors of the
+     "no gradients / no shadows / flat color" house rule
+     without hard-coding it as a global reset */
+  background-image: none;
+  box-shadow: none;
+}

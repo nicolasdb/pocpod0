@@ -1,0 +1,100 @@
+/*──────────────────────────────────────────────────────────────
+  THEME: ndb — "The Archivist" (Valisette copy)
+
+  Copied from the design handoff bundle (designsystem_ndb/theme.css)
+  verbatim, plus one addition: --anagnorisis, the single new semantic
+  token this app needs (design_handoff_valisette_swipe/README.md,
+  "Design tokens" — "the one token this app adds to the theme; add
+  it to theme.css's .dark block rather than inlining it").
+
+  Valisette only ever runs in the .dark density (README: "the app
+  runs entirely in the dark/backoffice room") — the .light block is
+  kept for fidelity with the source system but unused here.
+──────────────────────────────────────────────────────────────*/
+
+:root {
+  --font-heading: 'Literata', Georgia, 'Times New Roman', serif;
+  --font-body: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Commit Mono', 'Fira Code', monospace;
+
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+}
+
+.light {
+  --text-display:       2.5rem;
+  --text-h1:            1.75rem;
+  --text-h2:            1.375rem;
+  --text-h3:            1.25rem;
+  --text-h4:            1.0625rem;
+  --text-body:          0.9375rem;
+  --text-small:         0.8125rem;
+  --text-meta:          0.75rem;
+  --text-micro:         0.6875rem;
+  --text-nano:          0.625rem;
+
+  --leading-display:    1.15;
+  --leading-heading:    1.3;
+  --leading-body:       1.7;
+  --tracking-display:  -0.02em;
+  --tracking-heading:  -0.01em;
+  --tracking-label:     0.08em;
+
+  --surface:          oklch(0.97 0.005 260);
+  --surface-elevated: oklch(1.0 0 0);
+  --text-primary:     oklch(0.15 0.02 260);
+  --text-secondary:   oklch(0.45 0.02 260);
+  --text-tertiary:    oklch(0.60 0.015 260);
+  --border:           oklch(0.90 0.005 260);
+  --border-subtle:    oklch(0.93 0.005 260);
+  --selection:        oklch(0.85 0.08 75);
+
+  --pearl:        oklch(0.35 0.04 90);
+  --convergence:  oklch(0.52 0.14 75);
+  --pattern:      oklch(0.48 0.18 25);
+  --temporal:     oklch(0.48 0.10 240);
+  --frontier:     oklch(0.75 0.01 260);
+  --fresh:        oklch(0.42 0.14 145);
+}
+
+.dark {
+  --text-display:       1.75rem;
+  --text-h1:            1.375rem;
+  --text-h2:            1.125rem;
+  --text-h3:            1rem;
+  --text-h4:            0.875rem;
+  --text-body:          0.875rem;
+  --text-small:         0.8125rem;
+  --text-meta:          0.75rem;
+  --text-micro:         0.6875rem;
+  --text-nano:          0.625rem;
+
+  --leading-display:    1.2;
+  --leading-heading:    1.25;
+  --leading-body:       1.5;
+  --tracking-display:  -0.01em;
+  --tracking-heading:  -0.005em;
+  --tracking-label:     0.06em;
+
+  --surface:          oklch(0.15 0.02 260);
+  --surface-elevated: oklch(0.20 0.02 260);
+  --surface-recessed: oklch(0.12 0.02 260);
+  --text-primary:     oklch(0.93 0.01 260);
+  --text-secondary:   oklch(0.65 0.02 260);
+  --text-tertiary:    oklch(0.40 0.01 260);
+  --border:           oklch(0.25 0.02 260);
+  --border-subtle:    oklch(0.22 0.02 260);
+  --selection:        oklch(0.35 0.10 75);
+
+  --pearl:        oklch(0.95 0.02 90);
+  --convergence:  oklch(0.75 0.15 75);
+  --pattern:      oklch(0.65 0.25 25);
+  --temporal:     oklch(0.70 0.12 240);
+  --frontier:     oklch(0.40 0.01 260);
+  --fresh:        oklch(0.75 0.18 145);
+
+  /* Valisette's one added token — flag/mark color for "anagnorisis". */
+  --anagnorisis:  oklch(0.68 0.15 300);
+}

@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Valisette — gist triage · solid pod</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,500;7..72,700&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/valisette/core.css">
+<link rel="stylesheet" href="/valisette/theme.css">
+<link rel="stylesheet" href="/valisette/valisette.css">
+</head>
+<body>
+<div class="vz-shell-outer">
+<div class="vz-shell">
+
+  <!-- 1. login -->
+  <section id="screen-login" class="vz-screen">
+    <div class="vz-wordmark">
+      <span class="vz-star">✦</span>
+      <span class="vz-wordmark-text">Valisette</span>
+    </div>
+    <div class="vz-subtitle">gist triage · solid pod</div>
+    <div class="vz-intro">Sign in with your WebID. Valisette reads the gists in your pod and writes your calls back to it — nothing leaves the pod.</div>
+    <div class="vz-field">
+      <div class="vz-label">identity provider</div>
+      <input id="provider-input" class="vz-input" data-nodrag spellcheck="false" autocapitalize="off"
+             value="https://pod.nicolasdb.eu" placeholder="https://pod.nicolasdb.eu">
+    </div>
+    <button id="login-btn" class="vz-btn-primary" data-nodrag>Continue to your provider →</button>
+    <div id="login-status"></div>
+    <div class="vz-spacer"></div>
+    <div class="vz-footer">
+      <button id="demo-btn" class="vz-btn-text" data-nodrag>Continue without a pod</button>
+      <span class="vz-footer-note">· offline stack, local only</span>
+    </div>
+  </section>
+
+  <!-- 2. setup -->
+  <section id="screen-setup" class="vz-screen">
+    <div class="vz-identity-row">
+      <span class="vz-dot"></span>
+      <span id="webid-short"></span>
+    </div>
+    <div class="vz-title">Two paths, then you're set.</div>
+    <div class="vz-subtitle">Asked once. Valisette remembers them on this device.</div>
+
+    <div class="vz-group vz-source">
+      <div class="vz-label">source — gists to triage</div>
+      <input id="source-input" class="vz-input" data-nodrag spellcheck="false">
+      <div id="source-recents" class="vz-chips" hidden></div>
+      <div id="source-breadcrumb" class="vz-breadcrumb"></div>
+      <div id="source-chips" class="vz-chips"></div>
+    </div>
+
+    <div class="vz-group vz-output">
+      <div class="vz-label">output — where calls are written</div>
+      <input id="output-input" class="vz-input" data-nodrag spellcheck="false">
+      <div id="output-recents" class="vz-chips" hidden></div>
+      <div id="output-breadcrumb" class="vz-breadcrumb"></div>
+      <div id="output-chips" class="vz-chips"></div>
+      <div id="out-preview" class="vz-out-preview"></div>
+    </div>
+
+    <div class="vz-spacer"></div>
+    <div class="vz-setup-footer">
+      <span id="stack-line" class="vz-stack-line"></span>
+      <button id="signout-btn" class="vz-signout" data-nodrag>sign out</button>
+    </div>
+    <button id="open-stack-btn" class="vz-btn-primary" data-nodrag>Open tonight's stack</button>
+  </section>
+
+  <!-- 3. deck -->
+  <section id="screen-deck" class="vz-screen">
+    <div class="vz-deck-header">
+      <div class="vz-deck-header-row1">
+        <div class="vz-deck-header-left">
+          <span class="vz-star">✦</span>
+          <span id="session-date"></span>
+        </div>
+        <div class="vz-deck-header-right">
+          <span id="save-dot" class="vz-dot"></span>
+          <span id="counter-text"></span>
+        </div>
+      </div>
+      <div id="marks" class="vz-marks"></div>
+    </div>
+
+    <div class="vz-tray-wrap">
+      <div id="flag-tray">
+        <button class="vz-flag-btn" data-nodrag data-flag="anagnorisis" style="--flag-color: var(--anagnorisis)">
+          <span class="vz-flag-emoji">💡</span>anagnorisis</button>
+        <button class="vz-flag-btn" data-nodrag data-flag="revisit" style="--flag-color: var(--temporal)">
+          <span class="vz-flag-emoji">🔂</span>revisit</button>
+        <button class="vz-flag-btn" data-nodrag data-flag="priority" style="--flag-color: var(--convergence)">
+          <span class="vz-flag-emoji">⚠️</span>priority</button>
+      </div>
+    </div>
+
+    <div id="card-area" class="vz-card-area">
+      <div class="vz-ghost-card"></div>
+      <div id="gist-card">
+        <div class="vz-card-header">
+          <span id="gist-type"></span>
+          <span id="gist-moment"></span>
+        </div>
+        <h2 id="gist-title"></h2>
+        <div id="gist-raw"></div>
+        <div id="active-flags"></div>
+        <div id="reject-overlay" class="vz-swipe-overlay"><span class="vz-swipe-badge">reject</span></div>
+        <div id="validate-overlay" class="vz-swipe-overlay"><span class="vz-swipe-badge">validate</span></div>
+      </div>
+      <div id="empty-stack" class="vz-empty-stack" hidden>
+        <div>couldn't find any gists to triage in this source.</div>
+      </div>
+    </div>
+
+    <div class="vz-action-row">
+      <button id="undo-btn" data-nodrag title="undo last swipe">↺</button>
+      <input id="comment-input" data-nodrag placeholder="Comment — optional">
+    </div>
+
+    <div class="vz-status-strip">
+      <span id="save-text"></span>
+      <span>drag up for flags</span>
+    </div>
+  </section>
+
+  <!-- 4. done -->
+  <section id="screen-done" class="vz-screen">
+    <div class="vz-wordmark">
+      <span class="vz-star">✦</span>
+      <span id="done-session-date" class="vz-session-date"></span>
+    </div>
+    <div class="vz-done-mid">
+      <div id="done-line"></div>
+      <div class="vz-receipt">
+        <div id="write-status"></div>
+        <div id="saved-path"></div>
+        <div id="saved-stamp"></div>
+      </div>
+      <div class="vz-tally-row">
+        <span id="tally-validated"></span>
+        <span id="tally-rejected"></span>
+        <span id="tally-flagged"></span>
+      </div>
+    </div>
+    <button id="close-btn" data-nodrag>Close</button>
+  </section>
+
+</div>
+</div>
+<script type="module" src="/valisette/valisette.js"></script>
+</body>
+</html>
