@@ -3,7 +3,7 @@
    README.md "Screens / views" and "Design tokens" tables). */
 
 html, body {
-  height: 100%;
+  min-height: 100%;
   overscroll-behavior: none;
 }
 body {
@@ -19,25 +19,42 @@ input::placeholder, textarea::placeholder { color: var(--text-tertiary); }
 }
 
 .vz-shell-outer {
+  /* min-height, not height: on any browser whose reported viewport (dvh, svh,
+     or measured visualViewport — see --vz-vh in JS) turns out bigger than
+     what's actually visible, the shell grows past it instead of clipping.
+     The overflow becomes page-scrollable — see `overflow` below — rather than
+     trapped behind chrome the browser never told us about. Brave's own
+     bottom bar is exactly this case: it doesn't reliably shrink dvh/svh/
+     visualViewport for its own UI, so nothing sized to those units can be
+     trusted to actually fit above it.
+     Ladder is still weakest-to-strongest for the common case where the units
+     ARE honest, so most browsers never hit the fallback at all. */
   min-height: 100vh;
+  min-height: 100svh;
+  min-height: var(--vz-vh, 100svh);
   background: var(--surface-recessed);
   display: flex;
   justify-content: center;
   font-family: var(--font-body);
   color: var(--text-primary);
   line-height: 1.5;
+  /* Only x: the swipe animation flies the card out to ±460px (FLIGHT in
+     valisette.js), well past the 440px shell — that needs clipping or it
+     shows a horizontal scrollbar mid-animation. Y stays open; that's the
+     escape valve above. */
+  overflow-x: hidden;
 }
 .vz-shell {
   width: 100%;
   max-width: 440px;
-  min-height: 100vh;
+  min-height: 100%;
   background: var(--surface);
   border-left: 1px solid var(--border-subtle);
   border-right: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
   position: relative;
-  overflow: hidden;
+  overflow-x: hidden;
 }
 .vz-screen { display: none; }
 .vz-screen.vz-active {
@@ -165,8 +182,8 @@ input::placeholder, textarea::placeholder { color: var(--text-tertiary); }
 .vz-deck-header-row1 { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .vz-deck-header-left { display: flex; align-items: baseline; gap: 9px; }
 .vz-back-btn {
-  background: none; border: none; padding: 0 2px; font-size: 19px; line-height: 1; cursor: pointer;
-  color: var(--text-secondary); font-family: var(--font-heading);
+  background: none; border: none; padding: 0 6px; font-size: 22px; line-height: 1; cursor: pointer;
+  color: var(--text-primary); font-family: var(--font-heading);
 }
 #session-date { font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); }
 .vz-deck-header-right { display: flex; align-items: center; gap: 8px; }
@@ -187,13 +204,12 @@ input::placeholder, textarea::placeholder { color: var(--text-tertiary); }
 }
 .vz-flag-btn .vz-flag-emoji { font-size: 16px; line-height: 1; }
 .vz-flag-btn.vz-flag-on { background: color-mix(in oklab, var(--flag-color) 22%, transparent); border-color: var(--flag-color); color: var(--flag-color); }
-/* Not a toggle — commits validation="anagnorisis" immediately on tap. */
-.vz-flag-btn.vz-flag-commit { border-color: var(--flag-color); color: var(--flag-color); }
-.vz-flag-btn.vz-flag-commit:active { background: color-mix(in oklab, var(--flag-color) 22%, transparent); }
+/* Anagnorisis uses the same .vz-flag-on treatment as the two triage flags —
+   it arms the next swipe rather than committing on tap. */
 
 .vz-card-area {
   flex: 1; display: flex; align-items: center; justify-content: center; padding: 14px 18px;
-  position: relative; touch-action: pan-y; min-height: 0;
+  position: relative; touch-action: none; min-height: 0;
 }
 .vz-ghost-card {
   position: absolute; inset: 14px 18px; border: 1px solid var(--border-subtle); border-radius: 3px;
@@ -216,6 +232,7 @@ input::placeholder, textarea::placeholder { color: var(--text-tertiary); }
   margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); font-size: 14px;
   line-height: 1.65; color: var(--text-secondary); max-height: 26vh; overflow-y: auto; white-space: pre-wrap;
 }
+#gist-raw.vz-raw-scrolls { /* desktop only — see the coarse-pointer block */ touch-action: pan-y; }
 #active-flags { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 5px; min-height: 0; }
 .vz-active-flag {
   font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.04em; padding: 4px 7px;
@@ -239,13 +256,26 @@ input::placeholder, textarea::placeholder { color: var(--text-tertiary); }
 }
 #reject-overlay .vz-swipe-badge { color: var(--pattern); border: 1px solid var(--pattern); }
 #validate-overlay .vz-swipe-badge { color: var(--fresh); border: 1px solid var(--fresh); }
+/* Card is past ARM_RADIUS and inside a target's sector — releasing now commits.
+   The lift is the only signal that distinguishes "will land" from "will snap
+   back", so it stays visible even when a target overlay is under the finger. */
+#gist-card.vz-armed { box-shadow: 0 10px 34px oklch(0 0 0 / 0.45); }
 
-.vz-action-row { flex-shrink: 0; padding: 6px 18px 0; display: flex; gap: 8px; align-items: stretch; }
+/* The bottom padding used to come from .vz-status-strip below. With the
+   keyboard up that strip is hidden (see the short-viewport block), so the row
+   carries its own gutter and the safe-area inset itself — otherwise the last
+   few pixels of the input sit under the system nav bar. */
+.vz-action-row {
+  flex-shrink: 0; padding: 6px 18px 0; display: flex; gap: 8px; align-items: stretch;
+}
 #undo-btn {
   flex: 0 0 auto; width: 46px; min-height: 46px; background: transparent; border: 1px solid var(--border);
-  border-radius: 3px; font-size: 16px; cursor: pointer; color: var(--border);
+  border-radius: 3px; font-size: 18px; cursor: pointer;
+  /* Was var(--border) when idle — a border token used as text, invisible on a
+     phone. Idle now reads as disabled, active as a live control. */
+  color: var(--text-tertiary);
 }
-#undo-btn.vz-undo-active { color: var(--text-secondary); }
+#undo-btn.vz-undo-active { color: var(--text-primary); }
 #comment-input {
   flex: 1; min-width: 0; background: var(--surface-recessed); border: 1px solid var(--border);
   border-radius: 3px; padding: 12px 14px; font-size: 13.5px; outline: none; font-family: var(--font-body);
@@ -283,4 +313,40 @@ input::placeholder, textarea::placeholder { color: var(--text-tertiary); }
 #close-btn {
   width: 100%; min-height: 48px; background: transparent; border: 1px solid var(--border); border-radius: 3px;
   color: var(--text-secondary); font-size: 14px; cursor: pointer;
+}
+
+/* ── touch / small-screen adjustments ─────────────────────── */
+/* The design's 10.5–11px mono labels are legible on a desktop monitor at
+   arm's length and not on a phone held in one hand. Floor them at 12px for
+   coarse pointers only, so the desktop composition is unchanged. */
+@media (pointer: coarse) {
+  #session-date, #counter-text, #gist-type, #gist-moment,
+  #login-status, #stack-line, #write-status, #saved-stamp,
+  .vz-footer-note, .vz-chip-empty, .vz-setup-footer .vz-stack-line,
+  .vz-status-strip, .vz-tally-row { font-size: 12px; }
+  .vz-active-flag { font-size: 12px; }
+  /* No nested scroller on touch, at any length. A scrollable block covering
+     most of the card competes with the drag for every gesture that starts on
+     it, and no touch-action tuning makes that ambiguity go away. Long raw
+     text is clamped instead — the card is a triage summary, not a reader. */
+  #gist-raw {
+    font-size: 15px; max-height: none; overflow: hidden; touch-action: none;
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 8;
+  }
+  #gist-raw.vz-raw-scrolls { touch-action: none; }
+}
+
+/* Short viewports — a phone with the virtual keyboard raised (the meta
+   viewport's interactive-widget=resizes-content shrinks the layout viewport,
+   so this fires exactly then). Give the comment row the room instead of
+   letting the card push it under the keyboard. */
+@media (max-height: 560px) {
+  #gist-raw { max-height: 18vh; }
+  .vz-deck-header { padding: 8px 18px 6px; gap: 6px; }
+  #gist-card { padding: 14px 16px; }
+  #gist-title { margin-top: 8px; font-size: 18px; }
+  /* The strip is the least useful row on screen while typing, and it was the
+     thing pushing the input's bottom edge out of the viewport. */
+  .vz-status-strip { display: none; }
+  .vz-action-row { padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
 }

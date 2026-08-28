@@ -82,8 +82,11 @@
   --surface-elevated: oklch(0.20 0.02 260);
   --surface-recessed: oklch(0.12 0.02 260);
   --text-primary:     oklch(0.93 0.01 260);
-  --text-secondary:   oklch(0.65 0.02 260);
-  --text-tertiary:    oklch(0.40 0.01 260);
+  /* Raised from 0.65/0.40 for WCAG 2.1 AA: tertiary was ~2.2:1 on
+     --surface-elevated, and it carries every 11px mono label in the app.
+     Now ~4.6:1 (tertiary) and ~6.2:1 (secondary) on --surface-elevated. */
+  --text-secondary:   oklch(0.72 0.02 260);
+  --text-tertiary:    oklch(0.63 0.01 260);
   --border:           oklch(0.25 0.02 260);
   --border-subtle:    oklch(0.22 0.02 260);
   --selection:        oklch(0.35 0.10 75);

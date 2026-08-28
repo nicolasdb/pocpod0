@@ -359,6 +359,12 @@ const state = {
   trayOpen: false,
   comment: "",
   flags: {}, // { [flagKey]: true } — toggled in the tray, committed with the next swipe
+  // Anagnorisis is a validation outcome, not a triage flag (schema-v1.md §4),
+  // but its tray button arms rather than commits: while true, the next swipe —
+  // either direction — writes validation="anagnorisis" instead of
+  // validated/rejected. A tap alone decides nothing, which is what makes the
+  // button survivable on a touchscreen.
+  anagnorisis: false,
 };
 
 let session = null; // this app's own isolated Inrupt Session (see header comment)
@@ -739,6 +745,7 @@ function resetDeckState() {
   state.failures = 0;
   state.comment = "";
   state.flags = {};
+  state.anagnorisis = false;
   commentLoadedFor = null;
 }
 
@@ -759,12 +766,25 @@ function toggleFlag(key) {
   renderFlagTray();
 }
 
+function toggleAnagnorisis() {
+  state.anagnorisis = !state.anagnorisis;
+  renderFlagTray();
+}
+
 function renderFlagTray() {
   document.querySelectorAll(".vz-flag-btn").forEach((btn) => {
-    btn.classList.toggle("vz-flag-on", !!state.flags[btn.dataset.flag]);
+    if (btn.dataset.arm === "anagnorisis") btn.classList.toggle("vz-flag-on", state.anagnorisis);
+    else btn.classList.toggle("vz-flag-on", !!state.flags[btn.dataset.flag]);
   });
   const activeEl = el("active-flags");
   activeEl.innerHTML = "";
+  if (state.anagnorisis) {
+    const span = document.createElement("span");
+    span.className = "vz-active-flag";
+    span.style.setProperty("--flag-color", "var(--anagnorisis)");
+    span.textContent = "💡 anagnorisis";
+    activeEl.appendChild(span);
+  }
   FLAGS.filter((f) => state.flags[f.key]).forEach((f) => {
     const span = document.createElement("span");
     span.className = "vz-active-flag";
@@ -774,21 +794,55 @@ function renderFlagTray() {
   });
 }
 
+// ── zone model ──────────────────────────────────────────────────────────
+// The card moves 1:1 with the finger in both axes, and the decision is made
+// by WHERE it is released, not by which threshold a damped axis happened to
+// cross. Three targets — left, up, right — each owning an angular sector
+// around the start point. Outside ARM_RADIUS nothing is armed and release
+// always snaps back, so a short or ambiguous drag can never commit.
+//
+// Replaces per-axis thresholds on a vertically-damped transform, which read
+// as fluid horizontally and erratic vertically because the two axes did not
+// move the same amount per pixel of finger travel.
+const ARM_RADIUS = 88;   // px of travel before any target arms
+const UP_SECTOR = 0.55;  // ±~32° around straight up claims the tray
+
+// Which target a displacement points at, or null if too short to mean
+// anything. Angle first, magnitude second — direction is what the user aimed.
+function zoneFor(x, y) {
+  const dist = Math.hypot(x, y);
+  if (dist < ARM_RADIUS) return null;
+  // Straight up is -y. Compare the vertical share of the vector against the
+  // sector width rather than against x alone, so a diagonal resolves the same
+  // way at any distance.
+  if (-y / dist > Math.cos(Math.PI * UP_SECTOR / 2)) return "up";
+  return x > 0 ? "right" : "left";
+}
+
 function paint() {
   if (!drag) return;
   const { x, y } = drag;
-  const up = Math.max(0, -y);
-  const lean = up * 0.42;
-  cardEl.style.transform = `translate(${x.toFixed(1)}px,${(-lean + Math.max(0, y) * 0.2).toFixed(1)}px) rotate(${(x * 0.035).toFixed(2)}deg)`;
-  rejectEl.style.opacity = String(Math.min(1, Math.max(0, -x) / 105));
-  validateEl.style.opacity = String(Math.min(1, Math.max(0, x) / 105));
-  paintTray(up);
+  // 1:1 on both axes. The only cosmetic liberty is a slight rotation, which
+  // tracks x and so cannot desync from the finger.
+  cardEl.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px) rotate(${(x * 0.03).toFixed(2)}deg)`;
+
+  const zone = zoneFor(x, y);
+  drag.zone = zone;
+  // Targets light up fully once armed and only preview before that, so the
+  // release outcome is legible mid-gesture.
+  const dist = Math.hypot(x, y);
+  const preview = Math.min(0.55, dist / (ARM_RADIUS * 1.6));
+  rejectEl.style.opacity = String(zone === "left" ? 1 : (x < 0 ? preview : 0));
+  validateEl.style.opacity = String(zone === "right" ? 1 : (x > 0 ? preview : 0));
+  paintTray(zone === "up" ? 999 : Math.max(0, -y));
+  cardEl.classList.toggle("vz-armed", !!zone);
 }
 
 function resetCard() {
   cardEl.style.transition = "transform .3s cubic-bezier(.2,.8,.3,1)";
   cardEl.style.transform = "none";
   cardEl.style.opacity = "1";
+  cardEl.classList.remove("vz-armed");
   rejectEl.style.opacity = "0";
   validateEl.style.opacity = "0";
   paintTray(0);
@@ -796,8 +850,9 @@ function resetCard() {
 
 function onDown(e) {
   if (animating || state.i >= state.gists.length) return;
+  if (!e.isPrimary) return; // a second finger is not a second decision
   if (e.target && e.target.closest && e.target.closest("[data-nodrag]")) return;
-  drag = { x0: e.clientX, y0: e.clientY, x: 0, y: 0 };
+  drag = { x0: e.clientX, y0: e.clientY, x: 0, y: 0, zone: null };
   cardEl.style.transition = "none";
   try { el("card-area").setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
 }
@@ -807,13 +862,22 @@ function onMove(e) {
   drag.y = e.clientY - drag.y0;
   paint();
 }
+// A cancelled pointer is not a decision. Browser-stolen gestures used to land
+// here and commit a vote on whatever x happened to be — abandon instead.
+function onCancel() {
+  if (!drag) return;
+  drag = null;
+  resetCard();
+}
 function onUp() {
   if (!drag) return;
-  const { x, y } = drag;
+  const zone = drag.zone;
   drag = null;
-  if (x > 100) return commit("validated");
-  if (x < -100) return commit("rejected");
-  if (-y > 64) { state.trayOpen = true; resetCard(); return; }
+  if (zone === "up") { state.trayOpen = true; resetCard(); return; }
+  // Armed anagnorisis overrides the direction: the swipe still carries the
+  // decision, the tray button only chose which outcome it carries.
+  if (zone === "right") return commit(state.anagnorisis ? "anagnorisis" : "validated");
+  if (zone === "left") return commit(state.anagnorisis ? "anagnorisis" : "rejected");
   resetCard();
 }
 
@@ -846,7 +910,12 @@ function commit(vote) {
   state.trayOpen = false;
   state.comment = "";
   state.flags = {};
+  state.anagnorisis = false;
   el("comment-input").value = "";
+  // The note belongs to the card that just left. Dropping focus closes the
+  // virtual keyboard and hands the screen back to the next card, instead of
+  // leaving an empty field armed over it.
+  el("comment-input").blur();
   commentLoadedFor = null;
 
   writeValidation(g, vote, note, flags).then(
@@ -931,6 +1000,7 @@ function undo() {
   if (animating || !state.history.length) return;
   const last = state.history[state.history.length - 1];
   const target = last.prevVote || "pending";
+  const undoneVote = state.decisions[last.id];
 
   const decisions = { ...state.decisions };
   if (last.prevVote) decisions[last.id] = last.prevVote; else delete decisions[last.id];
@@ -949,6 +1019,9 @@ function undo() {
   const flagsMap = {};
   (last.flags || []).forEach((k) => { flagsMap[k] = true; });
   state.flags = flagsMap; // put the just-picked flags back in the tray for editing
+  // Same for the outcome: undoing an anagnorisis re-arms it, so the card comes
+  // back in the exact state it was swiped in.
+  state.anagnorisis = undoneVote === "anagnorisis";
   renderFlagTray();
 
   writeValidation(last.gist, target, last.prevNote, last.prevFlags).then(
@@ -1046,6 +1119,13 @@ function renderDeck() {
     el("gist-moment").style.color = backlog ? "var(--temporal)" : "var(--text-tertiary)";
     el("gist-title").textContent = g.titre || "";
     el("gist-raw").textContent = g.raw || "";
+    // Only a raw block that actually overflows gets to claim vertical touch
+    // gestures — see #gist-raw.vz-raw-scrolls. Measured after the write, and
+    // deferred so layout has settled.
+    requestAnimationFrame(() => {
+      const raw = el("gist-raw");
+      raw.classList.toggle("vz-raw-scrolls", raw.scrollHeight > raw.clientHeight + 1);
+    });
     if (commentLoadedFor !== g.id) {
       state.comment = g.note || "";
       el("comment-input").value = state.comment;
@@ -1102,17 +1182,40 @@ el("open-stack-btn").addEventListener("click", loadGists);
 el("card-area").addEventListener("pointerdown", onDown);
 el("card-area").addEventListener("pointermove", onMove);
 el("card-area").addEventListener("pointerup", onUp);
-el("card-area").addEventListener("pointercancel", onUp);
+el("card-area").addEventListener("pointercancel", onCancel);
 el("undo-btn").addEventListener("click", undo);
 el("comment-input").addEventListener("input", (e) => { state.comment = e.target.value; });
 
 document.querySelectorAll(".vz-flag-btn").forEach((btn) => {
-  // The anagnorisis button in the tray commits directly (it's a validation
-  // outcome, per schema-v1.md §4) — the other two are multi-select toggles
-  // that ride along with whichever swipe comes next.
-  if (btn.dataset.vote) btn.addEventListener("click", () => commit(btn.dataset.vote));
+  // Anagnorisis arms the next swipe (it's a validation outcome per
+  // schema-v1.md §4, so it replaces validated/rejected rather than joining
+  // triage_flags); the other two are multi-select toggles that ride along
+  // with whichever swipe comes next. Every one of them only ever arms —
+  // nothing in this tray commits on tap.
+  if (btn.dataset.arm === "anagnorisis") btn.addEventListener("click", toggleAnagnorisis);
   else btn.addEventListener("click", () => toggleFlag(btn.dataset.flag));
 });
+
+// ── viewport height ─────────────────────────────────────────────────────
+// Best-effort refinement, not the safety net — that's the min-height +
+// overflow-y:auto fallback in valisette.css. Brave on Android doesn't
+// reliably shrink dvh/svh/visualViewport for its own bottom bar either, so
+// even this measurement can't be trusted as the truth; it only narrows the
+// gap on browsers that DO report correctly (most others). CSS still holds if
+// visualViewport is absent or wrong.
+function syncViewportHeight() {
+  const vv = window.visualViewport;
+  if (!vv) return;
+  document.documentElement.style.setProperty("--vz-vh", `${Math.round(vv.height)}px`);
+}
+if (window.visualViewport) {
+  syncViewportHeight();
+  window.visualViewport.addEventListener("resize", syncViewportHeight);
+  // Brave shows/hides its bottom bar on scroll, which resizes the visual
+  // viewport without firing resize on some builds.
+  window.visualViewport.addEventListener("scroll", syncViewportHeight);
+  window.addEventListener("orientationchange", () => setTimeout(syncViewportHeight, 200));
+}
 
 el("close-btn").addEventListener("click", () => {
   state.gists = [];
@@ -1132,8 +1235,9 @@ document.addEventListener("keydown", (e) => {
   if (state.screen !== "deck") return;
   const tag = document.activeElement && document.activeElement.tagName;
   if (tag === "INPUT" || tag === "TEXTAREA") return;
-  if (e.key === "ArrowLeft") commit("rejected");
-  else if (e.key === "ArrowRight") commit("validated");
+  // Same override as the swipe: armed anagnorisis replaces the outcome.
+  if (e.key === "ArrowLeft") commit(state.anagnorisis ? "anagnorisis" : "rejected");
+  else if (e.key === "ArrowRight") commit(state.anagnorisis ? "anagnorisis" : "validated");
   else if (e.key === "ArrowUp") { e.preventDefault(); state.trayOpen = true; resetCard(); }
   else if (e.key === "ArrowDown" || e.key === "Backspace") { e.preventDefault(); undo(); }
 });

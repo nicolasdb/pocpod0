@@ -2,14 +2,16 @@
 <html lang="en" class="dark">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <title>Valisette — gist triage · solid pod</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,500;7..72,700&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/core.css">
-<link rel="stylesheet" href="/theme.css">
-<link rel="stylesheet" href="/valisette.css">
+<!-- Assets are served with a long max-age and no ETag, so every edit to one of
+     these files needs its ?v= bumped or phones keep the old copy. -->
+<link rel="stylesheet" href="/core.css?v=6">
+<link rel="stylesheet" href="/theme.css?v=6">
+<link rel="stylesheet" href="/valisette.css?v=6">
 </head>
 <body>
 <div class="vz-shell-outer">
@@ -79,8 +81,8 @@
 
     <div class="vz-tray-wrap">
       <div id="flag-tray">
-        <button class="vz-flag-btn vz-flag-commit" data-nodrag data-vote="anagnorisis" style="--flag-color: var(--anagnorisis)" title="commit as anagnorisis">
-          <span class="vz-flag-emoji">🏛️</span>anagnorisis</button>
+        <button class="vz-flag-btn" data-nodrag data-arm="anagnorisis" style="--flag-color: var(--anagnorisis)" title="arm anagnorisis, then swipe to commit">
+          <span class="vz-flag-emoji">💡</span>anagnorisis</button>
         <button class="vz-flag-btn" data-nodrag data-flag="revisit" style="--flag-color: var(--temporal)" title="tag, then swipe to commit">
           <span class="vz-flag-emoji">🔂</span>revisit</button>
         <button class="vz-flag-btn" data-nodrag data-flag="priority" style="--flag-color: var(--convergence)" title="tag, then swipe to commit">
@@ -142,6 +144,6 @@
 
 </div>
 </div>
-<script type="module" src="/valisette.js"></script>
+<script type="module" src="/valisette.js?v=6"></script>
 </body>
 </html>
