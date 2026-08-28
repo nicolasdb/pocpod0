@@ -729,6 +729,17 @@ function buildMcpServer(identity) {
       annotations: { readOnlyHint: false, idempotentHint: false },
     },
     safeHandler("solid_prepare_upload", identity, "targetUrl", async ({ targetUrl, contentType, bytes, overwrite }) => {
+      // Review 8.10: reject up front rather than issue a ticket that can
+      // only ever fail (413) at redemption, wasting its 5-minute window.
+      if (bytes > UPLOAD_MAX_BYTES) {
+        return {
+          isError: true,
+          content: [
+            { type: "text", text: `${bytes} bytes exceeds the upload cap of ${UPLOAD_MAX_BYTES} bytes. No ticket was issued.` },
+          ],
+        };
+      }
+
       // AC3: probe before issuing. A failed probe must fail toward caution —
       // never silently treated as "new" — so a non-404 error propagates and
       // safeHandler turns it into an error result with no ticket issued.
@@ -754,7 +765,8 @@ function buildMcpServer(identity) {
         };
       }
 
-      const ticket = uploadTickets.createTicket({ targetUrl, identity, contentType, bytes });
+      const ticket = uploadTickets.createTicket({ targetUrl, identity, contentType, bytes, overwrite });
+      appendAuditEntry({ label: identity.label, tool: "upload_prepared", resource: targetUrl, outcome: "ok" });
       const uploadUrl = new URL(`/upload/${ticket.token}`, UPLOAD_PUBLIC_BASE).toString();
       const overwriteNote =
         existing !== null
@@ -1150,12 +1162,23 @@ async function main() {
       });
       next();
     },
+    // Review 8.10: reject an unknown/expired token before the raw-body
+    // parser buffers up to UPLOAD_MAX_BYTES for a request that can never
+    // succeed. This is a peek, not a consume — the real (single-use)
+    // redemption still happens below, after the length check passes.
+    (req, res, next) => {
+      if (!uploadTickets.peekTicket(req.params.token)) {
+        res.status(404).json({ error: "Not found." });
+        return;
+      }
+      next();
+    },
     express.raw({ type: "*/*", limit: UPLOAD_MAX_BYTES }),
     async (req, res) => {
       // AC10: unknown/expired/replayed token all get the same generic
       // shape as the /mcp/:slug 404 path — no oracle on which case it was —
       // and the attempted token is never logged (Task 3.5).
-      const ticket = uploadTickets.redeemTicket(req.params.token);
+      const ticket = uploadTickets.peekTicket(req.params.token);
       if (!ticket) {
         res.status(404).json({ error: "Not found." });
         return;
@@ -1167,7 +1190,11 @@ async function main() {
       // mid-transfer, or a caller lying about `bytes`, must never leave a
       // truncated write at the real URL — pods have no versioning to
       // recover from that. On mismatch the pod stays byte-identical to
-      // before this request.
+      // before this request. Review 8.10: the ticket is NOT consumed here —
+      // a caller who mis-declared `bytes` gets to retry within the same
+      // window instead of losing the ticket on one bad attempt. The
+      // response omits the exact byte count so this path isn't a precise
+      // size oracle on top of confirming the token is live.
       if (buffer.length !== ticket.bytes) {
         appendAuditEntry({
           label: ticket.identity.label,
@@ -1176,9 +1203,47 @@ async function main() {
           outcome: "error",
         });
         res.status(400).json({
-          error: `Body was ${buffer.length} bytes, ticket declared ${ticket.bytes}. Nothing was written.`,
+          error: "Body length did not match the ticket. Nothing was written; the ticket is still valid.",
         });
         return;
+      }
+
+      // Review 8.10 (TOCTOU): AC3's existence probe ran at issue time, up
+      // to 5 minutes before this redemption. Re-probe now, right before the
+      // write, so a target that was created/changed in the gap is caught
+      // by the same overwrite ceremony rather than being silently
+      // clobbered. This does consume the ticket even on rejection — the
+      // ticket's premise (the state it was issued against) no longer
+      // holds, so re-issuing (a fresh probe) is the correct next step, not
+      // a retry of this one.
+      uploadTickets.consumeTicket(req.params.token);
+      if (!ticket.overwrite) {
+        try {
+          await podClient.readFile(ticket.targetUrl, ticket.identity.session);
+          appendAuditEntry({
+            label: ticket.identity.label,
+            tool: "upload_completed",
+            resource: ticket.targetUrl,
+            outcome: "error",
+          });
+          res.status(409).json({
+            error: "Target now exists and this ticket was not issued with overwrite. Call solid_prepare_upload again.",
+          });
+          return;
+        } catch (err) {
+          if (!_probe404(err)) {
+            appendAuditEntry({
+              label: ticket.identity.label,
+              tool: "upload_completed",
+              resource: ticket.targetUrl,
+              outcome: "error",
+            });
+            const result = toToolErrorResult(err);
+            res.status(502).json({ error: result.content[0].text });
+            return;
+          }
+          // still absent, as expected — proceed to write
+        }
       }
 
       try {

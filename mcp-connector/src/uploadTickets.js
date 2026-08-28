@@ -40,35 +40,50 @@ function sweep() {
 }
 
 /**
- * @param {{targetUrl: string, identity: object, contentType: string, bytes: number}} params
+ * @param {{targetUrl: string, identity: object, contentType: string, bytes: number, overwrite: boolean}} params
  * @returns {{token: string, expiresAt: number, expiresIn: number}}
  */
-function createTicket({ targetUrl, identity, contentType, bytes }) {
+function createTicket({ targetUrl, identity, contentType, bytes, overwrite }) {
   sweep();
   const token = generateToken();
   const expiresAt = Date.now() + TTL_MS;
-  tickets.set(token, { targetUrl, identity, contentType, bytes, issuedAt: Date.now(), expiresAt });
+  tickets.set(token, { targetUrl, identity, contentType, bytes, overwrite, issuedAt: Date.now(), expiresAt });
   return { token, expiresAt, expiresIn: Math.floor(TTL_MS / 1000) };
 }
 
 /**
- * Redeem a ticket: single-use by construction (delete happens before the
- * expiry check, so a concurrent second call — Node is single-threaded, this
- * runs to completion before any other JS executes — always sees it gone;
- * Task 1.4).
+ * Look up a ticket without consuming it. Used to reject unknown/expired
+ * tokens (and, ahead of the raw-body parser, to avoid buffering a full
+ * request body for a token that was never going to redeem) and to validate
+ * a redemption attempt before deciding whether to consume it — a body that
+ * fails the length check (Review 8.10) must not burn the ticket, so the
+ * caller peeks, checks, and only calls consumeTicket() on success.
  *
  * @param {string} token
  * @returns {{targetUrl: string, identity: object, contentType: string, bytes: number}|null}
- *   null for unknown, already-redeemed, or expired — callers must treat all
- *   three identically (no oracle on which case it was, AC10).
+ *   null for unknown or expired — callers must treat both identically (no
+ *   oracle on which case it was, AC10).
  */
-function redeemTicket(token) {
+function peekTicket(token) {
   sweep();
   const ticket = tickets.get(token);
   if (!ticket) return null;
-  tickets.delete(token);
-  if (ticket.expiresAt <= Date.now()) return null;
+  if (ticket.expiresAt <= Date.now()) {
+    tickets.delete(token);
+    return null;
+  }
   return ticket;
 }
 
-module.exports = { createTicket, redeemTicket, TTL_MS };
+/**
+ * Consume a ticket: single-use by construction. Node is single-threaded, so
+ * as long as no `await` separates a peekTicket() success from this call,
+ * two concurrent redemptions can never both succeed (Task 1.4).
+ *
+ * @param {string} token
+ */
+function consumeTicket(token) {
+  tickets.delete(token);
+}
+
+module.exports = { createTicket, peekTicket, consumeTicket, TTL_MS };

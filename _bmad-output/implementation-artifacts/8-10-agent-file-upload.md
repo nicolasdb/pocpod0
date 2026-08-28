@@ -1,6 +1,6 @@
 # Story 8.10: Agent File Upload — Ticketed Out-of-Band Transfer
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -139,6 +139,18 @@ claude.ai has no shell, so it cannot execute step 2. Upload is a **shell-capable
   - [x] 6.4 `SKILL.md`: two-step flow, tool count, **claude.ai boundary stated plainly**.
   - [x] 6.5 `references/developer-toolkit.md`: `uploadTickets.js` entry.
   - [x] 6.6 `epics.md`: record Story 8.10 outcome under the Epic 8 story list.
+
+### Review Findings
+
+- [x] [Review][Patch] No `upload_prepared` journal entry — `solid_prepare_upload` never calls `appendAuditEntry`, AC8/Task 3.6 requires both events [mcp-connector/src/mcp-server.js:731-762] — fixed, journal entry added on ticket issuance
+- [x] [Review][Patch] `bytes` not checked against `UPLOAD_MAX_BYTES` at issue time — ticket can be issued already doomed to a 413 at redemption, wasting the TTL window [mcp-connector/src/mcp-server.js:731-762] — fixed, rejects up front with no ticket issued
+- [x] [Review][Patch] Full body buffered by `express.raw` before token validity is checked — unknown/expired/guessed tokens still cost a full-size (up to 25MB) read [mcp-connector/src/mcp-server.js:1153-1160] — fixed, peek middleware added before the raw-body parser
+- [x] [Review][Patch] 400 length-mismatch response leaks token validity + exact byte count, distinguishable from the generic 404 — undercuts AC10's no-oracle guarantee [mcp-connector/src/mcp-server.js:1171-1182] — fixed, message no longer states the exact byte count
+- [x] [Review][Patch] Ticket consumed unconditionally on redemption even when the length check subsequently rejects the body — a caller who mis-declares `bytes` gets no retry within the ticket's window [mcp-connector/src/uploadTickets.js:65-72, mcp-connector/src/mcp-server.js:1158-1182] — fixed, split into peekTicket/consumeTicket; mismatch no longer consumes, verify-upload-tickets.js updated to assert retry succeeds
+- [x] [Review][Patch] TOCTOU: existence probe (AC3) happens up to 300s before the actual write; nothing re-checks target state at redemption [mcp-connector/src/mcp-server.js:731-762 vs 1158-1196] — fixed, re-probes at redemption when the ticket was issued without overwrite:true, 409s if the target now exists
+- [x] [Review][Defer] `contentType` unvalidated/unallowlisted on the ticket — could enable stored content-type confusion if resource is later served to a browser [mcp-connector/src/mcp-server.js:721-723] — deferred, same trust level as existing `solid_write_resource` path, not a new hole introduced by 8.10
+- [x] [Review][Defer] Rate limiter for `/upload/:token` keyed by IP only, shared by legit redemptions and token-guessing traffic [mcp-connector/src/mcp-server.js:1129-1135] — deferred, few concurrent identities behind shared VPS egress, low real risk now
+- [x] [Review][Defer] Unbounded ticket-store growth — no `MAX_OUTSTANDING_TICKETS` cap, bounded only by 5-min sweep-on-access [mcp-connector/src/uploadTickets.js:23-52] — deferred, pre-existing pattern risk, add cap if abuse observed
 
 ## Dev Notes
 

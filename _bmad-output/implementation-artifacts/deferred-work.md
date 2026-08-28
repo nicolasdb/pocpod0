@@ -257,3 +257,9 @@ Not a correctness bug and deliberately not fixed inside 7.12 — the picker itse
 ## Deferred from: code review of 7-15-valisette-rate-toml-writeback (2026-08-26)
 
 - Bare `"""` on its own line inside a `raw` prose body closes the raw-block parser early, corrupting subsequent gist parsing — deferred: content with an unescaped bare `"""` would already be invalid TOML at the source, so this isn't guardable without the pipeline itself escaping triple-quotes in prose.
+
+## Deferred from: code review of story-8.10 (2026-08-28)
+
+- `contentType` on the upload ticket is unvalidated/unallowlisted free text — could enable stored content-type confusion (e.g. `text/html`) if the target resource is later served to a browser [mcp-connector/src/mcp-server.js:721-723] — deferred, same trust level as the existing `solid_write_resource` path, not a new hole introduced by 8.10.
+- Rate limiter for `POST /upload/:token` is keyed by source IP only, shared by legitimate redemptions and token-guessing traffic from the same egress [mcp-connector/src/mcp-server.js:1129-1135] — deferred, few concurrent identities behind shared VPS egress today, low real risk.
+- Unbounded ticket-store growth — no cap on outstanding tickets, bounded only by the 5-minute sweep-on-access [mcp-connector/src/uploadTickets.js:23-52] — deferred, pre-existing pattern risk in this codebase's in-memory stores; add a cap if abuse is observed.

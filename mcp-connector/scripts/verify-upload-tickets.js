@@ -135,12 +135,12 @@ async function main() {
   const readText = readAfterMismatch.content && readAfterMismatch.content[0] && readAfterMismatch.content[0].text;
   if (readText === body1) ok("pod byte-identical after refused length-mismatch upload");
   else fail("pod mutated by a refused upload", `expected baseline body, got: ${readText}`);
-  // The rejected ticket was also consumed by this attempt (redeem-then-
-  // verify is the only order that closes the two-attempt race) — confirm
-  // it cannot be retried with a correct body either.
+  // Review 8.10: a length mismatch must NOT consume the ticket — a caller
+  // who mis-declared `bytes` gets to retry within the same window. Confirm
+  // the same ticket redeems successfully once the body is corrected.
   const retryAfterMismatch = await postUpload(ticket3.uploadUrl, Buffer.from(body3, "utf-8"));
-  if (retryAfterMismatch.status === 404) ok("ticket consumed by its first (even if rejected) redemption attempt");
-  else fail("ticket reuse after a rejected redemption", `expected 404, got ${retryAfterMismatch.status}`);
+  if (retryAfterMismatch.status === 200) ok("ticket survives a rejected length-mismatch attempt, redeems on retry");
+  else fail("ticket retry after a rejected redemption", `expected 200, got ${retryAfterMismatch.status}`);
 
   // --- Case 4: body larger than the cap -----------------------------------
   // UPLOAD_MAX_BYTES defaults to 25MiB in mcp-server.js; override
