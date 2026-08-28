@@ -302,6 +302,22 @@ As a pod owner, I want to know whether the agent that writes to my `access-log/`
 - **What it does not solve:** (1) still a voluntary convention — CSS surfaces no server-side per-resource read log, so a reader that declines to write receipts leaves no trace, and Append-only makes the cooperative path trustworthy without making the record complete; (2) it constrains the **reader**, not the pod owner, who holds `acl:Control` over their own `access-log/` — inherent to BP-1 and the price of putting evidence where the audited party cannot retract it; (3) a receipt records that a read happened, never what was done with the data afterwards.
 - **Reframing surfaced during the spike (Nicolas, 2026-08-11):** receipts exist to inform a *permission decision* — the audit half of a consent loop (request → review → grant → audit → revoke), not a standalone log. `poc:ConsentGrant` already ships that vocabulary (Story 5.5: requestedBy, purpose, scope, excluded, consequenceOfRefusal, revokedAt tombstone, expiresAt) but only in the pipeline; the connector knows nothing of it, and request intake does not exist (the backoffice "Requests" tab is a hardcoded stub, known since 7.2). **Carried to a sprint change proposal, out of scope for this spike.**
 
+### Story 8.10: Agent File Upload — Ticketed Out-of-Band Transfer _(ADDED 2026-08-28 — party-mode session)_
+
+As an agent that has just produced a real file on disk (screen capture, audio message, session transcript dumped as JSON/TOML by a local script), I want to push those bytes into the pod without re-emitting their content as a tool argument, so that capture stops being priced per byte of model output and stops being capped by a JSON-RPC body limit.
+
+**The constraint is the protocol, not our code.** Verified against the MCP spec (2026-07-28): `tools/call` params are JSON, `roots/list` returns URIs only (never bytes), and `resources/*` flows server-to-client. MCP has **no client-to-server bulk-transfer primitive** — any solution is necessarily out-of-band.
+
+**Chosen shape — decision in-band, bytes out-of-band.** `solid_prepare_upload(targetUrl, contentType, bytes)` probes the target and returns an opaque, single-use, 300s-TTL ticket bound to target URL + identity, plus a ready-to-run curl command. The agent runs it; `POST /upload/:token` buffers, verifies length, and PUTs as the agent identity. The slug never leaves the JSON-RPC channel (it is a bearer credential — a `curl -T` would put it in shell history and `ps`), and Story 8.6's overwrite ceremony is preserved because the existence probe happens at ticket time, inside a tool call, where a human can see it.
+
+**Rejected, with reasons that should not need re-litigating:** client-held CSS credentials and a local stdio sidecar (both move a credential off the VPS and re-open SEC-4); `solid_fetch_to_pod` (installs an SSRF primitive next to CSS/Oxigraph/Qdrant — viable later only with a host allowlist and no redirect-following); chunked append through tool args (the waste this story exists to remove).
+
+**Scope boundary — claude.ai gains nothing here.** No shell means it cannot redeem a ticket. Upload is a shell-capable-clients-only capability (Claude Code, Hermes, cron). For claude.ai the answer remains the backoffice path built in Story 7.3 — download the artifact, upload it as a file. `SKILL.md` must say so plainly rather than letting a user discover it by failure.
+
+**Credential posture unchanged:** the VPS still holds every CSS credential and no client gains one. That is precisely what keeps SEC-4's risk acceptance intact.
+
+**Sync deferred, deliberately.** "Sync = read + write + delete" is right on operations, but nothing today can compute the diff: `solid_list_container` is non-recursive and returns no size/etag/mtime. Not designed against a guess — revisit once upload has real usage.
+
 ### Story 7.1: Backoffice Deploy & Real Account Registration
 As a new user, I can reach the pod backoffice at `https://pod.nicolasdb.eu/` (replacing the CSS default welcome page), create a real CSS account + pod from the onboarding flow, and manage my files and sharing against my live pod.
 - Import mockup bundle into repo (new `backoffice/` dir); serve at `https://pod.nicolasdb.eu/` root via CSS `StaticAssetHandler` config (`/` → index.html, `/pod-api.js`, `/support.js`), replacing the default CSS welcome page. Same-origin: no CORS, `redirectUrl: window.location.href` works unchanged.
