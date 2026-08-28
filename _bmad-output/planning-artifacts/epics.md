@@ -318,6 +318,8 @@ As an agent that has just produced a real file on disk (screen capture, audio me
 
 **Sync deferred, deliberately.** "Sync = read + write + delete" is right on operations, but nothing today can compute the diff: `solid_list_container` is non-recursive and returns no size/etag/mtime. Not designed against a guess — revisit once upload has real usage.
 
+**Outcome (DONE, 2026-08-28):** built and live-verified against the deployed VPS — all six AC10 adversarial cases (expired, replayed, unknown-token, length-mismatch, oversized-body, target-binding) plus a real >100kb file uploaded and SHA-256-verified byte-identical round trip. See `epic-8-progress-report.md` Story 8.10 section for the proof table. The `/mcp` path's request-timeout middleware turned out to be a bare `app.use()` applying to every route including the new upload one — fixed to scope it, since 55s would have killed a real large upload before it could finish.
+
 ### Story 7.1: Backoffice Deploy & Real Account Registration
 As a new user, I can reach the pod backoffice at `https://pod.nicolasdb.eu/` (replacing the CSS default welcome page), create a real CSS account + pod from the onboarding flow, and manage my files and sharing against my live pod.
 - Import mockup bundle into repo (new `backoffice/` dir); serve at `https://pod.nicolasdb.eu/` root via CSS `StaticAssetHandler` config (`/` → index.html, `/pod-api.js`, `/support.js`), replacing the default CSS welcome page. Same-origin: no CORS, `redirectUrl: window.location.href` works unchanged.

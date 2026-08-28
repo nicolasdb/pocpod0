@@ -1,6 +1,6 @@
 # Story 8.10: Agent File Upload — Ticketed Out-of-Band Transfer
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -102,43 +102,43 @@ claude.ai has no shell, so it cannot execute step 2. Upload is a **shell-capable
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Ticket store** (AC: 2)
-  - [ ] 1.1 New module `src/uploadTickets.js`: in-memory `Map`, TTL 300s, single-use, bound `{targetUrl, identityLabel, contentType, bytes, issuedAt}`. Restart drops in-flight tickets — acceptable at a 5-minute window; say so in the header comment.
-  - [ ] 1.2 Token generation reusing the CSPRNG approach in `scripts/gen-slug.js` (22 chars). Do not invent a second scheme.
-  - [ ] 1.3 Sweep expired entries on access; do not leave an unbounded Map (same bounded-growth discipline as `journal.js`'s rotation).
-  - [ ] 1.4 Redemption is atomic: delete-then-use, so two concurrent redemptions cannot both succeed.
+- [x] **Task 1 — Ticket store** (AC: 2)
+  - [x] 1.1 New module `src/uploadTickets.js`: in-memory `Map`, TTL 300s, single-use, bound `{targetUrl, identityLabel, contentType, bytes, issuedAt}`. Restart drops in-flight tickets — acceptable at a 5-minute window; say so in the header comment.
+  - [x] 1.2 Token generation reusing the CSPRNG approach in `scripts/gen-slug.js` (22 chars). Do not invent a second scheme.
+  - [x] 1.3 Sweep expired entries on access; do not leave an unbounded Map (same bounded-growth discipline as `journal.js`'s rotation).
+  - [x] 1.4 Redemption is atomic: delete-then-use, so two concurrent redemptions cannot both succeed.
 
-- [ ] **Task 2 — `solid_prepare_upload` tool** (AC: 1, 3, 5)
-  - [ ] 2.1 Register in `buildMcpServer()` via `safeHandler(...)`, matching the existing nine registrations' shape.
-  - [ ] 2.2 Existence probe reusing `solid_write_resource`'s `_probe404` logic — **do not duplicate it**, extract or call it.
-  - [ ] 2.3 Gate on `overwrite: true` for an existing target; report bytes + first line otherwise.
-  - [ ] 2.4 Return `uploadUrl`, `expiresIn`, and a literal `curl --data-binary @<path> <uploadUrl>` string the agent can run unmodified.
-  - [ ] 2.5 `annotations`: this call itself writes nothing — `readOnlyHint: false` (it mutates ticket state) but **not** `destructiveHint`; the destructive moment is redemption.
+- [x] **Task 2 — `solid_prepare_upload` tool** (AC: 1, 3, 5)
+  - [x] 2.1 Register in `buildMcpServer()` via `safeHandler(...)`, matching the existing nine registrations' shape.
+  - [x] 2.2 Existence probe reusing `solid_write_resource`'s `_probe404` logic — **do not duplicate it**, extract or call it.
+  - [x] 2.3 Gate on `overwrite: true` for an existing target; report bytes + first line otherwise.
+  - [x] 2.4 Return `uploadUrl`, `expiresIn`, and a literal `curl --data-binary @<path> <uploadUrl>` string the agent can run unmodified.
+  - [x] 2.5 `annotations`: this call itself writes nothing — `readOnlyHint: false` (it mutates ticket state) but **not** `destructiveHint`; the destructive moment is redemption.
 
-- [ ] **Task 3 — `POST /upload/:token` route** (AC: 4, 5, 6, 8)
-  - [ ] 3.1 Mount outside `/mcp`, after the `/onboard` mount in `main()`. Own `express.raw({ type: '*/*', limit: <cap> })`.
-  - [ ] 3.2 Own `rateLimit` bucket — **not** `mcpLimiter`. Uploads are low-count/high-bytes; sharing a 120/min bucket describes neither traffic shape. Generic 429 via the existing `rateLimitHandler` discipline.
-  - [ ] 3.3 Redeem ticket → resolve identity → `podClient.writeFile(targetUrl, buffer, ticket.contentType, identity.session)`.
-  - [ ] 3.4 Length check against `ticket.bytes` **before** any pod write.
-  - [ ] 3.5 Unknown/expired token returns the same generic shape as the `/mcp/:slug` 404 path. Never log the attempted token.
-  - [ ] 3.6 Journal `upload_prepared` (Task 2) and `upload_completed` (here) — label + target URL only.
+- [x] **Task 3 — `POST /upload/:token` route** (AC: 4, 5, 6, 8)
+  - [x] 3.1 Mount outside `/mcp`, after the `/onboard` mount in `main()`. Own `express.raw({ type: '*/*', limit: <cap> })`.
+  - [x] 3.2 Own `rateLimit` bucket — **not** `mcpLimiter`. Uploads are low-count/high-bytes; sharing a 120/min bucket describes neither traffic shape. Generic 429 via the existing `rateLimitHandler` discipline.
+  - [x] 3.3 Redeem ticket → resolve identity → `podClient.writeFile(targetUrl, buffer, ticket.contentType, identity.session)`.
+  - [x] 3.4 Length check against `ticket.bytes` **before** any pod write.
+  - [x] 3.5 Unknown/expired token returns the same generic shape as the `/mcp/:slug` 404 path. Never log the attempted token.
+  - [x] 3.6 Journal `upload_prepared` (Task 2) and `upload_completed` (here) — label + target URL only.
 
-- [ ] **Task 4 — nginx** (AC: 7)
-  - [ ] 4.1 `location /upload/ { client_max_body_size <cap>; }` in `hetzner-gateway/nginx/conf.d/11-solid-mcp.conf`. Server-level stays 100k.
-  - [ ] 4.2 Keep `access_log off` on this location too — the URL path carries a redeemable credential.
-  - [ ] 4.3 Check `proxy_read_timeout`/`proxy_send_timeout` (currently 60s) are adequate for the cap over a slow link; raise for this location only if not. Note that the app's `REQUEST_TIMEOUT_MS` (55s) sits just under it and applies to this route as well — reconcile explicitly rather than discovering it live.
+- [x] **Task 4 — nginx** (AC: 7)
+  - [x] 4.1 `location /upload/ { client_max_body_size <cap>; }` in `hetzner-gateway/nginx/conf.d/11-solid-mcp.conf`. Server-level stays 100k.
+  - [x] 4.2 Keep `access_log off` on this location too — the URL path carries a redeemable credential.
+  - [x] 4.3 Check `proxy_read_timeout`/`proxy_send_timeout` (currently 60s) are adequate for the cap over a slow link; raise for this location only if not. Note that the app's `REQUEST_TIMEOUT_MS` (55s) sits just under it and applies to this route as well — reconcile explicitly rather than discovering it live.
 
-- [ ] **Task 5 — Adversarial verification** (AC: 10)
-  - [ ] 5.1 `scripts/verify-upload-tickets.js` covering all six cases in AC10, following the existing `verify-*.js` conventions.
-  - [ ] 5.2 Confirm the pod is byte-identical after every refused case.
+- [x] **Task 5 — Adversarial verification** (AC: 10)
+  - [x] 5.1 `scripts/verify-upload-tickets.js` covering all six cases in AC10, following the existing `verify-*.js` conventions.
+  - [x] 5.2 Confirm the pod is byte-identical after every refused case.
 
-- [ ] **Task 6 — Live proof + docs** (AC: 9, 11)
-  - [ ] 6.1 Deploy (`make vps-push` / `vps-build` / `vps-deploy`), then push a >100kb real file end-to-end from a shell-capable client; checksum round-trip.
-  - [ ] 6.2 Append dated section to the live `epic-8-action-log.md` (read-then-append).
-  - [ ] 6.3 Story 8.10 section in `epic-8-progress-report.md` — proof table, bugs found+fixed, scope notes.
-  - [ ] 6.4 `SKILL.md`: two-step flow, tool count, **claude.ai boundary stated plainly**.
-  - [ ] 6.5 `references/developer-toolkit.md`: `uploadTickets.js` entry.
-  - [ ] 6.6 `epics.md`: record Story 8.10 outcome under the Epic 8 story list.
+- [x] **Task 6 — Live proof + docs** (AC: 9, 11)
+  - [x] 6.1 Deploy (`make vps-push` / `vps-build` / `vps-deploy`), then push a >100kb real file end-to-end from a shell-capable client; checksum round-trip.
+  - [x] 6.2 Append dated section to the live `epic-8-action-log.md` (read-then-append).
+  - [x] 6.3 Story 8.10 section in `epic-8-progress-report.md` — proof table, bugs found+fixed, scope notes.
+  - [x] 6.4 `SKILL.md`: two-step flow, tool count, **claude.ai boundary stated plainly**.
+  - [x] 6.5 `references/developer-toolkit.md`: `uploadTickets.js` entry.
+  - [x] 6.6 `epics.md`: record Story 8.10 outcome under the Epic 8 story list.
 
 ## Dev Notes
 
@@ -201,8 +201,42 @@ claude.ai has no shell, so it cannot execute step 2. Upload is a **shell-capable
 
 ### Agent Model Used
 
+Claude Sonnet 5
+
 ### Debug Log References
+
+- `scripts/verify-upload-tickets.js` full live run against `https://solid-mcp.nicolasdb.eu/mcp/<slug>` (2026-08-28): all 12 checks OK (baseline upload, overwrite-gate, replay, unknown-token, length-mismatch + pod-unchanged + ticket-consumed, oversized-body, target-binding, real 305s expiry wait). See Completion Notes for the summary; full transcript was not persisted (ephemeral verification run, consistent with 8.5/8.9 precedent — the script itself is the reusable artifact).
+- `scripts/verify-http.js` re-run post-deploy — ALL CHECKS PASSED, 10 tools listed (was 9), no regression on the negative-test pinned wording.
 
 ### Completion Notes List
 
+- Built the ticket store (`uploadTickets.js`), the `solid_prepare_upload` tool (10th tool, reusing `_probe404`), and the `POST /upload/:token` route (third independent auth surface, own raw-body parser, own rate limiter, own timeout) exactly as scoped.
+- **Bug found and fixed in production code (not just the test)**: the existing `/mcp` request-timeout middleware (`REQUEST_TIMEOUT_MS`, 55s) was registered as a bare `app.use()`, applying to every route on the app — including the new `/upload/:token`. Left as-is, a real >100kb upload over anything but a fast link would have been killed by the app before nginx's own (correctly higher) budget ever mattered. Fixed by scoping the old middleware to `app.use("/mcp", ...)` and giving `/upload/:token` its own `UPLOAD_REQUEST_TIMEOUT_MS` (290s), reconciled against nginx's new `proxy_read_timeout 300s` on `location /upload/` per Task 4.3's explicit instruction to reconcile rather than discover this live.
+- **Bug found and fixed in the verification script (not the server)**: an early live run showed "0 bytes received" on every upload attempt, which first looked like a server bug. Root-caused to the throwaway debug client (Node's bare `fetch()`) sending no `Content-Type` header at all — `express.raw({type:"*/*"})` needs one to match against (`type-is` has nothing to test otherwise) and silently leaves `req.body` `undefined`. Real `curl --data-binary` always sends a default `Content-Type`, so the shipped server was correct as originally written; `verify-upload-tickets.js` was fixed to send an explicit header on every POST so the script actually exercises what a real client sends.
+- nginx: added `location /upload/` to the VPS-side `11-solid-mcp.conf` (not tracked in this repo — edited directly via ssh, backed up as `.bak-8-10` before editing). Deliberately no `allow`/`deny` on it, unlike `location /`'s Anthropic-outbound-only allowlist — an upload originates from a shell-capable client's own machine (Claude Code, a cron script), not from Anthropic's infra, so the single-use TTL-bound token is the credential here, same posture Story 7.9 already established for `/onboard/`.
+- Live AC10 proof used the real 300s TTL (waited it out, not a shortened override) and a real 26,214,401-byte body for the oversized-cap case, both against the deployed VPS — no shortcuts taken on the two slowest cases.
+- AC9 proof: 150,000-byte file (well over the 100kb ceiling this story exists to route around) uploaded, and read back via a raw authenticated `session.fetch` (not `solid_read_resource`, which decodes to text and would corrupt binary) — SHA-256 matched source exactly, content-type came from the ticket as declared (AC5), not the upload request's own header.
+- Test resources cleaned up (`shared/8-10-verify-upload*.txt` deleted); `shared/8-10-proof-file.jpg` kept live as POC evidence per Epic 8 convention.
+- `epic-8-action-log.md` (live pod resource) appended via `solid_append_resource` through the deployed connector itself — read-then-append, file grew 15,479 → 17,382 bytes.
+- `vps-push` was blocked by its delete-guard on an unrelated, untracked `Valisette SOLID Gist Validator.zip` on the VPS; confirmed with the user it was safe to remove (dry-run showed no other deletions) before running `FORCE=1`.
+
 ### File List
+
+**New**
+- `mcp-connector/src/uploadTickets.js`
+- `mcp-connector/scripts/verify-upload-tickets.js`
+
+**Modified**
+- `mcp-connector/src/mcp-server.js`
+- `mcp-connector/SKILL.md`
+- `mcp-connector/references/developer-toolkit.md`
+- `hetzner-gateway/nginx/conf.d/11-solid-mcp.conf` — VPS-side, edited directly via ssh, not in this repo
+- `_bmad-output/implementation-artifacts/epic-8-progress-report.md`
+- `_bmad-output/planning-artifacts/epics.md`
+- `https://pod.nicolasdb.eu/nicolas_claude/epic-8-action-log.md` — live pod resource, appended not committed here
+
+### Change Log
+
+| Date | Change |
+|---|---|
+| 2026-08-28 | Story implemented: ticket store, `solid_prepare_upload` tool, `POST /upload/:token` route, nginx `/upload/` location, adversarial verification script — all AC met, live-verified against the deployed VPS (all AC10 cases + AC9 >100kb checksum round-trip). Status → review. |

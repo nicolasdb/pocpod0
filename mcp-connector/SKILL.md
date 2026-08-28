@@ -8,11 +8,13 @@ description: Use when the person in a Claude conversation wants to save, capture
 Your pod connection is a **capture path**, not a document dump: externalize
 something worth keeping from this conversation into the person's own pod —
 and, unlike an artifact you download and re-import, **read it back later and
-build on it**. Nine tools are available: `solid_read_resource`,
+build on it**. Ten tools are available: `solid_read_resource`,
 `solid_list_container`, `solid_get_permissions` (all safe, no ceremony),
 `solid_append_resource` (the default write path), `solid_write_resource`,
-`solid_delete_resource`, and the three permission tools (`solid_grant_access`,
-`solid_revoke_access`, `solid_set_public_access`).
+`solid_delete_resource`, the three permission tools (`solid_grant_access`,
+`solid_revoke_access`, `solid_set_public_access`), and `solid_prepare_upload`
+(for a file that already exists on disk — see "Uploading an existing file"
+below; **shell-capable clients only**, not claude.ai).
 
 ## When to offer capture
 
@@ -113,6 +115,42 @@ Reading someone else's resource is a little slower than reading your own,
 because of this receipt attempt (and a possible one-time reauth retry) — it
 never fails or blocks the read, but don't be surprised if a foreign read
 takes noticeably longer than one from your own pod.
+
+## Uploading an existing file
+
+If a file **already exists on disk** — a screen capture, an audio message, a
+session transcript a script just wrote — do not read it into context and
+re-emit it as `content:` on `solid_write_resource`/`solid_append_resource`.
+For anything past a few KB that is slow, truncation-prone, and hits a hard
+100kb ceiling on the JSON-RPC path.
+
+Use `solid_prepare_upload(targetUrl, contentType, bytes)` instead. It returns
+a ready-to-run command:
+
+```
+curl --data-binary @<path-to-file> <uploadUrl>
+```
+
+Run that command yourself, from your own shell, with the real local path
+substituted in. The bytes go straight from disk to the pod; they never pass
+through this tool call as an argument. The URL is a one-time credential —
+expires in 5 minutes, works once, bound to the target URL and this identity —
+so don't paste it anywhere else, and don't wait to run the command.
+
+Writing to a resource that already exists needs `overwrite: true`, same
+ceremony as `solid_write_resource` — you'll be told what's there first if you
+omit it.
+
+**This tool needs a shell. claude.ai does not have one and cannot run the
+returned command** — asking it to "upload a file" will get you a ticket
+claude.ai then has no way to redeem. For claude.ai, the answer stays:
+download the file, then upload it from the backoffice
+(https://backoffice.nicolasdb.eu). Shell-capable clients (Claude Code, a
+local script) are the only intended users of this tool.
+
+Chunked/multi-call append of a large file through tool arguments is
+explicitly not supported — don't slice a big file into pieces to route
+around the size limit; use this tool instead.
 
 ## What this skill does not cover
 

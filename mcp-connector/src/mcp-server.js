@@ -31,6 +31,7 @@
  * Run: node src/mcp-server.js  (reads PORT/HOST from env, defaults below)
  */
 
+const express = require("express");
 const { McpServer } = require("@modelcontextprotocol/sdk/server/mcp.js");
 const { StreamableHTTPServerTransport } = require("@modelcontextprotocol/sdk/server/streamableHttp.js");
 const { createMcpExpressApp } = require("@modelcontextprotocol/sdk/server/express.js");
@@ -44,6 +45,35 @@ const wacManager = require("./wacManager");
 const { appendAuditEntry } = require("./journal");
 const { isForeignResource, writeReadReceipt } = require("./receipt");
 const { buildOnboardRouter } = require("./onboardRouter");
+const uploadTickets = require("./uploadTickets");
+
+// Story 8.10: the ticket handed back by solid_prepare_upload must be an
+// absolute, public URL — the agent runs curl from its own shell, not from
+// inside this container — so it always points at the IP-allowlisted-minus-
+// /upload/ public vhost, same hardcoded-base pattern onboardRouter.js uses
+// for its own connector URL, never the internal HOST/PORT this process
+// actually binds.
+const UPLOAD_PUBLIC_BASE = "https://solid-mcp.nicolasdb.eu/";
+
+// AC7: app-level cap for POST /upload/:token, independent of the /mcp path's
+// 100kb JSON ceiling — this route never touches express.json(). Must match
+// the nginx `client_max_body_size` set on `location /upload/` (Task 4.1):
+// raising one without the other just moves where an oversized body is
+// rejected, it does not change what actually fits.
+const UPLOAD_MAX_BYTES = parsePositiveInt(
+  "UPLOAD_MAX_BYTES",
+  process.env.UPLOAD_MAX_BYTES,
+  25 * 1024 * 1024 // 25 MiB
+);
+
+// Task 4.3: must stay under nginx's proxy_read_timeout for location
+// /upload/ (set to 300s there — see 11-solid-mcp.conf), same "give the
+// tidier error first" reasoning as REQUEST_TIMEOUT_MS for /mcp.
+const UPLOAD_REQUEST_TIMEOUT_MS = parsePositiveInt(
+  "UPLOAD_REQUEST_TIMEOUT_MS",
+  process.env.UPLOAD_REQUEST_TIMEOUT_MS,
+  290000 // 290s
+);
 
 const PORT = parsePort(process.env.PORT);
 const HOST = process.env.HOST || "127.0.0.1";
@@ -672,6 +702,80 @@ function buildMcpServer(identity) {
     })
   );
 
+  server.registerTool(
+    "solid_prepare_upload",
+    {
+      description:
+        "Prepare a ticketed upload for a file that ALREADY EXISTS ON DISK next to this " +
+        "agent (a screen capture, an audio message, a session transcript). Returns a " +
+        "one-time upload URL and a ready-to-run curl command that the agent runs itself " +
+        "from its own shell — the file's bytes never pass through this tool call as an " +
+        "argument. Only usable by a shell-capable client (Claude Code, a local script); " +
+        "claude.ai has no shell and cannot run the returned command — download the file " +
+        "and upload it from the backoffice instead. The ticket expires in 5 minutes, " +
+        "works exactly once, and is bound to this target URL and this identity; it " +
+        "cannot be redirected to a different URL or redeemed by anyone else. Writing to " +
+        "a resource that already exists needs overwrite: true, the same ceremony " +
+        "solid_write_resource uses.",
+      inputSchema: {
+        targetUrl: z.string().url(),
+        contentType: z.string(),
+        bytes: z.number().int().positive(),
+        overwrite: z.boolean().default(false),
+      },
+      // This call itself never writes pod data — it only mutates in-memory
+      // ticket state — so readOnlyHint is false but destructiveHint is not
+      // set here; the destructive moment is redemption at POST /upload/:token.
+      annotations: { readOnlyHint: false, idempotentHint: false },
+    },
+    safeHandler("solid_prepare_upload", identity, "targetUrl", async ({ targetUrl, contentType, bytes, overwrite }) => {
+      // AC3: probe before issuing. A failed probe must fail toward caution —
+      // never silently treated as "new" — so a non-404 error propagates and
+      // safeHandler turns it into an error result with no ticket issued.
+      let existing = null;
+      try {
+        const file = await podClient.readFile(targetUrl, identity.session);
+        existing = await file.text();
+      } catch (err) {
+        if (!_probe404(err)) throw err;
+      }
+
+      if (existing !== null && !overwrite) {
+        const firstLine = Array.from(existing.split("\n")[0]).slice(0, 120).join("");
+        return {
+          content: [
+            {
+              type: "text",
+              text:
+                `${targetUrl} already exists (${Buffer.byteLength(existing, "utf-8")} bytes, starting ` +
+                `"${firstLine}"). Call again with overwrite: true to replace it — no ticket was issued.`,
+            },
+          ],
+        };
+      }
+
+      const ticket = uploadTickets.createTicket({ targetUrl, identity, contentType, bytes });
+      const uploadUrl = new URL(`/upload/${ticket.token}`, UPLOAD_PUBLIC_BASE).toString();
+      const overwriteNote =
+        existing !== null
+          ? ` This REPLACES ${Buffer.byteLength(existing, "utf-8")} existing bytes at that URL.`
+          : "";
+
+      return {
+        content: [
+          {
+            type: "text",
+            text:
+              `Upload ticket ready, expires in ${ticket.expiresIn}s, single-use.${overwriteNote}\n` +
+              "The URL below is a one-time credential — run the command, don't paste the URL " +
+              "anywhere else:\n" +
+              `curl --data-binary @<path-to-file> ${uploadUrl}`,
+          },
+        ],
+      };
+    })
+  );
+
   return server;
 }
 
@@ -942,8 +1046,12 @@ async function main() {
   app.set("trust proxy", 1);
 
   // AC4.4: bound how long a single request may occupy a transport+server
-  // pair. Fires only if nothing has been sent yet.
-  app.use((req, res, next) => {
+  // pair. Fires only if nothing has been sent yet. Story 8.10 Task 4.3:
+  // scoped to /mcp only — a bare app.use() here previously applied to every
+  // route including /upload/:token, and 55s is far too short for a 25MB
+  // body over a slow link. /upload/:token gets its own, longer timeout
+  // reconciled against nginx's proxy_read_timeout for that location.
+  app.use("/mcp", (req, res, next) => {
     res.setTimeout(REQUEST_TIMEOUT_MS, () => {
       if (!res.headersSent) {
         res.status(504).json({
@@ -960,7 +1068,7 @@ async function main() {
   // session to disambiguate concurrent clients in stateless mode, so a
   // single shared transport would let concurrent requests interleave state
   // incorrectly — see Dev Notes "Concurrency trap". The cost (re-registering
-  // 9 tool definitions per call) is trivial. Story 8.3: the slug in the path
+  // 10 tool definitions per call) is trivial. Story 8.3: the slug in the path
   // picks which identity's already-authenticated session backs this request.
   // AC4: reveal nothing about whether a slug exists, how many identities are
   // configured, or any WebID. Do not log the attempted slug — it may be a
@@ -1009,6 +1117,93 @@ async function main() {
   // bootIdentities() returned, so a revoke's cache eviction (AC11c) and a
   // mint's lazy pickup (AC15) are visible to /mcp/:slug without a restart.
   app.use("/onboard", buildOnboardRouter(identities));
+
+  // Story 8.10 Task 3: a THIRD independent surface (mcp-server.js:1007's
+  // precedent — /mcp/:slug, /onboard, now /upload/:token — three genuinely
+  // separate auth models, never collapsed into one). Own rate-limit bucket:
+  // uploads are low-count/high-bytes, the opposite shape of both mcpLimiter
+  // and unknownSlugLimiter, so sharing either budget describes neither
+  // traffic pattern. Own raw-body parser scoped to this one route only —
+  // the 100kb express.json() ceiling registered inside createMcpExpressApp
+  // never applies here, because this route never reaches that parser.
+  const uploadLimiter = rateLimit({
+    windowMs: RATE_LIMIT_WINDOW_MS,
+    limit: parsePositiveInt("UPLOAD_RATE_LIMIT_MAX", process.env.UPLOAD_RATE_LIMIT_MAX, 20),
+    standardHeaders: false,
+    legacyHeaders: false,
+    handler: rateLimitHandler,
+  });
+
+  app.post(
+    "/upload/:token",
+    uploadLimiter,
+    (req, res, next) => {
+      // Task 4.3: a 25MB body over a slow link legitimately takes longer
+      // than the /mcp path's 55s budget. Sits just under nginx's
+      // location-scoped proxy_read_timeout (see 11-solid-mcp.conf) for the
+      // same reason REQUEST_TIMEOUT_MS is set just under the server-level
+      // one — this side should give the tidier JSON error, not nginx's 504.
+      res.setTimeout(UPLOAD_REQUEST_TIMEOUT_MS, () => {
+        if (!res.headersSent) {
+          res.status(504).json({ error: "Upload timed out." });
+        }
+      });
+      next();
+    },
+    express.raw({ type: "*/*", limit: UPLOAD_MAX_BYTES }),
+    async (req, res) => {
+      // AC10: unknown/expired/replayed token all get the same generic
+      // shape as the /mcp/:slug 404 path — no oracle on which case it was —
+      // and the attempted token is never logged (Task 3.5).
+      const ticket = uploadTickets.redeemTicket(req.params.token);
+      if (!ticket) {
+        res.status(404).json({ error: "Not found." });
+        return;
+      }
+
+      const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || "");
+
+      // AC6/Task 3.4: verify length BEFORE any pod write. A client dying
+      // mid-transfer, or a caller lying about `bytes`, must never leave a
+      // truncated write at the real URL — pods have no versioning to
+      // recover from that. On mismatch the pod stays byte-identical to
+      // before this request.
+      if (buffer.length !== ticket.bytes) {
+        appendAuditEntry({
+          label: ticket.identity.label,
+          tool: "upload_completed",
+          resource: ticket.targetUrl,
+          outcome: "error",
+        });
+        res.status(400).json({
+          error: `Body was ${buffer.length} bytes, ticket declared ${ticket.bytes}. Nothing was written.`,
+        });
+        return;
+      }
+
+      try {
+        await podClient.writeFile(ticket.targetUrl, buffer, ticket.contentType, ticket.identity.session);
+      } catch (err) {
+        appendAuditEntry({
+          label: ticket.identity.label,
+          tool: "upload_completed",
+          resource: ticket.targetUrl,
+          outcome: "error",
+        });
+        const result = toToolErrorResult(err);
+        res.status(502).json({ error: result.content[0].text });
+        return;
+      }
+
+      appendAuditEntry({
+        label: ticket.identity.label,
+        tool: "upload_completed",
+        resource: ticket.targetUrl,
+        outcome: "ok",
+      });
+      res.status(200).json({ ok: true, url: ticket.targetUrl });
+    }
+  );
 
   const handleMcpRequest = async (req, res, identity) => {
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });

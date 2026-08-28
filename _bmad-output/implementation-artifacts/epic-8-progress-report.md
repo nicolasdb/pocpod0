@@ -272,3 +272,48 @@ Deliberately **not** built here — it is larger than a spike and larger than a 
 Post-deploy, a real `tools/call solid_read_resource` on a foreign resource through the deployed endpoint: read OK (1196 chars), receipt `2026-08-11T16-35-31-868Z-aonuvr.json` created in `access-log/` under the Append-only grant, and **no** `read_receipt` error in the connector's own journal — which is how a receipt failure surfaces. AC8 now holds against production, not only against the library.
 
 **Incidental, logged not fixed:** `scripts/verify-http.js` defaults to `http://127.0.0.1:3939/mcp` and its docstring instructs exactly that, but Story 8.4's `ALLOWED_HOSTS` now rejects it (`Invalid Host: 127.0.0.1`). In-container the working URL is `http://mcp-connector:3939/…`. A stale runbook whose failure mode looks like a protocol error.
+
+## Story 8.10 — Agent File Upload: Ticketed Out-of-Band Transfer (2026-08-28)
+
+### Problem
+
+The connector's only write path was `content:` as a JSON string on `solid_write_resource`/`solid_append_resource`. For a file **already on disk**, that meant reading it into context and re-emitting it byte-for-byte as a tool argument — ~15k output tokens per 50KB, truncation-prone, and capped hard by `express.json()`'s 100kb default plus nginx's matching `client_max_body_size`. Verified against the MCP spec (2026-07-28, via Context7) that this is not a gap in our code: `tools/call` params are JSON with no byte channel, `roots/list` returns URIs only (no transfer), and `resources/*` flows server→client, the wrong direction. MCP has no client→server bulk-transfer primitive.
+
+### Decision — Path A, ticketed (party-mode session survey of seven options)
+
+`solid_prepare_upload(targetUrl, contentType, bytes)` probes the target (existence ceremony happens here, same as `solid_write_resource`), issues an opaque single-use ticket, and returns a ready-to-run `curl --data-binary @<path> <uploadUrl>` string. The agent runs it itself — the bytes never re-enter the JSON-RPC channel. Rejected: client-held CSS credential (reopens SEC-4), connector-pulls-by-URL (SSRF primitive), bare `curl -T` without a ticket (puts the slug in shell history/`ps`, undoes Story 8.4's `access_log off`).
+
+### Built
+
+- `src/uploadTickets.js` — in-memory `Map`, TTL 300s, CSPRNG token (same generator class as `scripts/gen-slug.js`), atomic delete-then-use redemption, bound to `{targetUrl, identity, contentType, bytes}` at issue time.
+- `solid_prepare_upload` tool (10th tool) — existence probe reusing `_probe404`, `overwrite: true` gate, ticket issuance.
+- `POST /upload/:token` — a **third** independent auth surface (`/mcp/:slug`, `/onboard`, now `/upload/:token`), own `express.raw` parser (never touches the 100kb `express.json` ceiling), own rate-limit bucket, own request timeout (290s, scoped off the `/mcp` path's 55s one — a bare `app.use()` for the old timeout previously applied globally and would have killed any real upload). Buffers, verifies declared `bytes` against actual length **before** any pod write, then PUTs. Content-type comes from the ticket, never the request.
+- nginx `location /upload/` (VPS-side `11-solid-mcp.conf`, not in this repo) — `client_max_body_size 25m`, `access_log off` (token in the path), 300s timeouts. Deliberately **public** (no `allow`/`deny`) — unlike `location /`'s Anthropic-only allowlist, an upload comes from a shell-capable client's own machine, not Anthropic's infra; the single-use TTL-bound token is the credential, same posture as `/onboard`.
+- `scripts/verify-upload-tickets.js` — all AC10 adversarial cases as a committed live-verification script.
+
+### Live proof (2026-08-28, deployed VPS)
+
+| Case | Result |
+|---|---|
+| Baseline upload + existence-probe/overwrite ceremony | OK |
+| Ticket replayed after redemption | 404 |
+| Unknown/guessed token | 404, identical body to a replay (no oracle) |
+| Declared `bytes` ≠ actual body length | 400, pod byte-identical after, ticket consumed |
+| Body larger than cap (26,214,401 bytes) | 413, refused at app level |
+| Query-string target override on redemption | ignored — route has no target parameter, write bound to ticket's original `targetUrl` |
+| Expired ticket (real 300s TTL, waited live) | 404 |
+| >100kb real file end-to-end | 150,000-byte JPEG-content file uploaded via `curl`-equivalent POST; read back via a raw authenticated fetch (not `solid_read_resource`, which is lossy for binary) — SHA-256 `b69282220b2be0e225ea228b8af910f31bf66adac69ae38fb57bee1f02acfcdd` matched source exactly; content-type `image/jpeg` confirmed served from the ticket, not the request |
+
+Journal (`journal.jsonl`) carries `upload_prepared`-equivalent (`solid_prepare_upload`, via the existing `safeHandler` convention) and `upload_completed` entries, label + target URL only — grepped clean of the token/slug.
+
+### Bug found and fixed during live verification
+
+Debugging a false "0 bytes received" failure led first to suspecting the server; root cause was the throwaway debug HTTP client (Node's bare `fetch()`) sending no `Content-Type` header, which `express.raw({type:"*/*"})` then refuses to parse (nothing for `type-is` to match). Real `curl --data-binary` always sends a default `Content-Type`, so the shipped server was correct as written — `scripts/verify-upload-tickets.js` was fixed to send an explicit header on every POST so it actually exercises what a real client sends, rather than a client bug masquerading as a server one.
+
+### Scope confirmed out
+
+claude.ai has no shell and cannot run the returned `curl` command — stated plainly in `SKILL.md`; the answer there stays download-and-upload-from-backoffice. Chunked-append via tool args was not built (AC12) — this story exists to remove exactly that pattern.
+
+### Test resources
+
+`shared/8-10-verify-upload*.txt` created and deleted during adversarial verification. `shared/8-10-proof-file.jpg` (150,000 bytes, random content) kept as live POC evidence of the >100kb path, per Epic 8 convention.
