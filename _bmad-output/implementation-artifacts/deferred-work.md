@@ -1,5 +1,12 @@
 # Deferred Work
 
+## Deferred from: code review of spec-pim-storage-provisioning-fix (2026-08-29)
+
+- `updateLinkStorageVisibility()` is only wired to the `mainForm` `change` event, never called once on initial page load [infra/css/templates/identity/account/create-pod.html.ejs] — harmless today since the default HTML state (internal-WebID radio checked, checkbox visible/checked) already matches what an init call would produce, but any future default change could desync visibility from actual radio state. Mirrors stock CSS's own template verbatim — not introduced by this fix, inherited from upstream.
+- Event listeners (`change` handler + `addPostListener`) are only registered after `await fetch(idpIndex)` resolves — a user who interacts with the radio during that window sees no visibility toggle. Same pattern as stock CSS; pre-existing upstream gap, not caused by this change.
+- `<p class="checkbox-explanation">` is nested inside the checkbox's `<label>`, so screen readers likely read the whole explanation as part of the checkbox's accessible name every focus. Mirrors stock CSS exactly (spec explicitly required restoring stock's JS identically) — an upstream a11y gap, not introduced here.
+- No error/loading state if the initial `fetch(idpIndex)` fails — the whole form (not just the new checkbox) silently never wires up. Pre-existing pattern across this template file, not specific to the linkStorage restoration.
+
 ## Deferred from: code review of story-8.9-access-journal-tamper-spike (2026-08-12)
 
 - `receiptSlug()` collision window overstated as "collision-resistant" — ~31 bits (6-char random + second-truncated timestamp), real collision probability at any meaningful volume; low risk given current ~10 receipts/week [mcp-connector/src/receipt.js]
