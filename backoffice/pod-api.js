@@ -4,7 +4,7 @@
 //                  even when an OIDC redirect can't complete (e.g. in a preview)
 //
 // The app never talks to the libraries directly — it holds a `client` with:
-//   list(url) · readText(url) · writeText(url,text,type) · makeFolder(url)
+//   list(url) · readText(url) -> {text,type} · writeText(url,text,type) · makeFolder(url)
 //   remove(url) · getAccess(url) · setAgentAccess(url,webId,modes)
 //   setPublicAccess(url,modes) · turtleAcl(url)
 //
@@ -83,6 +83,7 @@ export function kindOf(name, isContainer) {
   if (["md", "markdown"].includes(e)) return "md";
   if (["toml", "yaml", "yml", "ini", "cfg"].includes(e)) return "config";
   if (["js", "ts", "py", "css", "html", "sh", "rb", "go", "rs"].includes(e)) return "code";
+  if (["ttl", "turtle", "n3"].includes(e) || name === "card") return "turtle";
   if (["txt", "log", ""].includes(e)) return "text";
   return "file";
 }
@@ -128,7 +129,7 @@ class RealBackend {
   }
   async readText(url) {
     const file = await this.sc.getFile(url, { fetch: this.fetch });
-    return await file.text();
+    return { text: await file.text(), type: file.type || undefined };
   }
   async writeText(url, text, type = "text/plain") {
     await this.sc.overwriteFile(url, new Blob([text], { type }), {
@@ -892,7 +893,7 @@ class DemoBackend {
   async readText(url) {
     url = this._norm(url);
     const k = Object.keys(this.t).find((x) => this.t[x].url === url);
-    return k ? this.t[k].body : "";
+    return { text: k ? this.t[k].body : "", type: k ? this.t[k].type : undefined };
   }
   async writeText(url, text, type = "text/plain") {
     url = this._norm(url);

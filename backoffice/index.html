@@ -987,7 +987,7 @@ class Component extends DCLogic {
   async componentDidMount() {
     this.setVars();
     try {
-      this.api = await import('./pod-api.js?v=7-14-1');
+      this.api = await import('./pod-api.js?v=7-14-2');
     } catch (e) {
       this.api = null;
     }
@@ -1095,15 +1095,22 @@ class Component extends DCLogic {
   }
 
   async openFile(url, name, kind) {
-    this.setState({ view: 'editor', editing: name, editUrl: url, editorLoaded: false, editorText: '', dirty: false });
-    try { const text = await this.cl.readText(url); this.setState({ editorText: text, editorLoaded: true }); }
+    this.setState({ view: 'editor', editing: name, editUrl: url, editorLoaded: false, editorText: '', editorType: undefined, dirty: false });
+    try {
+      const { text, type } = await this.cl.readText(url);
+      this.setState({ editorText: text, editorType: type, editorLoaded: true });
+    }
     catch (e) { this.setState({ editorText: '', editorLoaded: true }); }
   }
 
   async doSave() {
     if (!this.state.dirty || !this.cl) return;
     const url = this.state.editUrl;
-    const type = this.mimeFor(this.state.editing);
+    // Prefer the content-type the resource already had on the pod (works for
+    // extensionless files like a WebID `card`, and for any type mimeFor doesn't
+    // know) over guessing from the filename — guessing wrong (e.g. defaulting
+    // turtle to text/plain) breaks every Solid client's content negotiation.
+    const type = this.state.editorType || this.mimeFor(this.state.editing);
     try { await this.cl.writeText(url, this.state.editorText, type); this.setState({ dirty: false }); this.toast('Saved to your pod.'); }
     catch (e) { this.toast('Save failed: ' + e.message); }
   }
@@ -1111,10 +1118,13 @@ class Component extends DCLogic {
   mimeFor(name) {
     if (/\.json$/i.test(name)) return 'application/json';
     if (/\.md$/i.test(name)) return 'text/markdown';
+    if (/\.(ttl|turtle)$/i.test(name)) return 'text/turtle';
+    if (/\.n3$/i.test(name)) return 'text/n3';
     if (/\.(toml|ini|cfg)$/i.test(name)) return 'text/plain';
     if (/\.(html?)$/i.test(name)) return 'text/html';
     if (/\.css$/i.test(name)) return 'text/css';
     if (/\.js$/i.test(name)) return 'text/javascript';
+    if (name === 'card') return 'text/turtle';
     return 'text/plain';
   }
   extKind(name, isC) { return this.api ? this.api.kindOf(name, isC) : (isC ? 'folder' : 'text'); }
@@ -1126,7 +1136,7 @@ class Component extends DCLogic {
     n = n.replace(/^-+/, '') || 'file';
     return n;
   }
-  iconFor(kind) { return { folder:'📁', json:'🧩', md:'📝', config:'⚙️', code:'💻', text:'📄', file:'📄' }[kind] || '📄'; }
+  iconFor(kind) { return { folder:'📁', json:'🧩', md:'📝', config:'⚙️', code:'💻', turtle:'🕸️', text:'📄', file:'📄' }[kind] || '📄'; }
 
   async createThing() {
     let name = (this.state.newThingName || '').trim();
