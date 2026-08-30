@@ -9,9 +9,9 @@
 <link href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,500;7..72,700&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <!-- Assets are served with a long max-age and no ETag, so every edit to one of
      these files needs its ?v= bumped or phones keep the old copy. -->
-<link rel="stylesheet" href="/core.css?v=6">
-<link rel="stylesheet" href="/theme.css?v=6">
-<link rel="stylesheet" href="/valisette.css?v=6">
+<link rel="stylesheet" href="/core.css?v=9">
+<link rel="stylesheet" href="/theme.css?v=9">
+<link rel="stylesheet" href="/valisette.css?v=9">
 </head>
 <body>
 <div class="vz-shell-outer">
@@ -55,7 +55,16 @@
       <div id="source-chips" class="vz-chips"></div>
     </div>
 
+    <div class="vz-group vz-sort">
+      <div class="vz-label">order</div>
+      <div id="sort-toggle" class="vz-segmented" data-nodrag>
+        <button type="button" class="vz-seg-btn" data-sort="oldest">oldest first</button>
+        <button type="button" class="vz-seg-btn" data-sort="newest">newest first</button>
+      </div>
+    </div>
+
     <div class="vz-spacer"></div>
+    <div id="scan-bar" class="vz-scan-bar" hidden><div id="scan-fill" class="vz-scan-fill"></div></div>
     <div class="vz-setup-footer">
       <span id="stack-line" class="vz-stack-line"></span>
       <button id="signout-btn" class="vz-signout" data-nodrag>sign out</button>
@@ -68,8 +77,7 @@
     <div class="vz-deck-header">
       <div class="vz-deck-header-row1">
         <div class="vz-deck-header-left">
-          <button id="deck-back-btn" class="vz-back-btn" data-nodrag title="back to setup">‹</button>
-          <span id="session-date"></span>
+          <button id="deck-back-btn" class="vz-signout-btn" data-nodrag>sign out</button>
         </div>
         <div class="vz-deck-header-right">
           <span id="save-dot" class="vz-dot"></span>
@@ -81,7 +89,7 @@
 
     <div class="vz-tray-wrap">
       <div id="flag-tray">
-        <button class="vz-flag-btn" data-nodrag data-arm="anagnorisis" style="--flag-color: var(--anagnorisis)" title="arm anagnorisis, then swipe to commit">
+        <button class="vz-flag-btn" data-nodrag data-flag="anagnorisis" style="--flag-color: var(--anagnorisis)" title="tag, then swipe to commit">
           <span class="vz-flag-emoji">💡</span>anagnorisis</button>
         <button class="vz-flag-btn" data-nodrag data-flag="revisit" style="--flag-color: var(--temporal)" title="tag, then swipe to commit">
           <span class="vz-flag-emoji">🔂</span>revisit</button>
@@ -95,10 +103,13 @@
       <div id="gist-card">
         <div class="vz-card-header">
           <span id="gist-type"></span>
+        </div>
+        <div class="vz-title-row">
+          <h2 id="gist-title"></h2>
           <span id="gist-moment"></span>
         </div>
-        <h2 id="gist-title"></h2>
         <div id="gist-raw"></div>
+        <button id="gist-raw-more" class="vz-raw-more" data-nodrag hidden>⌄ more</button>
         <div id="active-flags"></div>
         <div id="reject-overlay" class="vz-swipe-overlay"><span class="vz-swipe-badge">reject</span></div>
         <div id="validate-overlay" class="vz-swipe-overlay"><span class="vz-swipe-badge">validate</span></div>
@@ -115,7 +126,7 @@
 
     <div class="vz-status-strip">
       <span id="save-text"></span>
-      <span>drag up for flags</span>
+      <span>← reject · validate →</span>
     </div>
   </section>
 
@@ -144,6 +155,6 @@
 
 </div>
 </div>
-<script type="module" src="/valisette.js?v=6"></script>
+<script type="module" src="/valisette.js?v=9"></script>
 </body>
 </html>
