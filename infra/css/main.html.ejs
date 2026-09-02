@@ -37,6 +37,157 @@
   <footer>
     <p>Your space on the web — you hold the key.</p>
   </footer>
+
+  <!--
+    Stale-sign-in self-repair.
+
+    Symptom: an app (backoffice, valisette, …) silently re-authenticates by sending the
+    browser to `/.oidc/auth?…&prompt=none`. If the browser still holds an OIDC session
+    cookie whose account no longer matches the stored Grant for that client,
+    oidc-provider throws in `actions/authorization/load_grant.js`:
+
+        if (grant.accountId !== ctx.oidc.account.accountId) throw new Error('accountId mismatch');
+
+    CSS turns that into a bare HTTP 500 "Server error … please file a bug report". The
+    user is stranded on our domain, the app's own JS never runs, and the only real cure
+    — clearing this site's cookies — is invisible to anyone without dev tools open.
+
+    The cookies are HttpOnly, so the page cannot delete them directly. But
+    `/.oidc/session/end` is same-origin and is a self-submitting logout form, so we can
+    drive it with fetch and flush the stale session without the user doing anything.
+    After the flush we replay the original authorization request: with no session,
+    `prompt=none` returns a normal `login_required` redirect to the app, which the Solid
+    auth library handles as "signed out" — a legible state the user can act on.
+
+    Inert on every other page: it only arms on an /.oidc/ error page whose body actually
+    carries the mismatch text.
+  -->
+  <script>
+  (function () {
+    "use strict";
+
+    // Both throws in load_grant.js strand the user the same way and have the same cure.
+    var STALE_SESSION = /\b(?:accountId|clientId) mismatch\b/;
+    var GUARD_KEY = "pod-session-recovery-at";
+    var GUARD_WINDOW_MS = 30000;
+
+    var main = document.querySelector("main");
+    if (location.pathname.indexOf("/.oidc/") !== 0) return;
+    if (!main || !STALE_SESSION.test(main.textContent)) return;
+
+    var retryUrl = location.href;
+    var appOrigin = "";
+    try {
+      var redirectUri = new URL(retryUrl).searchParams.get("redirect_uri");
+      if (redirectUri) appOrigin = new URL(redirectUri).origin;
+    } catch (e) { /* malformed redirect_uri: fall back to no "back to app" link */ }
+
+    // A recovery that just ran and landed us here again means flushing did not cure it.
+    // Stop, and hand the user the manual path instead of looping.
+    var lastRun = 0;
+    try { lastRun = parseInt(sessionStorage.getItem(GUARD_KEY), 10) || 0; } catch (e) { /* storage blocked */ }
+    var alreadyTried = Date.now() - lastRun < GUARD_WINDOW_MS;
+
+    function render(html) { main.innerHTML = html; }
+
+    function backLink() {
+      return appOrigin
+        ? '<p class="actions"><button class="alternate" type="button" id="recovery-back">Back to ' +
+          appOrigin.replace(/^https?:\/\//, "") + "</button></p>"
+        : "";
+    }
+
+    function wireBack() {
+      var back = document.getElementById("recovery-back");
+      if (back) back.addEventListener("click", function () { location.href = appOrigin; });
+    }
+
+    function showManual(detail) {
+      render(
+        "<h1>Your sign-in for this app is out of date</h1>" +
+        "<p>Your browser saved a sign-in that this server no longer recognises. " +
+        "<strong>Nothing is wrong with your pod and none of your data is affected</strong> — " +
+        "the saved sign-in just needs to be cleared.</p>" +
+        '<p class="actions"><button type="button" id="recovery-retry">Reset my sign-in and continue</button></p>' +
+        "<p>If that does not work, clear this site’s cookies in your browser " +
+        "(<em>Settings → Privacy → Cookies and site data</em>), then reload this page.</p>" +
+        backLink() +
+        (detail ? "<h2>Technical details</h2><p><code>" + detail + "</code></p>" : "")
+      );
+      wireBack();
+      document.getElementById("recovery-retry").addEventListener("click", function () {
+        this.disabled = true;
+        this.textContent = "Clearing…";
+        // Manual attempt only happens after the silent one failed, so escalate to
+        // dropping the account session too.
+        flushAndRetry(true);
+      });
+    }
+
+    function showWorking() {
+      render(
+        "<h1>Getting you signed back in</h1>" +
+        "<p>Your browser was holding an out-of-date sign-in for this app. " +
+        "Clearing it and sending you back — this takes a moment.</p>"
+      );
+    }
+
+    // `/.oidc/session/end` renders a form that auto-POSTs to …/end/confirm with an xsrf
+    // token. Same origin, so we can submit it ourselves and never show it to the user.
+    function endOidcSession() {
+      return fetch("/.oidc/session/end", { credentials: "include" })
+        .then(function (res) { return res.text(); })
+        .then(function (html) {
+          var xsrf = /name="xsrf"\s+value="([^"]+)"/.exec(html);
+          if (!xsrf) throw new Error("logout form did not contain an xsrf token");
+          return fetch("/.oidc/session/end/confirm", {
+            method: "POST",
+            credentials: "include",
+            headers: { "content-type": "application/x-www-form-urlencoded" },
+            body: "xsrf=" + encodeURIComponent(xsrf[1]) + "&logout=yes"
+          });
+        });
+    }
+
+    // The account cookie is a separate session from the OIDC one, and dropping it costs
+    // the user a password re-entry — so this is the escalation, not the first move.
+    // Only worth it when ending the OIDC session alone did not clear the mismatch
+    // (e.g. the cookie points at an account that no longer exists). Best-effort: the
+    // control is absent when logged out, which is already the state we want.
+    function endAccountSession() {
+      return fetch("/.account/", { credentials: "include", headers: { accept: "application/json" } })
+        .then(function (res) { return res.json(); })
+        .then(function (body) {
+          var logout = body && body.controls && body.controls.account && body.controls.account.logout;
+          if (!logout) return null;
+          return fetch(logout, {
+            method: "POST",
+            credentials: "include",
+            headers: { "content-type": "application/json" },
+            body: "{}"
+          });
+        })
+        .catch(function () { return null; });
+    }
+
+    function flushAndRetry(escalate) {
+      try { sessionStorage.setItem(GUARD_KEY, String(Date.now())); } catch (e) { /* storage blocked */ }
+      endOidcSession()
+        .then(function () { return escalate ? endAccountSession() : null; })
+        .then(function () { location.replace(retryUrl); })
+        .catch(function (err) {
+          showManual("Could not clear the saved sign-in automatically: " + err.message);
+        });
+    }
+
+    if (alreadyTried) {
+      showManual("accountId mismatch (persisted after an automatic reset)");
+      return;
+    }
+    showWorking();
+    flushAndRetry(false);
+  })();
+  </script>
 </body>
 </html>
 
