@@ -317,3 +317,27 @@ claude.ai has no shell and cannot run the returned `curl` command — stated pla
 ### Test resources
 
 `shared/8-10-verify-upload*.txt` created and deleted during adversarial verification. `shared/8-10-proof-file.jpg` (150,000 bytes, random content) kept as live POC evidence of the >100kb path, per Epic 8 convention.
+
+## Story 8.7 — Team Onboarding at N>1 (2026-09-24)
+
+Three teammates (Alex, Xavier/`chabivdb`, Zeneip/`thzource`) were onboarded in person. The connector now serves 6 active identities. The logic works end to end, but people cannot yet onboard themselves: the ACL step takes too many copy-pastes of the agent WebID. That friction is logged as Story 7.16.
+
+| Proof | Where | What it shows |
+|---|---|---|
+| Isolation (AC9) | claude.ai, Nicolas's `hyperscope/agents/agent#me` | 6/6 writes into teammates' roots and `vault/` denied; nothing created |
+| Duplicate-webId guard (AC10) | fixture against `loadIdentities` | Two slugs on one webId refused with an actionable message; runs before the boot-skip |
+| `verify-http.js` (AC11) | live public URL, run inside the container | initialize → tools/list → list → pinned denial: ALL CHECKS PASSED |
+| `/healthz` | public | `{"ok":true}` 200, aggregate only; boot log `6 identities configured` |
+| Journal attribution | `journal.jsonl`, 1,873 lines | Each teammate label touches only their own pod; cross-pod writes denied |
+| Secret hygiene | same journal | 0 hits for every slug, clientId, clientSecret and token term |
+| Unknown slug / rate limit | public | 404, then 429 after 10/min; valid traffic unaffected |
+
+### Bugs found and fixed live (commit `caf27fd`)
+
+- **`/healthz` returned 503 for about 25 days while the connector served fine.** It checked `isLoggedIn`, which 10-minute client-credentials tokens flip to false on any idle identity. It now reports unhealthy only when a re-login actually fails.
+- **One dead credential crash-looped the connector for everyone.** A teammate deleted a credential in CSS, and boot's `process.exit(1)` on `invalid_client` returned 502 to all users. Boot now logs and skips the failing identity. The dead entry was revoked.
+
+### Open
+
+- The action log `nicolas_claude/epic-8-action-log.md` was found missing (8.1–8.10 sections lost, cause unknown). It was restarted with a gap note, and the 8.7 section appended (400 → 984 bytes, prefix preserved).
+- AC8 (a page-only rerun) waits for Story 7.16. Also open: the EBUSY log flood (single-file bind mount) and non-distinct labels.

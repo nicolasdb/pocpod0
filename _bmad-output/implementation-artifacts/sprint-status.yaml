@@ -110,7 +110,7 @@ development_status:
   story-8-5-live-verification: review  # 2026-08-01: all 11 ACs met live from claude.ai, 1 bug found+fixed
   story-8-6-capture-surface-and-skill: done  # 2026-08-02: capture skill+receipts, live-verified, 2 bugs fixed
   story-8-6-1-lazy-identity-loading: done  # 2026-08-02: no-restart onboarding, live-verified, review resolved
-  story-8-7-team-onboarding-doc: in-progress  # 2026-08-03: Tasks 1-3 done, halted before Task 4 (needs a live 2nd person)
+  story-8-7-team-onboarding-doc: in-progress  # 2026-09-24: Tasks 1-3,5,6 done live (3 teammates, 6 identities); AC8 page-only rerun waits on 7.16
   story-8-8-credential-at-rest-hardening: deferred-pre-pilot  # 2026-08-11: risk accepted → see architecture.md SEC-4
   story-8-9-access-journal-tamper-spike: done  # 2026-08-12: fixed journal-rewritable finding, deployed+verified
   story-8-10-agent-file-upload: done  # 2026-08-28: code review resolved 4 decisions + 6 patches (journal, cap check, peek-before-buffer, no-oracle msg, no-consume-on-mismatch, TOCTOU re-probe); 3 deferred

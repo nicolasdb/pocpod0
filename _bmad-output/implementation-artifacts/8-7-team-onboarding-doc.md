@@ -125,23 +125,22 @@ Walked as a concrete multi-layer scenario (student → course → school → reg
   - [x] 4.6 **Done 2026-09-24 (AC9 met), probed from Nicolas's side.** Nicolas's `hyperscope/agents/agent#me` via claude.ai: list + write `isolation-probe-8-7.txt` on root and `vault/` of `alex/`, `chabivdb/`, `thzource/`. **6/6 writes denied** (`Access denied — this agent lacks the required WAC permission`); nothing created. `alex/` and `thzource/` roots listable = backoffice default root badge "Public — publicly listable, not readable", expected; `chabivdb/` root private by owner choice; all three `vault/` denied at list. Teammate-side probes (their agent vs Nicolas's pod) not run by the operator: that would mean using their credentials.
   - [ ] 4.6-original Self-audit their agent: granted where intended, **denied** on Nicolas's containers. Record the refusal — AC9 needs a denial, not just an access. (8.5 Task 2 learned this the hard way: public-read resources made LIST alone useless as evidence, and a WRITE probe had to be added.)
 
-- [ ] **Task 5 — N=2 verification (AC: 10, 11)** — _2026-09-24 live findings, N=6 active identities (Nicolas ×3 incl. hermes-manny, Alex `claude-alex`, Xavier `BridgetJones1`, Zeneip `thzource/agents/Poshy`):_
+- [x] **Task 5 — N=2 verification (AC: 10, 11)** — _2026-09-24 live findings, N=6 active identities (Nicolas ×3 incl. hermes-manny, Alex `claude-alex`, Xavier `BridgetJones1`, Zeneip `thzource/agents/Poshy`):_
   - **F1 `/healthz` 503 for ~25 days while serving fine.** Checked `session.info.isLoggedIn`; client-credentials tokens (10 min, no refresh token) flip it false on every idle identity. Fixed: unhealthy = a re-login failed (`identity.authBroken`). Deployed, healthy.
   - **F2 one dead credential crash-looped the connector for everyone.** Xavier replaced `BridgetJones` with `BridgetJones1` (old one deleted in CSS); boot's `process.exit(1)` on `invalid_client` → restart loop, 502 for all. Immediate: entry marked `revoked: true` (backup `~/identities.json.bak-2026-09-24` on VPS). Durable: boot now logs and skips a failing identity; lazy path handles it. Deployed, healthy.
   - **F3 duplicate-webId guard (AC10):** active webIds all distinct; the only duplicates are revoked entries, which the guard excludes by design. Not exercised live — still needs a fixture test.
   - **F4 log flood:** `identityRegistry` EBUSY rename fallback on every write (single-file bind mount). Works, weakened crash-atomicity. Candidate: bind-mount the directory.
   - **F5 labels:** Xavier's two entries both "Claude", Zeneip's "Unlabeled" → journal attribution (5.3) ambiguous. Mint dialog should require a distinct label.
-  - Remaining: 5.2 `verify-http.js`, 5.3–5.5.
-  - [ ] 5.1 Exercise the duplicate-`webId` guard against the real two-identity config; confirm the boot refusal fires and its message is actionable.
-  - [ ] 5.2 `verify-http.js` against the live public URL; `/healthz` still `{"ok":true}` aggregate-only (no count leak, per 8.6.1 AC7); confirm 2 identities configured via boot logs/journal instead.
-  - [ ] 5.3 Journal attributes actions to the correct label per person — the first configuration where mis-attribution is even possible.
-  - [ ] 5.4 Grep the journal for both slugs and every secret term → 0 hits.
-  - [ ] 5.5 Confirm unknown-slug 404 and rate-limiting unchanged (both were built to be indistinguishable per-slug; N=2 is the first chance to check they still are).
+  - [x] 5.1 **Done 2026-09-24 via fixture (AC10).** Did not alter real teammates' entries. `loadIdentities` given a chmod-600 file with two slugs sharing a real-shaped webId (`alex/agents/claude`, labels `claude-alex`/`thzource`) → refused: `Identity "thzource" has the same webId as identity "claude-alex". Two slugs must not point at the same underlying identity … Give each person their own webId, or remove the duplicate slug.` Actionable. Refusal is in `loadIdentities`, before the F2 boot-skip, so boot tolerance does not weaken it. `verify-identity-registry.js` 7/7 pass (incl. mint-time duplicate refusal).
+  - [x] 5.2 **Done 2026-09-24.** `verify-http.js` run inside the container against `https://solid-mcp.nicolasdb.eu/mcp/<Claude.ai_chat slug>` (slug never printed): initialize → tools/list → `solid_list_container(hyperscope_ndb/shared/)` OK, negative write denied with pinned wording, **ALL CHECKS PASSED**. `/healthz` → `{"ok":true}` 200, no count. Boot log: `listening … (6 identities configured)`, 6 × `ready as`.
+  - [x] 5.3 **Done 2026-09-24.** Journal entries carry `{ts,label,tool,resource,outcome}`. Label × pod breakdown: `claude-alex`→`alex` only, `Claude` (BridgetJones1)→`chabivdb` only, `Unlabeled` (Poshy)→`thzource` only. The only cross-pod `ok` rows are Nicolas's `claude` isolation probe listing publicly-listable roots (4.6); every cross-pod write is `denied`. Attribution correct; F5 label ambiguity remains a readability issue, not a mis-attribution.
+  - [x] 5.4 **Done 2026-09-24.** In-container scan of 1,873 journal lines for every slug, clientId, clientSecret (all entries incl. revoked) plus `clientSecret`/`client_secret`/`Bearer `/`access_token`/`DPoP ` → **0 hits**.
+  - [x] 5.5 **Done 2026-09-24.** Unknown-slug POST → 404. Burst of 30 unknown-slug POSTs → 9 × 404 then 429 (limit 10/min incl. the earlier probe); `/healthz` still 200 after, so the valid-traffic bucket is separate as designed.
 
-- [ ] **Task 6 — Close the loop (AC: 12)**
-  - [ ] 6.1 Append a dated "Story 8.7" section to `epic-8-action-log.md` via `solid_append_resource`; verify byte-length growth.
-  - [ ] 6.2 Add a "Story 8.7" proof-table section to `epic-8-progress-report.md`.
-  - [ ] 6.3 Record the onboarding-friction notes from 4.3 somewhere durable — they are the input to Story 7.9's UI.
+- [x] **Task 6 — Close the loop (AC: 12)**
+  - [x] 6.1 **Done 2026-09-24 (fresh log).** Original `nicolas_claude/epic-8-action-log.md` was missing (404 to its owner, 8.1–8.10 sections lost, cause unknown). Per Nicolas: restarted as a fresh log with a gap note pointing to `epic-8-progress-report.md`, then appended the Story 8.7 section as `nicolas_claude/profile/card#me` (PUT read-then-append, same as `solid_append_resource`). Bytes 400 → 984, prefix preserved.
+  - [x] 6.2 "Story 8.7" section added to `epic-8-progress-report.md`.
+  - [x] 6.3 Friction notes recorded durably in Story 7.16 (`epics.md`: evidence, ACL copy-paste friction, password-recovery spike, CSS admin app) plus F1–F5 above. Story 7.16 supersedes 7.9 as the UI target.
 
 ## Dev Notes
 
