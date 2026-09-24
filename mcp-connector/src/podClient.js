@@ -20,7 +20,13 @@ const {
   createContainerAt,
   getContainedResourceUrlAll,
   isContainer,
+  getThing,
+  getDatetime,
+  getInteger,
 } = require("@inrupt/solid-client");
+
+const DCT_MODIFIED = "http://purl.org/dc/terms/modified";
+const POSIX_SIZE = "http://www.w3.org/ns/posix/stat#size";
 
 /** Read an RDF resource as a SolidDataset (for use with getThing/setThing etc). */
 async function readDataset(url, session) {
@@ -40,6 +46,31 @@ function newDataset() {
 /** Read a non-RDF file. Returns a Blob (Node: a Buffer-like Blob polyfill). */
 async function readFile(url, session) {
   return getFile(url, { fetch: session.fetch });
+}
+
+/**
+ * Read a file as text together with its version headers.
+ *
+ * ADR 006 (publication by pull): the collective's agent re-pulls a member's
+ * bundle only when it changed, so it needs a change key. getFile() drops the
+ * response headers, so the first live pull (2026-09-24) had no key at all and
+ * would have re-snapshotted every file on every run. A raw GET keeps them.
+ * Errors carry statusCode and the "[status]" message shape the rest of this
+ * module uses, so safeHandler's 401-retry and 403 journaling still apply.
+ */
+async function readFileWithVersion(url, session) {
+  const res = await session.fetch(url, { method: "GET" });
+  if (!res.ok) {
+    const err = new Error(`GET ${url} failed: [${res.status}] ${res.statusText || ""}`.trim());
+    err.statusCode = res.status;
+    throw err;
+  }
+  return {
+    text: await res.text(),
+    etag: res.headers.get("etag"),
+    lastModified: res.headers.get("last-modified"),
+    contentType: res.headers.get("content-type"),
+  };
 }
 
 /**
@@ -200,6 +231,29 @@ async function listContainer(containerUrl, session) {
   return getContainedResourceUrlAll(dataset);
 }
 
+/**
+ * List a container with each child's modification time and size, which CSS
+ * states in the container's own representation (dcterms:modified, posix:size).
+ * Costs no request beyond the listing itself, so a puller can skip unchanged
+ * files without reading them. Either field is null when the server omits it:
+ * other Solid servers are not obliged to publish them, and a missing value
+ * must read as "unknown", never as "unchanged".
+ */
+async function listContainerDetailed(containerUrl, session) {
+  const dataset = await getSolidDataset(containerUrl, { fetch: session.fetch });
+  return getContainedResourceUrlAll(dataset).map((url) => {
+    const thing = getThing(dataset, url);
+    const modified = thing ? getDatetime(thing, DCT_MODIFIED) : null;
+    const size = thing ? getInteger(thing, POSIX_SIZE) : null;
+    return {
+      url,
+      isContainer: url.endsWith("/"),
+      modified: modified ? modified.toISOString() : null,
+      size: size === null || size === undefined ? null : size,
+    };
+  });
+}
+
 /** Check whether a URL points to a container. */
 async function checkIsContainer(url, session) {
   const dataset = await getSolidDataset(url, { fetch: session.fetch });
@@ -211,6 +265,7 @@ module.exports = {
   saveDataset,
   newDataset,
   readFile,
+  readFileWithVersion,
   writeFile,
   appendFile,
   postResource,
@@ -218,5 +273,6 @@ module.exports = {
   confirmGone,
   createContainer,
   listContainer,
+  listContainerDetailed,
   checkIsContainer,
 };
