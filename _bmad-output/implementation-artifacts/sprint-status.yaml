@@ -98,6 +98,7 @@ development_status:
   story-7-13-origin-split-portable-apps: done  # 2026-08-26: SSO-bounce fixed, live-verified by Nicolas both apps + full regression → see epics.md
   story-7-14-token-auth-provider-agnostic-pods: done  # 2026-08-26: descoped to /onboard CORS fix (cookie survives 7.13, token rewrite dropped) + relative-path bug fix, live-verified by Nicolas → see epics.md
   story-7-15-valisette-rate-toml-writeback: done  # 2026-08-26: string-patch write-back live-verified on real pod file, 3 live bugs fixed (raw-block parser, retry-duplication, demo-path leak), anagnorisis=validation-outcome/revisit+priority=triage_flags/note confirmed against schema-v1.md (finalized contract), no schema gap; code review: 8 patches applied (undo history retention, per-file batch-closed scoping, not-found terminal state, i-rewind race, note/flags clearing, partial-read-failure surfacing), 1 deferred (bare triple-quote in raw prose)
+  story-7-16-guided-onboarding-agent-grants: backlog  # 2026-09-24: from 8.7 live evidence (3 teammates hand-guided, ACL copy-paste friction) → see epics.md
   epic-7-retrospective: optional
 
   # Epic 8: Solid MCP Connector — origin/rationale → see epics.md Epic 8 header

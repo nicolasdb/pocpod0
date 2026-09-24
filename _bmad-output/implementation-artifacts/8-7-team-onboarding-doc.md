@@ -1,6 +1,6 @@
 # Story 8.7: Team Onboarding — Your Pod, Your Agent, Your Grants
 
-Status: ready-for-dev
+Status: in-progress
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -116,14 +116,22 @@ Walked as a concrete multi-layer scenario (student → course → school → reg
 
 - [ ] **Task 4 — Onboard the second person for real (AC: 8, 9)**
   - [~] 4.0 **Informal attempt, 2026-08-19, not this task's controlled run — logged because it's real evidence.** Nicolas guided Alex through onboarding off-script (Alex already had his own pod, was familiar with the system, so Nicolas hand-walked him rather than handing him the page). **Alex minted a connector against his own pod's root WebID instead of a dedicated agent identity** — the exact trap Story 7.12 exists to close: nothing in the current flow prompts "make an agent identity first," so the fastest path for someone who already owns a pod is to mint straight off their root WebID. That connector now holds full authority over Alex's entire pod, not a scoped grant. Confirms 4.2's premise the hard way: **silence is the measurement, and off-script guidance produced exactly the stumble a script should have caught.** Does not close Task 4 — the controlled, page-only run with verbatim note-taking (4.2–4.4) still needs to happen, ideally *after* 7.12 ships so the page can route Alex through the corrected flow. **Not Nicolas's call to fix.** Alex's pod, Alex's connector — nobody acts on another person's account on their behalf. The fix is making the frontend legible enough that Alex can see the distinction himself and decide, including deciding to leave it as-is.
+  - [~] 4.0b **Hand-guided run, 2026-09-23 — 3 teammates (Alex, Xavier/chabivdb, Zeneip), Nicolas in person.** Verdict: E2E logic works (agent identity 7.12 → "Get connector URL for Claude" as agent 7.9 → custom connector in claude.ai → share folder to agent WebID). **Self-onboarding is not viable**: AC8's "page-only, Nicolas silent" bar is NOT met. Agent-identity creation inside the existing pod is a clear step up from Alex's 2026-08-19 stumble (mint dialog now defaults toward the agent and warns about pod-root). Main friction: the ACL step — copy the agent WebID from People & apps, paste into the folder share panel, pick Let them read / Read + edit. Too many copy-pastes for people unfamiliar with both the backoffice and Solid. Screens: `~/Images/Screenshots/screencap_0923_*.png`. Remediation moved to new **Story 7.16** (guided onboarding, no copy-paste); a page-only AC8 rerun should follow 7.16, not precede it.
   - [ ] 4.1 Pick the person and confirm with Nicolas before creating anything. **This creates a real CSS account** — Epic 7 already accumulated orphan accounts and there is still no HTTP delete path for accounts or pods.
   - [ ] 4.2 They follow the page. Nicolas available for genuine blockers, **not** narrating. Silence is the measurement.
   - [ ] 4.3 Record every stumble, guess, and question verbatim as it happens — not reconstructed afterward.
   - [ ] 4.4 Fix the page from those notes. The fixes are the deliverable; the draft was a hypothesis.
   - [ ] 4.5 Their capture from claude.ai into their own pod, working.
-  - [ ] 4.6 Self-audit their agent: granted where intended, **denied** on Nicolas's containers. Record the refusal — AC9 needs a denial, not just an access. (8.5 Task 2 learned this the hard way: public-read resources made LIST alone useless as evidence, and a WRITE probe had to be added.)
+  - [x] 4.6 **Done 2026-09-24 (AC9 met), probed from Nicolas's side.** Nicolas's `hyperscope/agents/agent#me` via claude.ai: list + write `isolation-probe-8-7.txt` on root and `vault/` of `alex/`, `chabivdb/`, `thzource/`. **6/6 writes denied** (`Access denied — this agent lacks the required WAC permission`); nothing created. `alex/` and `thzource/` roots listable = backoffice default root badge "Public — publicly listable, not readable", expected; `chabivdb/` root private by owner choice; all three `vault/` denied at list. Teammate-side probes (their agent vs Nicolas's pod) not run by the operator: that would mean using their credentials.
+  - [ ] 4.6-original Self-audit their agent: granted where intended, **denied** on Nicolas's containers. Record the refusal — AC9 needs a denial, not just an access. (8.5 Task 2 learned this the hard way: public-read resources made LIST alone useless as evidence, and a WRITE probe had to be added.)
 
-- [ ] **Task 5 — N=2 verification (AC: 10, 11)**
+- [ ] **Task 5 — N=2 verification (AC: 10, 11)** — _2026-09-24 live findings, N=6 active identities (Nicolas ×3 incl. hermes-manny, Alex `claude-alex`, Xavier `BridgetJones1`, Zeneip `thzource/agents/Poshy`):_
+  - **F1 `/healthz` 503 for ~25 days while serving fine.** Checked `session.info.isLoggedIn`; client-credentials tokens (10 min, no refresh token) flip it false on every idle identity. Fixed: unhealthy = a re-login failed (`identity.authBroken`). Deployed, healthy.
+  - **F2 one dead credential crash-looped the connector for everyone.** Xavier replaced `BridgetJones` with `BridgetJones1` (old one deleted in CSS); boot's `process.exit(1)` on `invalid_client` → restart loop, 502 for all. Immediate: entry marked `revoked: true` (backup `~/identities.json.bak-2026-09-24` on VPS). Durable: boot now logs and skips a failing identity; lazy path handles it. Deployed, healthy.
+  - **F3 duplicate-webId guard (AC10):** active webIds all distinct; the only duplicates are revoked entries, which the guard excludes by design. Not exercised live — still needs a fixture test.
+  - **F4 log flood:** `identityRegistry` EBUSY rename fallback on every write (single-file bind mount). Works, weakened crash-atomicity. Candidate: bind-mount the directory.
+  - **F5 labels:** Xavier's two entries both "Claude", Zeneip's "Unlabeled" → journal attribution (5.3) ambiguous. Mint dialog should require a distinct label.
+  - Remaining: 5.2 `verify-http.js`, 5.3–5.5.
   - [ ] 5.1 Exercise the duplicate-`webId` guard against the real two-identity config; confirm the boot refusal fires and its message is actionable.
   - [ ] 5.2 `verify-http.js` against the live public URL; `/healthz` still `{"ok":true}` aggregate-only (no count leak, per 8.6.1 AC7); confirm 2 identities configured via boot logs/journal instead.
   - [ ] 5.3 Journal attributes actions to the correct label per person — the first configuration where mis-attribution is even possible.

@@ -466,6 +466,18 @@ As the person triaging Otis gists in Valisette, I want each swipe to patch the `
 - **Rate-side dependency (assumed, not built here):** the Rate must stamp a file's `ingested = true` only once no gist in it remains `pending`, so nothing is stranded behind an early stamp. Out of scope for this story.
 - See `7-15-valisette-rate-toml-writeback.md`.
 
+### Story 7.16: Guided Onboarding — Agent + Grants Without Copy-Paste _(ADDED 2026-09-24 — Story 8.7 live evidence, 3 teammates)_
+
+As a new teammate unfamiliar with both the backoffice and Solid, I want the flow from "I have a pod" to "Claude can capture into my chosen folder" to be one guided path, so I never have to copy an agent WebID by hand or understand WAC to grant it access.
+
+- **Evidence (Story 8.7 Task 4, 2026-09-23):** Alex, Xavier (chabivdb) and Zeneip were onboarded end-to-end, all hand-guided by Nicolas in person. E2E logic proven: agent identity in existing pod (7.12) → connector URL for Claude minted as the agent (7.9) → custom connector added in claude.ai → folder shared to the agent. Self-onboarding is **not** viable yet.
+- **Friction:** the ACL step. Agent WebID is copied from People & apps, pasted into a folder's share panel, then "Let them read" / "Read + edit" is chosen. Too many copy-paste hops for someone who knows neither the app nor Solid. Also: connector "Act as" still lists the pod-root identity first (Alex trap, 8.7 Task 4.0); the `access-log/` Append-only grant remains operator-run.
+- **Direction (to be refined in create-story):** after minting or picking an agent, offer "which folders can it use?" with a folder picker and one-tap grant (no WebID paste); make the agent the default "Act as"; fold Append-only `access-log/` creation and grant into the same step; connect the "I'm new to this" walkthrough to the agent + connector steps.
+- **Password recovery (2026-09-24 live lockout):** teammate hit "email/password does not match" → re-register gave "email already used" → "I forgot my password" did nothing. Suspected cause: `infra/css/config.json` loads `css:config/identity/email/default.json` with no SMTP sender. Spike first (CSS logs), then pick a sender (Nicolas's call: outbound mail from the domain), wire it, check the 7.2-restyled recovery pages, and point "email already used" at recovery. Must stay self-service: the operator never resets someone's password.
+- **Related, separate (post-PoC candidate):** no account/pod delete over HTTP has blocked cleanup since Epic 7 (29 accounts, orphans). Several attempts failed. Candidate: a dedicated operator-only "CSS admin app". Not in 7.16's scope.
+- Depends on 7.11a (effective-access badge truth) for the badge to show the agent's grant honestly.
+- Blocked-by: none. Supersedes the manual steps (d)–(h) of `docs/team-onboarding.md` once shipped.
+
 ## Epic 1: Pod Sovereignty & Access Control
 
 Learners own their data in Solid Pods with enforceable, auditable access control — the fundamental sovereignty primitive is proven and adversarially validated.

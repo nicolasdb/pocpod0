@@ -869,12 +869,17 @@ async function bootIdentities() {
     try {
       entry = await loginIdentity(id);
     } catch (err) {
+      // Story 8.7 (live outage 2026-09-24): this used to process.exit(1). One
+      // teammate deleting a credential in the backoffice (invalid_client) then
+      // crash-looped the connector for everyone at the next restart. Skip it
+      // instead: the slug falls through to the lazy path, which fails that
+      // one person's requests cleanly and retries once the entry is fixed.
       // eslint-disable-next-line no-console
       console.error(
-        `[solid-pod-agent mcp-server] fatal: Solid login failed for identity "${id.label}":`,
+        `[solid-pod-agent mcp-server] Solid login failed for identity "${id.label}" — skipped at boot, other identities unaffected:`,
         err.message
       );
-      process.exit(1);
+      continue;
     }
     identities.set(slug, entry);
   }
@@ -1036,12 +1041,22 @@ async function reauthIdentity(identity) {
   console.log(
     `[solid-pod-agent mcp-server] session for identity "${identity.label}" looks expired (401) — re-authenticating once`
   );
-  const session = await getAgentSession({
-    clientId: identity.clientId,
-    clientSecret: identity.clientSecret,
-    oidcIssuer: process.env.SOLID_OIDC_ISSUER,
-    keepAlive: true,
-  });
+  let session;
+  try {
+    session = await getAgentSession({
+      clientId: identity.clientId,
+      clientSecret: identity.clientSecret,
+      oidcIssuer: process.env.SOLID_OIDC_ISSUER,
+      keepAlive: true,
+    });
+  } catch (err) {
+    // Story 8.7: /healthz reads this flag. A failed re-login is the only
+    // real "dead credential" signal — an expired token alone is not (see
+    // /healthz).
+    identity.authBroken = true;
+    throw err;
+  }
+  identity.authBroken = false;
   identity.session = session;
   return session;
 }
@@ -1390,8 +1405,15 @@ async function main() {
       // still fail loudly at boot (loadIdentities throws), so nothing is
       // hidden by dropping the size check here: this endpoint's job is
       // "are the sessions I hold alive", and holding none is a true answer.
+      // Story 8.7 fix: this used to check `session.info.isLoggedIn`. Client-
+      // credentials tokens last 10 min with no refresh token, so keepAlive
+      // cannot renew them: every identity idle >10 min flips isLoggedIn
+      // false and is re-logged in on its next request's 401 (working as
+      // designed). Checking it made /healthz 503 from ~10 min after boot,
+      // permanently (live 2026-09-24: 25 days unhealthy while serving fine).
+      // Unhealthy now means a re-login was attempted and failed.
       allSessionsAlive = [...identities.values()].every(
-        (identity) => identity.session.info.isLoggedIn
+        (identity) => !identity.authBroken
       );
     } catch (err) {
       // Any unexpected shape (session field missing, SDK throw) means we
