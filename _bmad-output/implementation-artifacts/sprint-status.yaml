@@ -118,6 +118,15 @@ development_status:
   planning-docs-consolidation: review  # 2026-08-20: 106.7KB→7.6KB, drift check clean
   epic-8-retrospective: optional
 
+  # Epic 9: Server-Side Access Log — origin/rationale → see epics.md Epic 9 header
+  epic-9: backlog
+  story-9-1-spike-css-authorization-hook: backlog
+  story-9-2-capture-access-attempts-per-account: backlog
+  story-9-3-backoffice-access-log-viewer: backlog
+  story-9-4-agent-access-log-query: backlog
+  story-9-5-retire-reader-side-receipts: backlog
+  epic-9-retrospective: optional
+
 # Sprint Metadata (solo-dev phasing, phases complete) trimmed → see product-brief.md
 
 # Known Issues — real partial results from Story 2.8 adversarial testing, not artificial failures

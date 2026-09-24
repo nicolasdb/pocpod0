@@ -478,6 +478,54 @@ As a new teammate unfamiliar with both the backoffice and Solid, I want the flow
 - Depends on 7.11a (effective-access badge truth) for the badge to show the agent's grant honestly.
 - Blocked-by: none. Supersedes the manual steps (d)–(h) of `docs/team-onboarding.md` once shipped.
 
+### Epic 9: Server-Side Access Log _(ADDED 2026-09-24 — from Story 8.7 close-out discussion)_
+Every access attempt on a pod (allowed or denied, public or private, identified or anonymous) is recorded by the server at the moment CSS makes its authorization decision. It is filed per owning **account**, stored outside the pods, browsable in the backoffice, and queryable by the owner's personal agent.
+**Origin / why:** the reader-side receipt convention (Story 8.6 `receipt.js`, 8.9 append-only `access-log/`) is voluntary, and live evidence proves that is too weak. On 2026-09-24 the journal showed hermes-manny made 446 reads on `hyperscope_ndb` with **446 `read_receipt` errors**: every receipt silently failed (probably a missing Append grant on `access-log/`). Readers outside the connector write nothing at all. A log that depends on the reader's cooperation and grants carries no evidential weight.
+**Design settled with Nicolas (2026-09-24):**
+- **Capture point:** wrap CSS's authorization step (`AuthorizingHttpHandler` or equivalent), which already knows the WebID/client, resource, mode and decision. Log all attempts. Anonymous requests have no WebID and are recorded as `anonymous`, with the IP hashed or truncated (GDPR). Authenticated reads of public resources carry the WebID.
+- **Storage:** per account, server-side files, **not Solid resources**, so neither the owner nor the reader can edit or delete them over HTTP. 90-day rotation.
+- **Exposure:** `/.account/access-log/`, reached with the account cookie (backoffice) **or** an agent token whose WebID belongs to the same account (personal agents, 7.12). Read by default, no WAC grant needed.
+- **Upgrade discipline:** these are custom CSS components (Components.js config and code). They must be re-applied and re-verified after every CSS image update and rebuild. Make that part of the deploy/runbook, not tribal knowledge.
+- **Retire** reader-side receipts once 9.2 is live (see 9.5).
+**Relationship:** extends Epic 8 (connector journal stays; it records agent *intent*, while this records server *decisions*) and Epic 7 (backoffice viewer). Simplifies Story 7.16: the `access-log/` Append grant step disappears.
+
+### Story 9.1: Spike — Authorization-Decision Hook in CSS
+As the operator, I want to know exactly where and how CSS exposes each authorization decision, so the capture design rests on the source code, not guesses.
+- Read the handler source inside the running CSS container (per `feedback_css_source_over_guessing`): `AuthorizingHttpHandler`, the credentials extractor, the permission reader, the `/.account/` routing and its account-cookie auth, and the pod→account ownership lookup.
+- Prototype a wrapper that logs each decision to a file: WebID, clientId, resource, modes, allowed/denied, anonymous.
+- Measure the per-request overhead. Confirm denied requests (401/403) are captured, not only allowed ones.
+- Check whether an account-scoped endpoint can also authenticate an agent's DPoP token and map its WebID back to the account.
+- Output: a go/no-go and the component shape for 9.2–9.4, recorded in `architecture.md` Validated Implementation Findings.
+
+### Story 9.2: Capture Every Access Attempt, Filed per Account
+As a pod owner, I want every attempt on my pods recorded by the server, so the record doesn't depend on who is reading or what grants they hold.
+- Custom CSS component from 9.1: allowed and denied, public and private, identified and anonymous (IP hashed/truncated).
+- Filed per owning account, server-side, outside pods. 90-day rotation. Appends must not block or slow requests noticeably (budget from 9.1).
+- Exclude reads of the log itself (no feedback loop).
+- Deploy runbook: re-apply and verify after every CSS image update and rebuild, plus a smoke check that proves capture is still active.
+- Proof: a live allowed, denied, anonymous and revoked-grant attempt each appear with correct fields.
+
+### Story 9.3: Backoffice "Who Accessed My Pods" Viewer
+As a pod owner, I want to browse and filter access attempts in the backoffice, so I can spot unexpected or suspicious access without reading raw logs.
+- `/.account/access-log/` endpoint (account cookie). Paginated, filterable by time range, outcome, WebID, pod/folder prefix, anonymous vs identified.
+- Default view hides the owner's own identities; a toggle shows everything.
+- Highlight denials after a revoke ("denied on a revoked grant") as a suspicious-activity signal.
+- WCAG 2.1 AA; outcome is shown by text, not only colour.
+
+### Story 9.4: Personal Agent Reads the Access Log ("Ask the Log")
+As a pod owner, I want my personal agent to query my access log, so I can ask Claude things like "who tried my private `vault/` last week?" or "any repeated denials after I revoked X?".
+- `/.account/access-log/` also accepts an agent token whose WebID belongs to the same account: read by default, no grant step.
+- New read-only connector tool `access_log_query(since, outcome, webId, resourcePrefix)`, journaled like other tools.
+- Other accounts' agents are refused. Proven live with a teammate's agent.
+- Update the connector SKILL.md so agents know the tool exists and what it cannot see (nothing outside our CSS).
+
+### Story 9.5: Retire Reader-Side Receipts
+As the operator, I want to remove the voluntary receipt mechanism once server-side capture is live, so there is one source of truth and onboarding loses a step.
+- Remove `receipt.js` writes and the `read_receipt` journal entries from the connector. Update the tool descriptions that promise a receipt.
+- Drop the `access-log/` create/grant step from `docs/team-onboarding.md` and from Story 7.16's scope.
+- Existing `access-log/` containers in pods: leave them for owners to delete themselves (never act on others' pods).
+- Depends on 9.2 being live and verified.
+
 ## Epic 1: Pod Sovereignty & Access Control
 
 Learners own their data in Solid Pods with enforceable, auditable access control — the fundamental sovereignty primitive is proven and adversarially validated.
