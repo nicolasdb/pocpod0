@@ -1,11 +1,20 @@
-# Schéma TOML v1 — Pipeline Otis
+---
+schema: capture
+version: 2.0
+date: 2026-08-30
+author: Manny (Breeding Ground)
+status: canonique
+---
+# Schéma TOML — Pipeline Otis (capture)
 
-> Source canonique : `references/schema-v1.md` (partagé) — **ce chemin n'existe
-> pas ailleurs dans ce dépôt** ; si un autre dépôt/système le référence
-> littéralement, voir la note de handoff datée du 30 août ci-dessous avant de
-> renommer ou déplacer ce fichier.
-> Dernière mise à jour : 30 août 2026 — anagnorisis redevient un flag (voir §4
-> et le journal de changements en fin de fichier)
+> Source canonique : `references/schema-capture.md`
+> **Version du document : 2.0 (30 août 2026)**
+>
+> Changements depuis v1.x :
+> - v1.0 (11 août) — premier schéma, format `[[trace]]` seul
+> - v1.1 (24 août) — unification raw/gist, anagnorisis = tag
+> - v1.2 (26 août) — anagnorisis passe statut de validation, contrat Tinder→Weaver
+> - **v2.0 (30 août) — anagnorisis redevient flag dans `triage_flags`, validation 3-way. Schema renommé `schema-capture.md`. Numérotation réinitialisée car le nom `v1` ne correspond plus à rien.**
 
 Le pipeline Otis produit **deux niveaux de TOML**, un seul protocole :
 
@@ -14,7 +23,7 @@ Le pipeline Otis produit **deux niveaux de TOML**, un seul protocole :
 | **Raw** | `[session_capture]` + `[[trace]]` | Messages bruts, avec bruit, non filtrés | `capture/raw/` | Scripts sources |
 | **Gist** | `[[gist]]` seulement | Observation qualitative, 3-5 phrases, nettoyée | `capture/gists/` | Passe de nettoyage Otis |
 
-Les deux partagent `version_schema = "v1"`. Le gist est **issu** d'une ou plusieurs traces ; le champ `archive` dans l'en-tête gist référence les fichiers traces sources.
+Les deux partagent `version_schema = "v2"` (depuis v2.0 du schéma). Le gist est **issu** d'une ou plusieurs traces ; le champ `archive` dans l'en-tête gist référence les fichiers traces sources.
 
 ---
 
@@ -24,7 +33,7 @@ Produit par les adaptateurs sources (ex: `otis-session-reader.py`). Capture brut
 
 ```toml
 [session_capture]
-version_schema = "v1"
+version_schema = "v2"
 timestamp_capture = 1787050940
 profile = "manny"
 session_id = "20260818_045837_ded4b6d2"
@@ -54,7 +63,7 @@ message_id = 4291
 
 | Champ | Type | Description |
 |---|---|---|
-| `version_schema` | string | `"v1"` — version partagée avec le format gist |
+| `version_schema` | string | `"v2"` — version partagée avec le format gist |
 | `timestamp_capture` | int | Unix timestamp de l'extraction |
 | `profile` | string | Profil Hermes source (manny, bianca, etc.) |
 | `session_id` | string | ID de session Hermes (traçabilité) |
@@ -86,7 +95,7 @@ Produit par la passe de nettoyage d'Otis. Destiné à la cérémonie de swipe.
 
 ```toml
 [gist_session]
-version_schema = "v1"
+version_schema = "v2"
 timestamp_distillation = 1787296500
 timestamp_capture = 1787295600
 profile = "otis"
@@ -117,13 +126,14 @@ tags = ["hypercampus", "solid"]
 routing = "automate"
 parent_id = null
 note = ""
+triage_flags = []
 ```
 
 ### Champs `[gist_session]`
 
 | Champ | Type | Description |
 |---|---|---|
-| `version_schema` | string | `"v1"` — partagé avec le format trace |
+| `version_schema` | string | `"v2"` — partagé avec le format trace |
 | `timestamp_distillation` | int | Unix timestamp du moment de production des gists |
 | `timestamp_capture` | int | Unix timestamp de la capture source |
 | `profile` | string | Toujours `"otis"` |
@@ -141,7 +151,7 @@ note = ""
 | `timestamp` | int | **Oui** | Unix timestamp du moment original (tri SPARQL) |
 | `type` | string | **Oui** | Type de gist (même enum que les traces) |
 | `titre` | string | **Oui** | Titre court, descriptif |
-| `validation` | string | **Oui** | `"pending"` (défaut) / `"validated"` / `"rejected"` — statut porté par Valisette (3 valeurs depuis le 30 août 2026 ; voir §4 pour `anagnorisis`, qui n'en fait plus partie) |
+| `validation` | string | **Oui** | `"pending"` (défaut) / `"validated"` / `"rejected"` — **3 valeurs seulement** depuis v2.0. `anagnorisis` n'est plus une valeur possible (voir §4) |
 | `raw` | string | **Oui** | Description qualitative, 3-5 phrases. Archive les sources |
 | `source` | string | Recommandé | Provenance : `session:{profile}/{session_id}` |
 | `raw_type` | string | Recommandé | Sous-type : `narrative` / `analyse` / `meta` / `decision` |
@@ -151,7 +161,7 @@ note = ""
 | `routing` | string | Optionnel | `automate` / `humain` / `intermediaire` |
 | `parent_id` | string | Optionnel | ID de trace parente. `null` si aucune |
 | `note` | string | Optionnel | Note ajoutée par Nicolas lors du swipe (Valisette) |
-| `triage_flags` | array | Optionnel | Extensions libres Valisette : `["revisit", "priority", "anagnorisis"]` — **Weaver doit lire `anagnorisis` ici depuis le 30 août 2026** (voir §4 et le journal de changements) ; les autres valeurs restent ignorées par Weaver |
+| `triage_flags` | array | Optionnel | Extensions libres Valisette : `["revisit", "priority", "anagnorisis"]` — **Weaver lit l'anagnorisis ici** depuis v2.0. Les autres valeurs sont ignorées par Weaver |
 
 ---
 
@@ -173,7 +183,7 @@ Les champs communs sont compatibles par nom et par type, ce qui permet la traça
 | — | `gist.titre` | **Nouveau** — ajouté par la passe de nettoyage |
 | — | `gist.validation` | **Nouveau** — `"pending"` jusqu'au swipe, porté à `"validated"` / `"rejected"` par Valisette |
 | — | `gist.note` | **Nouveau** — ajouté par Nicolas au swipe |
-| — | `gist.triage_flags` | **Nouveau** — extensions libres Valisette, ignorées par Weaver |
+| — | `gist.triage_flags` | **Nouveau** — extensions libres Valisette. `anagnorisis` est le seul flag lu par Weaver |
 | — | `[gist_session].ingested` | **Nouveau** — `false` (ou absent) jusqu'à l'ingestion Weaver, puis `true` |
 
 Les champs internes à la trace (`message_id`, `capture_point`, `session_capture`) ne remontent pas dans le gist — ils sont dans la chaîne d'archive via `[gist_session].archive`.
@@ -184,15 +194,12 @@ Les champs internes à la trace (`message_id`, `capture_point`, `session_capture
 
 > *"Le passage de l'ignorance à la connaissance."* — Aristote, *Poétique*
 >
-> **Changement du 30 août 2026 :** anagnorisis est un **tag dans
-> `triage_flags`**, pas un statut de `validation`. Ce champ avait déjà
-> oscillé flag → statut → flag → statut avant de se figer sur "statut" lors
-> d'une vérification contre cette même section (voir story 7.15,
-> "Spec Change Log", 26 août). La récurrence du flip-flop était le signal :
-> forcer un moment de reconnaissance à occuper le même champ que la direction
-> du swipe était la mauvaise forme depuis le début. Anagnorisis marque un
-> déclic *en plus de* valider ou rejeter, pas *à la place de* — exactement
-> comme revisit/priority.
+> **v2.0 :** anagnorisis est un **tag dans `triage_flags`**, pas un statut de `validation`.
+> Ce champ avait déjà oscillé flag → statut → flag → statut avant de se figer sur "statut" lors
+> de la v1.2 (26 août). La récurrence du flip-flop était le signal : forcer un moment de
+> reconnaissance à occuper le même champ que la direction du swipe était la mauvaise forme
+> depuis le début. Anagnorisis marque un déclic **en plus de** valider ou rejeter, pas **à la
+> place de** — exactement comme revisit/priority.
 
 L'anagnorisis est un **tag de triage** posé par Nicolas dans le swipe. Il marque un moment de **reconnaissance soudaine** — un insight qui change la compréhension. Le geste : tapoter 💡 dans le bandeau (comme revisit/priority), puis swiper dans le sens que le gist mérite. Le tag part dans `triage_flags` avec ce swipe ; `validation` reste `validated` ou `rejected`, jamais une 3ᵉ valeur pour ceci.
 
@@ -209,7 +216,7 @@ note = "C'est le moment où j'ai compris la différence fondamentale"
 
 C'est un tag que **toi seul poses**, dans le swipe, parce que toi seul sais ce qui a été un vrai déclic dans ta journée. L'automate ne peut pas le détecter — et c'est voulu.
 
-Dans le graphe final (Oxigraph), les triples marqués `otis:anagnorisis true` auront toujours un poids plus élevé pour les queries de synthèse — ce comportement de pondération, côté requête, ne change pas. Ce qui change est la source : Weaver doit désormais lire l'appartenance à `triage_flags` plutôt que `validation == "anagnorisis"`. Voir la note de handoff en fin de fichier pour la compatibilité avec les gists déjà swipés sous l'ancien contrat.
+Dans le graphe final (Oxigraph), les triples marqués `otis:anagnorisis true` auront toujours un poids plus élevé pour les queries de synthèse — ce comportement de pondération, côté requête, ne change pas. Ce qui change est la source : Weaver doit désormais lire l'appartenance à `triage_flags` plutôt que `validation == "anagnorisis"`.
 
 ---
 
@@ -251,7 +258,7 @@ Le fichier gist est **modifié en place** par Valisette (PATCH du champ `validat
 
 ```toml
 [regle_routage]
-version = "v1"
+version = "v2"
 source = "nicolas"
 maintenue_par = "nicolas"
 appliquee_par = "agent_automatique"
@@ -278,19 +285,15 @@ confiance_max = 0.70
 
 ---
 
-## 8. Handoff — anagnorisis flag→statut→flag, pour Manny (30 août 2026)
+## 8. Handoff Weaver — migration anagnorisis v2.0
 
 **Ce qui change :** `anagnorisis` n'est plus une 4ᵉ valeur de `validation`.
 `validation` redevient 3-way (`pending`/`validated`/`rejected`). Le tag vit
-maintenant dans `triage_flags`, aux côtés de `revisit`/`priority` — voir §4
-pour le pourquoi (le champ avait déjà flip-floppé plusieurs fois ; le
-récidive était le signal que "statut de validation" était la mauvaise forme,
-pas un accident isolé).
+maintenant dans `triage_flags` — voir §4 pour le pourquoi.
 
 **Ce qui NE change pas :** la sémantique de pondération côté requête. Un gist
-marqué anagnorisis doit toujours produire une pondération plus élevée dans
-Oxigraph (`otis:anagnorisis true` ou équivalent) — seule la source de lecture
-change côté Weaver.
+marqué anagnorisis doit toujours produire `otis:anagnorisis true` dans
+Oxigraph — seule la source de lecture change côté Weaver.
 
 **Action requise côté ingestion (Weaver) :**
 
@@ -299,29 +302,17 @@ change côté Weaver.
 + is_anagnorisis = "anagnorisis" in gist.get("triage_flags", [])
 ```
 
-Et `gist.validation` ne doit plus jamais être comparé qu'à `"pending"` /
-`"validated"` / `"rejected"` — un `"anagnorisis"` ne sera plus produit par de
-nouveaux swipes, mais voir la note de compatibilité ci-dessous.
+**Filtre d'ingestion :** Weaver ingère les gists où `validation IN ('validated',)`.
+Les gists avec `validation = "anagnorisis"` (ancien contrat, avant v2.0) sont
+acceptés en transition, mais les nouveaux gists ne doivent plus jamais produire
+cette valeur. Une fois la transition terminée, le filtre peut devenir strict.
 
-**⚠️ Compatibilité — gists déjà swipés avant ce changement :** Valisette est
-en usage réel depuis fin août 2026 (dogfooding mobile). Il est possible que
-des fichiers `capture/gists/*.toml` sur le pod contiennent déjà des gists
-avec `validation = "anagnorisis"` écrits par l'ancienne version, **pas encore
-ingérés par Weaver** (`[gist_session].ingested = false`). Avant de déployer le
-Weaver mis à jour :
+**⚠️ Gists hérités (pré-v2.0) :** Valisette a produit des gists avec
+`validation = "anagnorisis"` qui peuvent être non-ingérés sur le pod.
+Avant de déployer le Weaver v2 :
 
-1. Vérifier s'il existe des fichiers non-ingérés contenant
-   `validation = "anagnorisis"` sur le pod.
-2. Si oui : soit les migrer à la main (`validation` → `validated` ou
-   `rejected` selon ce que le swipe voulait vraiment dire, plus
-   `triage_flags = ["anagnorisis"]`), soit faire lire à Weaver **les deux
-   formes** en transition (`validation == "anagnorisis"` OU
-   `"anagnorisis" in triage_flags`) jusqu'à ce que le pod soit propre.
-3. Cette note peut être supprimée du fichier une fois la transition terminée.
-
-**Sur le chemin canonique du fichier :** l'en-tête de ce document déclare
-`references/schema-v1.md` (partagé) comme source canonique, mais ce chemin
-n'existe pas dans le dépôt `pocpod0` — seule la copie sous `valisette/`
-existe ici. Si `references/schema-v1.md` existe ailleurs (dépôt de Manny, ou
-un autre dépôt partagé), il faut soit y répercuter ce même changement, soit
-clarifier laquelle des deux copies fait foi.
+1. Scanner les fichiers non-ingérés pour `validation = "anagnorisis"`
+2. Les migrer : `validation` → `validated` + `triage_flags = ["anagnorisis"]`
+3. Weaver v2 lit les deux formes en transition
+  
+  Cette section peut être supprimée une fois la transition achevée.
