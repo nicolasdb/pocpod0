@@ -91,6 +91,10 @@ services:
       # too, or every /onboard/* request 403s with "Invalid Host" before it
       # reaches onboardRouter.js at all (found live, 2026-08-12).
       - ALLOWED_HOSTS=${MCP_ALLOWED_HOSTS:-solid-mcp.nicolasdb.eu,pod.nicolasdb.eu}
+      # Story 7.14: browser origins allowed to call /onboard/ with credentials.
+      # test.nicolasdb.eu is the backoffice test copy — without it the
+      # connector status reads "Connector unknown" and Connect fails there.
+      - ONBOARD_CORS_ORIGINS=${ONBOARD_CORS_ORIGINS:-https://backoffice.nicolasdb.eu,https://test.nicolasdb.eu}
     volumes:
       # Secrets stay VPS-side, never baked into the image layer (Task 1.5).
       # rsync --delete-after has no exclusion for these paths by accident;
