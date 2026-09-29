@@ -2,10 +2,12 @@
 # Only commands that are long, multi-step, or easy to forget belong here.
 # Simple one-liners (compose up/down/logs, ssh) run directly.
 #
-# Local stack uses distrobox-host-exec podman compose.
+# Local stack runs on host podman. Inside a distrobox (/run/.containerenv
+# exists) podman is reached via distrobox-host-exec; on the host directly.
 # VPS targets run from local via SSH — no make needed on the VPS.
 
-COMPOSE        = distrobox-host-exec podman compose
+PODMAN         = $(if $(wildcard /run/.containerenv),distrobox-host-exec podman,podman)
+COMPOSE        = $(PODMAN) compose
 PIPELINE_VENV  = pipeline/.venv/bin/activate
 VPS_REMOTE     = hetzner
 VPS_PATH       = /home/nicolas/pocpod0
@@ -59,8 +61,8 @@ rebuild: pull
 sync-workspaces: rebuild
 	$(COMPOSE) up -d --force-recreate openclaw-gateway
 	@echo "Waiting for openclaw-gateway..."
-	@until distrobox-host-exec podman exec openclaw-gateway true 2>/dev/null; do sleep 1; done
-	@distrobox-host-exec podman exec openclaw-gateway sh -c '\
+	@until $(PODMAN) exec openclaw-gateway true 2>/dev/null; do sleep 1; done
+	@$(PODMAN) exec openclaw-gateway sh -c '\
 		for src in $$(find /app/agents-seed -type f); do \
 			rel="$${src#/app/agents-seed/}"; \
 			case "$$rel" in \
@@ -79,10 +81,10 @@ backup:
 	$(eval BACKUP_DIR := backups/openclaw-$(shell date +%Y-%m-%dT%H-%M))
 	@mkdir -p $(BACKUP_DIR)
 	@echo "Backing up to $(BACKUP_DIR)/ ..."
-	@distrobox-host-exec podman cp openclaw-gateway:/home/node/.openclaw/workspaces $(BACKUP_DIR)/workspaces
-	@distrobox-host-exec podman cp openclaw-gateway:/home/node/.openclaw/openclaw.json $(BACKUP_DIR)/openclaw.json
-	@distrobox-host-exec podman cp openclaw-gateway:/home/node/.openclaw/exec-approvals.json $(BACKUP_DIR)/exec-approvals.json 2>/dev/null || true
-	@distrobox-host-exec podman cp openclaw-gateway:/home/node/.openclaw/devices $(BACKUP_DIR)/devices 2>/dev/null || true
+	@$(PODMAN) cp openclaw-gateway:/home/node/.openclaw/workspaces $(BACKUP_DIR)/workspaces
+	@$(PODMAN) cp openclaw-gateway:/home/node/.openclaw/openclaw.json $(BACKUP_DIR)/openclaw.json
+	@$(PODMAN) cp openclaw-gateway:/home/node/.openclaw/exec-approvals.json $(BACKUP_DIR)/exec-approvals.json 2>/dev/null || true
+	@$(PODMAN) cp openclaw-gateway:/home/node/.openclaw/devices $(BACKUP_DIR)/devices 2>/dev/null || true
 	@echo "Done:"; find $(BACKUP_DIR) -type f | sort | sed 's|^|  |'
 
 # ── Local: pipeline & tools ───────────────────────────────────────────────────
@@ -106,7 +108,7 @@ setup:
 
 # Pass ARGS="approve <requestId>" to approve a device
 cli-devices:
-	distrobox-host-exec podman exec openclaw-gateway openclaw devices $(ARGS)
+	$(PODMAN) exec openclaw-gateway openclaw devices $(ARGS)
 
 # ── VPS deploy (run from local) ───────────────────────────────────────────────
 # SSH alias: hetzner  |  Path: /home/nicolas/pocpod0
