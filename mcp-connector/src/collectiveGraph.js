@@ -13,8 +13,8 @@
  *   `confrontations/`. One named graph per resource, named by its URL, and
  *   replaced (PUT) on every ingest, so ingesting twice never duplicates.
  *
- * - Query: only a WebID the roster lists, or an agent a listed member declares
- *   with `acl:delegates`. The roster is read with the caller's own session, so
+ * - Query: the collective's own agent (it wrote what is there), a WebID the
+ *   roster lists, or an agent a listed member declares with `acl:delegates`. The roster is read with the caller's own session, so
  *   someone who cannot read it is not a member. Read-only, and only over the
  *   collective's graphs under a folder the caller can read on the pod right
  *   now: the index never shows more than the pod does.
@@ -145,6 +145,10 @@ async function authorizeReader(collective, webId, fetchFn, now = Date.now()) {
   const kept = readers.get(key);
   if (kept && now - kept.at < READER_TTL_MS) return kept.value;
 
+  // The collective's own agent: it pulled, confronted and loaded all of it, so
+  // reading it back shows it nothing new. The folder check below still applies.
+  if (webId === collective.agent) return readableFolders(collective, webId, fetchFn, key, now, collective.group);
+
   let members;
   try {
     const roster = await getTurtle(collective.roster, fetchFn);
@@ -180,7 +184,11 @@ async function authorizeReader(collective, webId, fetchFn, now = Date.now()) {
   if (!actingFor) {
     throw refusal(`${webId} is not on the roster of ${collective.group}, and no member there declares it as their agent (acl:delegates).`);
   }
+  return readableFolders(collective, webId, fetchFn, key, now, actingFor);
+}
 
+/** The indexed folders `webId` can read on the pod right now; a refusal when none. */
+async function readableFolders(collective, webId, fetchFn, key, now, actingFor) {
   const folders = [];
   await Promise.all(
     ingestableFolders(collective).map(async (folder) => {

@@ -76,8 +76,8 @@ Config via env vars:
 `src/collectiveGraph.js`. The collective's agent loads the Turtle under its
 pod's `depots/` and `confrontations/` into Oxigraph (`graph_ingest`: one
 named graph per document, named by its pod address, replaced on each
-ingest). A member, or an agent a member declares with `acl:delegates`, asks
-it read-only (`graph_query`), over the folders it can read on the pod at
+ingest). The collective's agent, a member, or an agent a member declares
+with `acl:delegates`, asks it read-only (`graph_query`), over the folders it can read on the pod at
 that moment. The query is parsed and regenerated before it is sent; `SERVICE`
 and updates are refused, because `SERVICE` escapes the dataset restriction.
 `scripts/verify-collective-graph.js` pins all of it against a throwaway

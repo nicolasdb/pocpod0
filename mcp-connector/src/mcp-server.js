@@ -815,7 +815,7 @@ function buildMcpServer(identity) {
         "Ask a collective's knowledge graph (read-only SPARQL 1.1: SELECT, ASK, CONSTRUCT, DESCRIBE). " +
         "The graph holds what the collective's agent pulled and confronted from its members: one named " +
         "graph per document, named by that document's pod address, so `GRAPH ?g { … }` tells you where " +
-        "each fact came from. Answers only for a member of the collective or a member's declared agent, " +
+        "each fact came from. Answers only for the collective's own agent, a member, or a member's declared agent, " +
         "and only over folders this identity can read on the collective's pod. The graph is a catalogue: " +
         "for a document's full text, read ?g with solid_read_resource. SERVICE and updates are refused; " +
         `a SELECT returns at most ${collectiveGraph.MAX_ROWS} rows.`,

@@ -159,13 +159,21 @@ async function refuses(promise, pattern) {
   }
   await refuses(ask(NICOLAS, "SELECT ?o WHERE { SERVICE <http://127.0.0.1:7878/query> { GRAPH ?g { ?s ?p ?o } } }"), /SERVICE/);
 
+  // The collective's own agent reads back what it loaded, to check it.
+  const asAgent = await ask(HS_AGENT, all);
+  assert.match(asAgent, /Xavier's summary/);
+  assert.match(asAgent, /Confrontation 1/);
+  assert.doesNotMatch(asAgent, /OTHER-SECRET/);
+  // Another collective's agent is not this one's.
+  await refuses(ask(OTHER_AGENT, all), /cannot read the roster/);
+
   await refuses(ask(OUTSIDER, all), /cannot read the roster/);
   await refuses(ask(STRANGER_BOT, all), /cannot read the roster/);
   // On the roster's ACL but not listed, and nobody declares it.
   docs[HS + "membres.ttl"].read.push(STRANGER_BOT);
   graph.forgetReaders();
   await refuses(ask(STRANGER_BOT, all), /not on the roster/);
-  console.log("ok  query: members and declared agents only, per-folder view, other collective never visible");
+  console.log("ok  query: the collective's agent, members and declared agents only, per-folder view, other collective never visible");
 
   // A reader who can read none of the folders gets a refusal, never an empty dataset (= the whole store).
   docs[HS + "membres.ttl"].body += `\n<config.ttl#hs> <http://xmlns.com/foaf/0.1/member> <${STRANGER_BOT}> .`;
