@@ -46,6 +46,7 @@ const { appendAuditEntry } = require("./journal");
 const { isForeignResource, writeReadReceipt } = require("./receipt");
 const { buildOnboardRouter } = require("./onboardRouter");
 const uploadTickets = require("./uploadTickets");
+const collectiveGraph = require("./collectiveGraph");
 
 // Story 8.10: the ticket handed back by solid_prepare_upload must be an
 // absolute, public URL — the agent runs curl from its own shell, not from
@@ -333,6 +334,11 @@ const SERVER_INSTRUCTIONS = [
   "READS ARE LOGGED. Reading someone else's pod writes a receipt into their",
   "access log. That is intended and visible to them. Read what you were asked",
   "to read; do not crawl a pod to see what is there.",
+  "",
+  "A COLLECTIVE'S GRAPH. graph_query asks what a collective already holds,",
+  "across its members' contributions. Use it when the conversation touches the",
+  "collective's work, then read the documents it points to. Name the author of",
+  "what you draw on.",
 ].join("\n");
 
 function buildMcpServer(identity) {
@@ -800,6 +806,48 @@ function buildMcpServer(identity) {
         ],
       };
     })
+  );
+
+  server.registerTool(
+    "graph_query",
+    {
+      description:
+        "Ask a collective's knowledge graph (read-only SPARQL 1.1: SELECT, ASK, CONSTRUCT, DESCRIBE). " +
+        "The graph holds what the collective's agent pulled and confronted from its members: one named " +
+        "graph per document, named by that document's pod address, so `GRAPH ?g { … }` tells you where " +
+        "each fact came from. Answers only for a member of the collective or a member's declared agent, " +
+        "and only over folders this identity can read on the collective's pod. The graph is a catalogue: " +
+        "for a document's full text, read ?g with solid_read_resource. SERVICE and updates are refused; " +
+        `a SELECT returns at most ${collectiveGraph.MAX_ROWS} rows.`,
+      inputSchema: {
+        collective: z.string().url().describe("The collective's address: its config.ttl, or its IRI (…/config.ttl#name)."),
+        query: z.string().min(1).describe("A SPARQL 1.1 query."),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    safeHandler("graph_query", identity, "collective", async (args) => ({
+      content: [{ type: "text", text: await collectiveGraph.queryGraph(args, identity) }],
+    }))
+  );
+
+  server.registerTool(
+    "graph_ingest",
+    {
+      description:
+        "Load Turtle from a collective's pod into its knowledge graph. Only the collective's own agent may " +
+        "do this, and only for documents under the collective's depots/ or confrontations/. Give one .ttl " +
+        "document, or a folder to load every .ttl under it. Each document replaces its own named graph, so " +
+        "ingesting again after a change is safe. Markdown and other files are not loaded: their Turtle " +
+        "sidecar is what enters the graph.",
+      inputSchema: {
+        collective: z.string().url().describe("The collective's address: its config.ttl, or its IRI (…/config.ttl#name)."),
+        url: z.string().url().describe("A .ttl document, or a folder ending in /, under depots/ or confrontations/."),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    },
+    safeHandler("graph_ingest", identity, "url", async (args) => ({
+      content: [{ type: "text", text: await collectiveGraph.ingest(args, identity) }],
+    }))
   );
 
   return server;

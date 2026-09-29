@@ -51,8 +51,9 @@ npm run mcp
 Starts an HTTP server (default `http://127.0.0.1:3939/mcp`) exposing
 `solid_read_resource`, `solid_write_resource`, `solid_append_resource`,
 `solid_delete_resource`, `solid_list_container`, `solid_get_permissions`,
-`solid_grant_access`, `solid_revoke_access`, and `solid_set_public_access`
-as MCP tools over `StreamableHTTPServerTransport`.
+`solid_grant_access`, `solid_revoke_access`, `solid_set_public_access`,
+`solid_prepare_upload`, and a collective's graph (`graph_query`,
+`graph_ingest`, below) as MCP tools over `StreamableHTTPServerTransport`.
 This replaces the earlier stdio transport: stdio only works for a
 locally-spawned process, and Claude.ai's remote-connector infra needs to
 reach the server at a public URL instead (claude.ai's own code sandbox
@@ -67,6 +68,20 @@ Config via env vars:
   to the SDK. Unset by default (fine on loopback, where protection is
   automatic). Required when `HOST` is `0.0.0.0`; the VPS deploy story sets
   its value.
+- `OXIGRAPH_URL` — default `http://oxigraph:7878` (the compose service).
+  Never a public address: Oxigraph has no access control of its own.
+
+### A collective's graph
+
+`src/collectiveGraph.js`. The collective's agent loads the Turtle under its
+pod's `depots/` and `confrontations/` into Oxigraph (`graph_ingest`: one
+named graph per document, named by its pod address, replaced on each
+ingest). A member, or an agent a member declares with `acl:delegates`, asks
+it read-only (`graph_query`), over the folders it can read on the pod at
+that moment. The query is parsed and regenerated before it is sent; `SERVICE`
+and updates are refused, because `SERVICE` escapes the dataset restriction.
+`scripts/verify-collective-graph.js` pins all of it against a throwaway
+local Oxigraph (usage in its header).
 
 The server is stateless: each POST `/mcp/<slug>` gets its own transport/server
 pair, so there's no session ID and no SSE stream. `GET`/`DELETE /mcp/<slug>`

@@ -50,7 +50,10 @@ services:
     container_name: oxigraph
     restart: unless-stopped
     ports:
-      - "${OXIGRAPH_PORT:-7878}:7878"
+      # Loopback only: Oxigraph has no access control, and /update writes.
+      # The connector reaches it as http://oxigraph:7878 on the default
+      # network; host-side pipeline scripts through this port.
+      - "127.0.0.1:${OXIGRAPH_PORT:-7878}:7878"
     volumes:
       - oxigraph-data:/data
     command: serve --location /data --bind 0.0.0.0:7878
@@ -95,6 +98,8 @@ services:
       # test.nicolasdb.eu is the backoffice test copy — without it the
       # connector status reads "Connector unknown" and Connect fails there.
       - ONBOARD_CORS_ORIGINS=${ONBOARD_CORS_ORIGINS:-https://backoffice.nicolasdb.eu,https://test.nicolasdb.eu}
+      # A collective's graph (src/collectiveGraph.js): graph_query, graph_ingest.
+      - OXIGRAPH_URL=${OXIGRAPH_URL:-http://oxigraph:7878}
     volumes:
       # Secrets stay VPS-side, never baked into the image layer (Task 1.5).
       # rsync --delete-after has no exclusion for these paths by accident;
