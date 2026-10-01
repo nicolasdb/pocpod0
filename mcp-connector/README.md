@@ -83,6 +83,14 @@ and updates are refused, because `SERVICE` escapes the dataset restriction.
 `scripts/verify-collective-graph.js` pins all of it against a throwaway
 local Oxigraph (usage in its header).
 
+### Who am I
+
+`solid_whoami` (`src/profile.js`): the WebID this connector acts as, plus the
+profile's `pim:storage`, `solid:oidcIssuer` and `foaf:name`. It resolves no
+collective and no role (a skill does that from `config.ttl`), writes nothing,
+and leaves no read receipt. `scripts/verify-whoami.js` checks the parsing
+offline, and a running server when given its URL and the expected WebID.
+
 The server is stateless: each POST `/mcp/<slug>` gets its own transport/server
 pair, so there's no session ID and no SSE stream. `GET`/`DELETE /mcp/<slug>`
 return `405` accordingly. `GET /healthz` returns `{"ok":true}` for health

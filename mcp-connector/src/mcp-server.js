@@ -47,6 +47,7 @@ const { isForeignResource, writeReadReceipt } = require("./receipt");
 const { buildOnboardRouter } = require("./onboardRouter");
 const uploadTickets = require("./uploadTickets");
 const collectiveGraph = require("./collectiveGraph");
+const profile = require("./profile");
 
 // Story 8.10: the ticket handed back by solid_prepare_upload must be an
 // absolute, public URL — the agent runs curl from its own shell, not from
@@ -316,6 +317,10 @@ function safeHandler(toolName, identity, resourceKey, fn) {
 const SERVER_INSTRUCTIONS = [
   "You are connected to a Solid pod through a dedicated agent identity.",
   "",
+  "WHO AM I. solid_whoami gives the WebID this connector acts as, and what its",
+  "profile declares. Call it first when your role depends on who you are (a",
+  "collective's own agent, or a member's agent).",
+  "",
   "WHICH POD. This connector cannot discover which pod to work on: Solid has",
   "no way to ask 'what may this identity reach'. If no pod URL has been given",
   "to you, ask for one — do not guess hostnames or pod names.",
@@ -345,6 +350,22 @@ function buildMcpServer(identity) {
   const server = new McpServer(
     { name: "solid-pod-agent", version: "0.1.0" },
     { instructions: SERVER_INSTRUCTIONS }
+  );
+
+  server.registerTool(
+    "solid_whoami",
+    {
+      description:
+        "Which identity this connector acts as: its WebID, and what its profile declares " +
+        "(storage, oidcIssuer, name; null when absent or unreadable). Pure: it does not say " +
+        "which collectives this identity belongs to or what role it holds there — read the " +
+        "collective's config.ttl for that. Writes nothing and leaves no read receipt.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    safeHandler("solid_whoami", identity, undefined, async () => ({
+      content: [{ type: "text", text: JSON.stringify(await profile.whoami(identity), null, 2) }],
+    }))
   );
 
   server.registerTool(
