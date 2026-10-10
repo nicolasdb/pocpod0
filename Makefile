@@ -12,7 +12,7 @@ PIPELINE_VENV  = pipeline/.venv/bin/activate
 VPS_REMOTE     = hetzner
 VPS_PATH       = /home/nicolas/pocpod0
 
-.PHONY: help \
+.PHONY: help vps-css-check \
         pull rebuild sync-workspaces backup \
         pipeline pipeline-dry dashboard troll setup \
         cli-devices \
@@ -40,6 +40,7 @@ help:
 	@echo "  vps-push-apps     rsync backoffice/ + valisette/ → nginx-served /srv on VPS (Story 7.13)"
 	@echo "  vps-build         docker compose build on VPS"
 	@echo "  vps-deploy        push + build + up (full deploy)"
+	@echo "  vps-css-check     CSS overrides still valid upstream and served"
 	@echo "  vps-setup         One-time: create pipeline venv on VPS"
 	@echo "  vps-pipeline      Run ingestion pipeline on VPS (in tmux session)"
 	@echo "  vps-devices-list  List pending/paired WebUI devices on VPS"
@@ -186,6 +187,12 @@ vps-build:
 
 vps-deploy: vps-push vps-push-apps vps-build
 	ssh $(VPS_REMOTE) "cd $(VPS_PATH) && docker compose up -d"
+	$(MAKE) vps-css-check
+
+# Our CSS look/copy are bind-mounted copies of stock templates: after any deploy
+# or image bump, check upstream has not moved under them and that they are served.
+vps-css-check:
+	ssh $(VPS_REMOTE) "cd $(VPS_PATH) && until curl -fs -o /dev/null -H 'Accept: text/html' https://pod.nicolasdb.eu/.account/login/password/; do sleep 2; done; scripts/check-css-overrides.sh '' https://pod.nicolasdb.eu"
 
 # One-time: bootstrap pipeline venv on VPS after first vps-push
 vps-setup:

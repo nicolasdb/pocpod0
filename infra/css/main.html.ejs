@@ -20,6 +20,10 @@
   <link rel="stylesheet" href="<%= baseUrl -%>tokens.css?v=7-pod2" type="text/css">
   <link rel="stylesheet" href="<%= baseUrl -%>.well-known/css/styles/main.css?v=7-pod2" type="text/css">
   <script type="text/javascript" src="<%= baseUrl -%>.well-known/css/scripts/util.js?v=7"></script>
+  <!-- A .md file's page re-rendered like the backoffice preview (solid-kit doc-view).
+       Inert on login/consent/account pages: it links doc-view.css itself, only
+       on a .md page, because the kit's stylesheet styles bare form elements. -->
+  <script type="module" src="<%= baseUrl -%>doc-view.js?v=1"></script>
 </head>
 <body>
   <header>

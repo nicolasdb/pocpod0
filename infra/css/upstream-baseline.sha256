@@ -1,0 +1,11 @@
+# Stock CSS templates we override (bind mounts in docker-compose.yml), hashed
+# from the image our overrides were last reconciled against. If an image update
+# changes one of these, our copy is now an override of something that moved:
+# re-diff upstream vs ours, merge, then refresh this file
+# (scripts/check-css-overrides.sh --rebaseline).
+# image: solidproject/community-server:7.2.0
+dd4410b9532fab475600eb33359662e8298b8c3b40f1329f577bf0bda81d8829  main.html.ejs
+d626342c07dd2b5bfe0781cabae0c9fe1028aad40bff4d0b51f2a35e282b46c8  styles/main.css
+2f5f8a68836377bce534ebfb0f2a655533105e7bca5d5054bf26c357eff2ed3c  identity/account/create-pod.html.ejs
+34ced171ad6dc257d5f2e4af12e217ea5c65c6021fc2d1127eb2d794e457a32c  identity/oidc/consent.html.ejs
+5959dfa82a88b4c253b85b85cf506d4e3e9890d23f66e0657dfa1e0775341f2a  pod/base/README$.md.hbs

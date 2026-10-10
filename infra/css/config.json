@@ -101,6 +101,18 @@
           "@type": "StaticAssetEntry",
           "relativeUrl": "/tokens.css",
           "filePath": "/css-tokens.css"
+        },
+        {
+          "@id": "urn:solid-server:pocpod0:DocViewScriptAsset",
+          "@type": "StaticAssetEntry",
+          "relativeUrl": "/doc-view.js",
+          "filePath": "/doc-view/doc-view.js"
+        },
+        {
+          "@id": "urn:solid-server:pocpod0:DocViewStyleAsset",
+          "@type": "StaticAssetEntry",
+          "relativeUrl": "/doc-view.css",
+          "filePath": "/doc-view/doc-view.css"
         }
       ]
     }

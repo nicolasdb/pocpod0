@@ -1,6 +1,8 @@
 services:
   community-solid-server:
-    image: solidproject/community-server:7
+    # Pinned: an image change is a deliberate step, followed by
+    # scripts/check-css-overrides.sh (our templates are copies of stock ones).
+    image: solidproject/community-server:7.2.0
     container_name: community-solid-server
     restart: unless-stopped
     ports:
@@ -11,6 +13,10 @@ services:
       # Story 7.13: tokens.css CSS's own identity pages depend on (see config.json
       # CssTokensAsset comment) — no longer reachable via the backoffice bind-mount.
       - ./infra/css/tokens.css:/css-tokens.css:ro${VOLUME_FLAGS:-}
+      # Markdown files read the same on their public link as in the backoffice:
+      # doc-view.js re-renders a .md page with solid-kit's renderMarkdown + .prose.
+      # GENERATED from solid-kit (scripts/export-doc-view.sh) — never edit here.
+      - ./infra/css/doc-view:/doc-view:ro${VOLUME_FLAGS:-}
       # Story 7.2: restyle CSS's own identity pages (login/register/consent) to the
       # backoffice design system by overriding the shared stylesheet + page chrome.
       - ./infra/css/main.css:/community-server/templates/styles/main.css:ro${VOLUME_FLAGS:-}
