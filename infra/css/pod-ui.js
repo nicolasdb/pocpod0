@@ -8,7 +8,7 @@
  *    key and choices as solid-kit src/ui/theme.ts (ADR 008), so one stored
  *    choice means the same thing everywhere on this origin. Light is the
  *    default and is not stamped unless chosen, so prefers-contrast: more
- *    (tokens.css) still applies while nothing is stored.
+ *    (skin.css) still applies while nothing is stored.
  * 2. The footer switch: three buttons, aria-pressed, wired by delegation.
  * 3. A page whose controls never arrive. CSS's page scripts start with
  *    `await fetchControls(...)` and nothing catches it: on a network error or

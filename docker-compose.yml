@@ -10,9 +10,6 @@ services:
     volumes:
       - css-data:/data
       - ./infra/css/config.json:/config.json:ro${VOLUME_FLAGS:-}
-      # Story 7.13: tokens.css CSS's own identity pages depend on (see config.json
-      # CssTokensAsset comment) — no longer reachable via the backoffice bind-mount.
-      - ./infra/css/tokens.css:/css-tokens.css:ro${VOLUME_FLAGS:-}
       # Markdown files read the same on their public link as in the backoffice:
       # doc-view.js re-renders a .md page with solid-kit's renderMarkdown + .prose.
       # GENERATED from solid-kit (scripts/export-doc-view.sh) — never edit here.
@@ -21,11 +18,14 @@ services:
       # backoffice design system by overriding the shared stylesheet + page chrome.
       - ./infra/css/main.css:/community-server/templates/styles/main.css:ro${VOLUME_FLAGS:-}
       - ./infra/css/main.html.ejs:/community-server/templates/main.html.ejs:ro${VOLUME_FLAGS:-}
-      # The pod skin's shared script (theme stamp + switch, load-failure message) and
-      # its self-hosted fonts, served by CSS's stock /.well-known/css/{scripts,fonts}/
-      # mappings. fonts/pod is a subfolder so the stock fonts stay in place.
+      # The identity-page overlay from solid-kit templates/css-instance (ADR 009;
+      # infra/css/SOURCE records the kit commit): the skin (colours, fonts), the shared
+      # script (theme stamp + switch, load-failure message) and the fonts, served by
+      # CSS's stock /.well-known/css/{styles,scripts,fonts}/ mappings. fonts/skin is a
+      # subfolder so the stock fonts stay in place.
+      - ./infra/css/skin.css:/community-server/templates/styles/skin.css:ro${VOLUME_FLAGS:-}
       - ./infra/css/pod-ui.js:/community-server/templates/scripts/pod-ui.js:ro${VOLUME_FLAGS:-}
-      - ./infra/css/fonts:/community-server/templates/fonts/pod:ro${VOLUME_FLAGS:-}
+      - ./infra/css/fonts:/community-server/templates/fonts/skin:ro${VOLUME_FLAGS:-}
       # Story 7.2 (AC2 copy pass): plain-language gloss on WebID/pod jargon in the two
       # stock page bodies that carry the most jargon (pod creation, OIDC consent).
       # Text-only changes — every id/name/class/script is byte-identical to stock, so

@@ -1,13 +1,14 @@
 /*
- * Story 7.2, redone: the pod skin for the Community Solid Server identity pages
- * (welcome, log in, sign up, forgot/reset password, consent, account, create pod,
- * session recovery, public .md). Served at /.well-known/css/styles/main.css via a
- * bind mount over /community-server/templates/styles/main.css (docker-compose.yml).
- * Drafted on the "CSS instance — Pod" design canvas; this file is its pod-skin.css
- * with the mockup-only classes removed.
+ * main.css — the structure of a CSS instance's identity pages (welcome, log in,
+ * sign up, forgot/reset password, consent, account, create pod, session
+ * recovery, public .md). Generic: it reads only the slots and fonts that
+ * skin.css defines, so every instance shares it unchanged. Served at
+ * /.well-known/css/styles/main.css by a bind mount over CSS's stock file.
+ * Source: solid-kit templates/css-instance/ (see SOURCE in the instance).
  *
- * Tokens: every colour comes from /tokens.css (solid-kit slot names), linked
- * before this file. Do NOT write a colour here; add or change a slot there.
+ * Do NOT write a colour or a font name here: add or change a slot in skin.css.
+ * Story 7.2 (pocpod0) is where this began; check-css-overrides.sh looks for
+ * that marker to tell ours from stock.
  *
  * Markup: CSS generates the forms. This file styles them by element and id only
  * and never relies on a class the server does not emit. Selectors mirror stock
@@ -18,19 +19,7 @@
  * touch targets of 44px.
  */
 
-/* ---- Fonts: self-hosted, Latin subset (fonts/README.md) ---- */
-@font-face { font-family: "Lexend"; font-style: normal; font-weight: 400; font-display: swap; src: url("../fonts/pod/lexend-latin-400-normal.woff2") format("woff2"); }
-@font-face { font-family: "Lexend"; font-style: normal; font-weight: 500; font-display: swap; src: url("../fonts/pod/lexend-latin-500-normal.woff2") format("woff2"); }
-@font-face { font-family: "Lexend"; font-style: normal; font-weight: 600; font-display: swap; src: url("../fonts/pod/lexend-latin-600-normal.woff2") format("woff2"); }
-@font-face { font-family: "Atkinson Hyperlegible"; font-style: normal; font-weight: 400; font-display: swap; src: url("../fonts/pod/atkinson-hyperlegible-latin-400-normal.woff2") format("woff2"); }
-@font-face { font-family: "Atkinson Hyperlegible"; font-style: normal; font-weight: 700; font-display: swap; src: url("../fonts/pod/atkinson-hyperlegible-latin-700-normal.woff2") format("woff2"); }
-@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 400; font-display: swap; src: url("../fonts/pod/jetbrains-mono-latin-400-normal.woff2") format("woff2"); }
-@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 500; font-display: swap; src: url("../fonts/pod/jetbrains-mono-latin-500-normal.woff2") format("woff2"); }
-
 :root {
-  --font-heading: "Lexend", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-body: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --column: 560px;
   --gutter: 16px;
   --radius-sm: 2px;

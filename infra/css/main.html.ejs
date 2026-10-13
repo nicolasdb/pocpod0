@@ -5,20 +5,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
   <title><%= extractTitle(htmlBody) %></title>
   <!--
-    Story 7.2: the pod skin's chrome for the CSS-served identity pages.
-    Bind-mounted over /community-server/templates/main.html.ejs. ALL EJS logic below
-    (baseUrl, htmlBody, extractTitle) is preserved exactly as the stock template — only
-    the visible header/footer and the shared scripts changed.
-    No third-party request: fonts are self-hosted under /.well-known/css/fonts/pod/.
+    The chrome of a CSS instance's identity pages. Source: solid-kit
+    templates/css-instance/ (see SOURCE in the instance). Bind-mounted over
+    /community-server/templates/main.html.ejs. ALL EJS logic below (baseUrl, htmlBody,
+    extractTitle) is preserved exactly as the stock template; only the visible
+    header/footer and the shared scripts changed.
+    `grep -rn "INSTANCE:"` lists what an instance fills in.
+    No third-party request: fonts are self-hosted under /.well-known/css/fonts/skin/.
   -->
   <!-- pod-ui.js is BLOCKING on purpose: it stamps the stored theme on <html> before
        first paint, or a Dark choice would flash light on every load. -->
-  <script src="<%= baseUrl -%>.well-known/css/scripts/pod-ui.js?v=pod3"></script>
-  <!-- Tokens MUST load before main.css so its vars are defined. The version query is
-       bumped on every change to defeat the browser cache (stock CSS uses ?v=7, and
-       static assets are cached for a day). -->
-  <link rel="stylesheet" href="<%= baseUrl -%>tokens.css?v=pod3" type="text/css">
-  <link rel="stylesheet" href="<%= baseUrl -%>.well-known/css/styles/main.css?v=pod3" type="text/css">
+  <script src="<%= baseUrl -%>.well-known/css/scripts/pod-ui.js?v=1"></script>
+  <!-- The skin MUST load before main.css so its vars are defined. Bump the version
+       query on every change, here and in welcome/index.html: static assets are cached
+       for a day, and stock CSS uses ?v=7, which a browser never fetches again. -->
+  <link rel="stylesheet" href="<%= baseUrl -%>.well-known/css/styles/skin.css?v=1" type="text/css">
+  <link rel="stylesheet" href="<%= baseUrl -%>.well-known/css/styles/main.css?v=1" type="text/css">
   <script type="text/javascript" src="<%= baseUrl -%>.well-known/css/scripts/util.js?v=7"></script>
   <!-- A .md file's page re-rendered like the backoffice preview (solid-kit doc-view).
        Inert on login/consent/account pages: it links doc-view.css itself, only
@@ -29,6 +31,8 @@
   <!-- The name is a <p>, not an <h1>: the page's own <h1> is the one heading
        that says where you are. The domain comes from baseUrl, so the chrome
        carries no instance name of its own. -->
+  <!-- INSTANCE: the mark (any SVG drawn with currentColor or the classes main.css
+       colours), the name, and the home link's label. -->
   <header>
     <a href="<%= baseUrl %>" aria-label="Back to your pod home">
       <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="4"></rect><circle cx="16" cy="16" r="8"></circle><circle cx="16" cy="16" r="2.5"></circle></svg>
@@ -42,8 +46,10 @@
     <%- htmlBody %>
   </main>
   <footer>
+    <!-- INSTANCE: the footer line. -->
     <p>Your space on the web — you hold the key.</p>
-    <!-- Wired by pod-ui.js. Plain words, no icons: a sun and a moon say nothing
+    <!-- INSTANCE: theme switch. Keep all three unless the skin has no dark look.
+         Wired by pod-ui.js. Plain words, no icons: a sun and a moon say nothing
          about high contrast. -->
     <div class="theme-switch" role="group" aria-label="Theme">
       <button type="button" data-theme-set="light" aria-pressed="true">Light</button>

@@ -1,23 +1,42 @@
 /*
- * Tokens for CSS's own identity pages, named by solid-kit's slots
- * (src/styles/core.css) and valued from Solid Kit's theme. Served at /tokens.css
- * (config.json, CssTokensAsset) and linked before main.css in main.html.ejs and
- * in the welcome page (infra/css/welcome/index.html).
+ * skin.css — everything that makes this instance look like itself, and nothing
+ * else: colours by solid-kit slot, the three fonts, their files. main.css holds
+ * the structure and reads only these variables, so a new instance changes this
+ * file (and fonts/, and the copy) and never main.css.
  *
- * This is CSS's OWN copy, deliberately not shared with backoffice/tokens.css:
- * since Story 7.13 they are served from separate origins and the backoffice
- * still uses its older names (--bg, --tx…). Edit both if a value changes.
+ * This is the reference skin, "pod": Solid Kit's values (Daylight, Ink, High
+ * contrast) with Lexend, Atkinson Hyperlegible and JetBrains Mono. Copy it to
+ * start another, then `npm run audit -- --skin <this file>` in solid-kit until
+ * it passes: every text slot 4.5:1 (7:1 in High contrast), --border-control
+ * 3:1, the complete slot set in every theme.
  *
- * Themes (ADR 008 in solid-kit): Daylight is the default for everyone and lives
- * on bare :root. Ink and High contrast exist only behind <html data-theme>,
- * stamped before first paint by /.well-known/css/scripts/pod-ui.js from the
- * stored choice. Never add a prefers-color-scheme: dark block — an OS in dark
- * mode does not switch these pages. The one OS signal followed is
- * prefers-contrast: more, and only while no choice is stored.
+ * Served at /.well-known/css/styles/skin.css (a bind mount over CSS's stock
+ * styles folder), linked before main.css by main.html.ejs and the welcome page.
  *
- * Define the COMPLETE slot set in every theme: a slot missing from one theme
- * renders the other theme's text on this theme's ground.
+ * Themes (solid-kit ADR 008): Daylight is the default for everyone and lives on
+ * bare :root. Ink and High contrast exist only behind <html data-theme>,
+ * stamped before first paint by pod-ui.js from the stored choice. Never add a
+ * prefers-color-scheme: dark block. The one OS signal followed is
+ * prefers-contrast: more, and only while no choice is stored. An instance
+ * without a dark look (a paper-only skin) still defines the dark block: give it
+ * the same values as Daylight, so the switch's "Dark" stays honest, or remove
+ * the button in main.html.ejs (INSTANCE: theme switch).
  */
+
+/* ---- Fonts: self-hosted, Latin subset (fonts/README.md beside this file) ---- */
+@font-face { font-family: "Lexend"; font-style: normal; font-weight: 400; font-display: swap; src: url("../fonts/skin/lexend-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Lexend"; font-style: normal; font-weight: 500; font-display: swap; src: url("../fonts/skin/lexend-latin-500-normal.woff2") format("woff2"); }
+@font-face { font-family: "Lexend"; font-style: normal; font-weight: 600; font-display: swap; src: url("../fonts/skin/lexend-latin-600-normal.woff2") format("woff2"); }
+@font-face { font-family: "Atkinson Hyperlegible"; font-style: normal; font-weight: 400; font-display: swap; src: url("../fonts/skin/atkinson-hyperlegible-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Atkinson Hyperlegible"; font-style: normal; font-weight: 700; font-display: swap; src: url("../fonts/skin/atkinson-hyperlegible-latin-700-normal.woff2") format("woff2"); }
+@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 400; font-display: swap; src: url("../fonts/skin/jetbrains-mono-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 500; font-display: swap; src: url("../fonts/skin/jetbrains-mono-latin-500-normal.woff2") format("woff2"); }
+
+:root {
+  --font-heading: "Lexend", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-body: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
 
 /* ---- Daylight (default) ---- */
 :root {
