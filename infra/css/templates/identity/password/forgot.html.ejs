@@ -1,0 +1,52 @@
+<%# Override of CSS 7.2.0 identity/password/forgot.html.ejs (upstream-baseline.sha256).
+    Copy only: every id, name and script line is stock. The confirmation says what to do next. -%>
+<div id="input-partial">
+  <h1>Forgot your password?</h1>
+  <form method="post" id="mainForm">
+    <p class="error" id="error"></p>
+
+    <fieldset>
+      <p>Enter the email of your account. We will send it a link to choose a new password.</p>
+      <ol>
+        <li>
+          <label for="input-email">Email</label>
+          <input id="input-email" type="email" name="email" autofocus>
+        </li>
+      </ol>
+    </fieldset>
+
+    <ul class="actions">
+      <li><button type="submit" name="submit" disabled>Send the link</button></li>
+      <li><button type="button" id="input-login-link">Back</button></li>
+    </ul>
+  </form>
+</div>
+<div id="response-partial">
+  <h1>Check your email</h1>
+  <p>If an account uses this address, a link to choose a new password is on its way.</p>
+  <p>It can take a few minutes. Nothing arrived? Look in your spam folder, or send the link again.</p>
+
+  <ul class="actions">
+    <li><button type="button" id="response-login-link">Back to log in</button></li>
+    <li><button type="button" id="response-forgot-link">Send it again</button></li>
+  </ul>
+</div>
+
+<script>
+  setVisibility('response-partial', false);
+
+  (async() => {
+    const controls = await fetchControls('<%= idpIndex %>');
+
+    setRedirectClick('input-login-link', controls.html.password.login);
+    setRedirectClick('response-login-link', controls.html.password.login);
+    setRedirectClick('response-forgot-link', controls.html.password.forgot);
+
+    addPostListener(async() => {
+      await postJsonForm(controls.password.forgot);
+      // Swap visibility
+      setVisibility('input-partial', false);
+      setVisibility('response-partial', true);
+    });
+  })();
+</script>

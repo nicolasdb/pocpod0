@@ -56,7 +56,7 @@ if [ -n "$url" ]; then
   grep -q "Stale-sign-in self-repair" <<<"$page" && ok "main.html.ejs is ours" || bad "main.html.ejs is stock"
   grep -q "doc-view.js" <<<"$page" && ok "template loads doc-view.js" || bad "template does not load doc-view.js"
   curl -fsS "$url/.well-known/css/styles/main.css" | grep -q "Story 7.2" && ok "main.css is ours" || bad "main.css is stock"
-  for a in tokens.css doc-view.css doc-view.js; do
+  for a in tokens.css doc-view.css doc-view.js .well-known/css/scripts/pod-ui.js .well-known/css/fonts/pod/lexend-latin-400-normal.woff2; do
     code="$(curl -s -o /dev/null -w '%{http_code}' "$url/$a")"
     [ "$code" = 200 ] && ok "/$a served" || bad "/$a -> $code (config.json StaticAssetEntry or mount)"
   done

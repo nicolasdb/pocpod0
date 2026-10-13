@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<!--
+  The page at the server root, pod.nicolasdb.eu/. Not a template: CSS copies its
+  stock intro page into the root container once, when the server is first set up
+  (initialize-intro.json), and from then on it is an ordinary resource,
+  /data/index.html in the css-data volume. This file is its source; deploy it with
+  `make vps-welcome` (Makefile), which copies it into the running container.
+  It is a whole page, not wrapped by main.html.ejs, so it repeats the chrome.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+  <title>Your pod</title>
+  <!-- Blocking on purpose: stamps the stored theme before first paint. -->
+  <script src="/.well-known/css/scripts/pod-ui.js?v=pod3"></script>
+  <link rel="stylesheet" href="/tokens.css?v=pod3" type="text/css">
+  <link rel="stylesheet" href="/.well-known/css/styles/main.css?v=pod3" type="text/css">
+</head>
+<body>
+  <header>
+    <a href="/" aria-label="Your pod home">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="4"></rect><circle cx="16" cy="16" r="8"></circle><circle cx="16" cy="16" r="2.5"></circle></svg>
+    </a>
+    <div>
+      <p class="brand-name">Your pod</p>
+      <div class="brand-sub">pod.nicolasdb.eu</div>
+    </div>
+  </header>
+  <main>
+    <h1>A place on the web that is yours</h1>
+    <p>This server keeps Solid pods: personal spaces where your data lives. Apps ask to use it, and you decide which ones may.</p>
+    <p class="actions">
+      <a id="registration-link" href="/.account/login/password/register/" class="button primary">Create an account</a>
+      <a id="login-link" href="/.account/login/password/" class="button">Log in</a>
+    </p>
+
+    <h2>What is a pod?</h2>
+    <ul class="ideas">
+      <li><b>A locker on the web</b>Your notes, files and settings are kept here, not inside each app.</li>
+      <li><b>Your name on the web</b>Your WebID is the address that says who you are when an app asks.</li>
+      <li><b>You hand out the keys</b>An app reaches your pod only after you say yes, here, on this server.</li>
+    </ul>
+
+    <!-- Story 7.13: the backoffice and Valisette moved off this domain onto their own
+         subdomains (origin split, fixes a session-bounce bug). Link them from here,
+         since this is the page people land on first. -->
+    <h2>Apps on this pod</h2>
+    <ul class="rows">
+      <li><a href="https://backoffice.nicolasdb.eu/">Pod Backoffice</a><span>Look after your pod: files, sharing, who sees what.</span></li>
+      <!-- TODO(Nicolas): one line on what Valisette is for, as a <span> like the line above. -->
+      <li><a href="https://valisette.nicolasdb.eu/">Valisette</a></li>
+    </ul>
+
+    <p class="small" style="margin-top: 32px">This server runs the <a href="https://communitysolidserver.github.io/">Community Solid Server</a>, an open implementation of the <a href="https://solidproject.org/">Solid</a> protocol.</p>
+  </main>
+  <footer>
+    <p>Your space on the web — you hold the key.</p>
+    <div class="theme-switch" role="group" aria-label="Theme">
+      <button type="button" data-theme-set="light" aria-pressed="true">Light</button>
+      <button type="button" data-theme-set="dark" aria-pressed="false">Dark</button>
+      <button type="button" data-theme-set="contrast" aria-pressed="false">High contrast</button>
+    </div>
+  </footer>
+</body>
+</html>

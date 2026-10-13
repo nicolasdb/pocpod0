@@ -1,38 +1,125 @@
 /*
- * DAYLIGHT palette for CSS's own identity pages (Story 7.2).
+ * Tokens for CSS's own identity pages, named by solid-kit's slots
+ * (src/styles/core.css) and valued from Solid Kit's theme. Served at /tokens.css
+ * (config.json, CssTokensAsset) and linked before main.css in main.html.ejs and
+ * in the welcome page (infra/css/welcome/index.html).
  *
- * Post-Story-7.13, backoffice and CSS are served from separate origins, so this
- * is CSS's OWN copy — deliberately forked from backoffice/tokens.css, not shared.
- * Edit both if the palette changes; there is no single served copy anymore.
- *   - this file: consumed by the CSS-served identity pages (infra/css/main.css
- *     consumes these vars; the wrapper infra/css/main.html.ejs links this file
- *     before main.css)
- *   - backoffice/tokens.css: consumed by the backoffice SPA (backoffice/index.html
- *     links its own copy; its JS theme engine only *overrides* these for the
- *     alternate "paper"/"ink" themes, and clears its overrides to fall back to
- *     these values when switching back to daylight)
+ * This is CSS's OWN copy, deliberately not shared with backoffice/tokens.css:
+ * since Story 7.13 they are served from separate origins and the backoffice
+ * still uses its older names (--bg, --tx…). Edit both if a value changes.
  *
- * Served at /tokens.css via a StaticAssetEntry in infra/css/config.json.
- * Values are the canonical daylight theme — do not fork; edit here only.
+ * Themes (ADR 008 in solid-kit): Daylight is the default for everyone and lives
+ * on bare :root. Ink and High contrast exist only behind <html data-theme>,
+ * stamped before first paint by /.well-known/css/scripts/pod-ui.js from the
+ * stored choice. Never add a prefers-color-scheme: dark block — an OS in dark
+ * mode does not switch these pages. The one OS signal followed is
+ * prefers-contrast: more, and only while no choice is stored.
+ *
+ * Define the COMPLETE slot set in every theme: a slot missing from one theme
+ * renders the other theme's text on this theme's ground.
  */
-:root {
-  --bg: #f6f4ef;
-  --panel: #fbfaf7;
-  --tx: #26241f;
-  --tx2: #8a8474;   /* backoffice muted — fine for larger/secondary text */
-  --tx3: #b3ac9a;
-  --line: #e7e2d6;
-  --hov: #efece3;
-  --acc: #3d6b52;   /* sage */
-  --accLite: #8fc0a5;
-  --accSoft: #eef3ef;
-  --accSoftLine: #b8ccbf;
-  --warn: #b5722a;
-  --warnBg: #faf3e6;
-  --warnLine: #e3c9a3;
-  --codebg: #f0ede4;
 
-  /* Darkened muted for SMALL body/help text that must clear WCAG AA 4.5:1 on the
-     panel (the CSS identity pages use this; --tx2 above is too light at small sizes). */
-  --tx2-strong: #6d6757;
+/* ---- Daylight (default) ---- */
+:root {
+  --surface: #f6f4ef;
+  --surface-elevated: #fbfaf7;
+  --surface-recessed: #f0ede4;
+  --text-primary: #26241f;   /* 14.1:1 on surface */
+  --text-secondary: #5c5647; /* 6.6:1 */
+  /* Small mono labels, the domain, the footer. The token most often broken:
+     5.1:1 on surface, 5.4:1 on surface-elevated. Re-check both if replaced. */
+  --text-tertiary: #6d6757;
+  --border: #e7e2d6;         /* decorative, 1.2:1 */
+  --border-subtle: #efece3;
+  /* Pod skin slot, not in solid-kit: control outlines at 3:1 (WCAG 1.4.11).
+     `border` is too faint to find an input by its edge. */
+  --border-control: #8f8977; /* 3.2:1 on surface, 3.4:1 on elevated */
+  --selection: #dfe9e2;
+  --accent: #3d6b52;         /* sage, 5.6:1; links, primary, focus ring */
+  --accent-contrast: #ffffff; /* 6.1:1 on accent */
+  --accent-soft: #eef3ef;
+  --accent-line: #b8ccbf;
+  --warn: #b5722a;           /* 3.5:1: icons and 24px+ only */
+  --warn-soft: #faf3e6;
+  --warn-line: #e3c9a3;
+  --danger: #a33227;         /* 6.0:1 on danger-soft */
+  --danger-soft: #f9ecea;
+  --code-bg: #f0ede4;
+  color-scheme: light;
+}
+
+/* ---- Ink ---- */
+:root[data-theme="dark"] {
+  --surface: #12140f;
+  --surface-elevated: #1b1e17;
+  --surface-recessed: #0d0f0b;
+  --text-primary: #eceadf;
+  --text-secondary: #b8b3a3;
+  --text-tertiary: #9a9585;  /* 6.2:1 on surface, 5.6:1 on elevated */
+  --border: rgba(255, 255, 255, 0.09);
+  --border-subtle: rgba(255, 255, 255, 0.05);
+  --border-control: #706b5c; /* 3.5:1 on surface, 3.2:1 on elevated */
+  --selection: rgba(143, 185, 138, 0.25);
+  --accent: #8fb98a;
+  --accent-contrast: #12140f; /* flips to ink: the accent lightens */
+  --accent-soft: rgba(143, 185, 138, 0.14);
+  --accent-line: rgba(143, 185, 138, 0.4);
+  --warn: #d99a55;
+  --warn-soft: rgba(217, 154, 85, 0.13);
+  --warn-line: rgba(217, 154, 85, 0.35);
+  --danger: #e0827a;
+  --danger-soft: rgba(224, 130, 122, 0.13);
+  --code-bg: #0d0f0b;
+  color-scheme: dark;
+}
+
+/* ---- High contrast: text 7:1 or more, every line 3:1 or more ---- */
+:root[data-theme="contrast"] {
+  --surface: #fbfaf7;
+  --surface-elevated: #ffffff;
+  --surface-recessed: #efece3;
+  --text-primary: #1a1814;
+  --text-secondary: #3a362d;
+  --text-tertiary: #433e33;
+  --border: #7a7466;
+  --border-subtle: #8a8475;
+  --border-control: #7a7466;
+  --selection: #c9dccf;
+  --accent: #28493a;
+  --accent-contrast: #ffffff;
+  --accent-soft: #e3ece6;
+  --accent-line: #4f7a62;
+  --warn: #6e4210;
+  --warn-soft: #faf3e6;
+  --warn-line: #a8691f;
+  --danger: #7a2018;
+  --danger-soft: #f9ecea;
+  --code-bg: #efece3;
+  color-scheme: light;
+}
+
+/* The OS asked for more contrast and no choice is stored: same values. */
+@media (prefers-contrast: more) {
+  :root:not([data-theme]) {
+    --surface: #fbfaf7;
+    --surface-elevated: #ffffff;
+    --surface-recessed: #efece3;
+    --text-primary: #1a1814;
+    --text-secondary: #3a362d;
+    --text-tertiary: #433e33;
+    --border: #7a7466;
+    --border-subtle: #8a8475;
+    --border-control: #7a7466;
+    --selection: #c9dccf;
+    --accent: #28493a;
+    --accent-contrast: #ffffff;
+    --accent-soft: #e3ece6;
+    --accent-line: #4f7a62;
+    --warn: #6e4210;
+    --warn-soft: #faf3e6;
+    --warn-line: #a8691f;
+    --danger: #7a2018;
+    --danger-soft: #f9ecea;
+    --code-bg: #efece3;
+  }
 }

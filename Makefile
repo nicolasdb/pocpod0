@@ -12,7 +12,7 @@ PIPELINE_VENV  = pipeline/.venv/bin/activate
 VPS_REMOTE     = hetzner
 VPS_PATH       = /home/nicolas/pocpod0
 
-.PHONY: help vps-css-check \
+.PHONY: help vps-css-check vps-welcome \
         pull rebuild sync-workspaces backup \
         pipeline pipeline-dry dashboard troll setup \
         cli-devices \
@@ -41,6 +41,7 @@ help:
 	@echo "  vps-build         docker compose build on VPS"
 	@echo "  vps-deploy        push + build + up (full deploy)"
 	@echo "  vps-css-check     CSS overrides still valid upstream and served"
+	@echo "  vps-welcome       Copy infra/css/welcome/index.html to the pod root page (after vps-push)"
 	@echo "  vps-setup         One-time: create pipeline venv on VPS"
 	@echo "  vps-pipeline      Run ingestion pipeline on VPS (in tmux session)"
 	@echo "  vps-devices-list  List pending/paired WebUI devices on VPS"
@@ -193,6 +194,15 @@ vps-deploy: vps-push vps-push-apps vps-build
 # or image bump, check upstream has not moved under them and that they are served.
 vps-css-check:
 	ssh $(VPS_REMOTE) "cd $(VPS_PATH) && until curl -fs -o /dev/null -H 'Accept: text/html' https://pod.nicolasdb.eu/.account/login/password/; do sleep 2; done; scripts/check-css-overrides.sh '' https://pod.nicolasdb.eu"
+
+# The welcome page at pod.nicolasdb.eu/ is not a template: CSS copied its stock
+# intro page into the root container at first setup, and since then it is a
+# plain resource (/data/index.html in the css-data volume). Our source is
+# infra/css/welcome/index.html; this copies it into the running container.
+# Run after vps-push (the file must be on the VPS first).
+vps-welcome:
+	ssh $(VPS_REMOTE) "cd $(VPS_PATH) && docker compose cp infra/css/welcome/index.html community-solid-server:/data/index.html"
+	@echo "welcome page copied; check https://pod.nicolasdb.eu/"
 
 # One-time: bootstrap pipeline venv on VPS after first vps-push
 vps-setup:

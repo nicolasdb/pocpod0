@@ -21,12 +21,24 @@ services:
       # backoffice design system by overriding the shared stylesheet + page chrome.
       - ./infra/css/main.css:/community-server/templates/styles/main.css:ro${VOLUME_FLAGS:-}
       - ./infra/css/main.html.ejs:/community-server/templates/main.html.ejs:ro${VOLUME_FLAGS:-}
+      # The pod skin's shared script (theme stamp + switch, load-failure message) and
+      # its self-hosted fonts, served by CSS's stock /.well-known/css/{scripts,fonts}/
+      # mappings. fonts/pod is a subfolder so the stock fonts stay in place.
+      - ./infra/css/pod-ui.js:/community-server/templates/scripts/pod-ui.js:ro${VOLUME_FLAGS:-}
+      - ./infra/css/fonts:/community-server/templates/fonts/pod:ro${VOLUME_FLAGS:-}
       # Story 7.2 (AC2 copy pass): plain-language gloss on WebID/pod jargon in the two
       # stock page bodies that carry the most jargon (pod creation, OIDC consent).
       # Text-only changes — every id/name/class/script is byte-identical to stock, so
       # CSS's own client-side JS (which drives these forms) keeps working (AC4).
       - ./infra/css/templates/identity/account/create-pod.html.ejs:/community-server/templates/identity/account/create-pod.html.ejs:ro${VOLUME_FLAGS:-}
       - ./infra/css/templates/identity/oidc/consent.html.ejs:/community-server/templates/identity/oidc/consent.html.ejs:ro${VOLUME_FLAGS:-}
+      # Pod skin copy pass: the remaining identity pages. Copy only — ids, names and
+      # scripts are stock; each file's header says what changed.
+      - ./infra/css/templates/identity/account/resource.html.ejs:/community-server/templates/identity/account/resource.html.ejs:ro${VOLUME_FLAGS:-}
+      - ./infra/css/templates/identity/password/login.html.ejs:/community-server/templates/identity/password/login.html.ejs:ro${VOLUME_FLAGS:-}
+      - ./infra/css/templates/identity/password/register.html.ejs:/community-server/templates/identity/password/register.html.ejs:ro${VOLUME_FLAGS:-}
+      - ./infra/css/templates/identity/password/forgot.html.ejs:/community-server/templates/identity/password/forgot.html.ejs:ro${VOLUME_FLAGS:-}
+      - ./infra/css/templates/identity/password/reset.html.ejs:/community-server/templates/identity/password/reset.html.ejs:ro${VOLUME_FLAGS:-}
       # Story 7.10 Task 7: replace the stock jargon-heavy welcome README on every
       # freshly-created pod with our own plain-language voice. Resource name kept as
       # `README` (unchanged) so README.acl.hbs's hardcoded `acl:accessTo <./README>`

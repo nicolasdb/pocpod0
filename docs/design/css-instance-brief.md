@@ -78,3 +78,7 @@ Joindre : les fichiers de `markup/`, et des captures de `maps_of_making/web/maps
 - Accès Claude Design OK (`/design-login`) ; projets : Classical, Industry, Design System (vide). Pas encore de design system « Solid instances ».
 - Prochain : `/design-sync` (tokens + composants kit → projet Claude Design), mockups par Nicolas, retour ici, puis refactor solid-kit (identity.css + skins + copy + export script).
 - Reporté : multilangue (EN/FR/NL/DE, config par instance, bascule côté client via `data-i18n`), infra VPS Maps of Making (composes séparés par fonction, TBD).
+- Fait (2026-10-13, suite) : maquettes Pod sur le canevas Claude Design « CSS instance — Pod » (3 passes : tokens, login, consent, états ; welcome, inscription, mot de passe oublié, création de pod, compte ; lecture .md, erreur, session périmée, textes). Maps of Making reporté : instance 2, après une méthode (skill) pour habiller un CSS stock.
+- Fait : habillage Pod dans `infra/css/` — tokens aux noms de slots solid-kit (Daylight, Ink, High contrast), `main.css` réécrit, polices auto-hébergées (`fonts/`), `pod-ui.js` (thème avant le premier rendu, sélecteur de thème, message si la page ne joint pas le serveur), gabarits surchargés (login, register, forgot, reset, compte, consent, create-pod), page d'accueil versionnée (`welcome/index.html`, `make vps-welcome`).
+- À faire : déployer (`make vps-deploy` puis `make vps-welcome`), passer les tests manuels sur le serveur réel, une ligne de description pour Valisette sur la page d'accueil.
+

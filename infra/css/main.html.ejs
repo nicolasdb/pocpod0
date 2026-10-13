@@ -2,23 +2,23 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
   <title><%= extractTitle(htmlBody) %></title>
   <!--
-    Story 7.2: pod-backoffice chrome for the CSS-served identity pages.
+    Story 7.2: the pod skin's chrome for the CSS-served identity pages.
     Bind-mounted over /community-server/templates/main.html.ejs. ALL EJS logic below
     (baseUrl, htmlBody, extractTitle) is preserved exactly as the stock template — only
-    the visible header/footer branding changed, so page behavior is unchanged (AC4).
-    Fonts are preconnected here (same Google Fonts as the backoffice); the stylesheet
-    @imports them too, this just speeds first paint.
+    the visible header/footer and the shared scripts changed.
+    No third-party request: fonts are self-hosted under /.well-known/css/fonts/pod/.
   -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <!-- Shared design tokens (single source of truth) MUST load before main.css so its
-       vars are defined. Version query is bumped on every CSS change to defeat the
-       browser cache (stock CSS uses ?v=7; anything sharing that key is never re-fetched). -->
-  <link rel="stylesheet" href="<%= baseUrl -%>tokens.css?v=7-pod2" type="text/css">
-  <link rel="stylesheet" href="<%= baseUrl -%>.well-known/css/styles/main.css?v=7-pod2" type="text/css">
+  <!-- pod-ui.js is BLOCKING on purpose: it stamps the stored theme on <html> before
+       first paint, or a Dark choice would flash light on every load. -->
+  <script src="<%= baseUrl -%>.well-known/css/scripts/pod-ui.js?v=pod3"></script>
+  <!-- Tokens MUST load before main.css so its vars are defined. The version query is
+       bumped on every change to defeat the browser cache (stock CSS uses ?v=7, and
+       static assets are cached for a day). -->
+  <link rel="stylesheet" href="<%= baseUrl -%>tokens.css?v=pod3" type="text/css">
+  <link rel="stylesheet" href="<%= baseUrl -%>.well-known/css/styles/main.css?v=pod3" type="text/css">
   <script type="text/javascript" src="<%= baseUrl -%>.well-known/css/scripts/util.js?v=7"></script>
   <!-- A .md file's page re-rendered like the backoffice preview (solid-kit doc-view).
        Inert on login/consent/account pages: it links doc-view.css itself, only
@@ -26,13 +26,16 @@
   <script type="module" src="<%= baseUrl -%>doc-view.js?v=1"></script>
 </head>
 <body>
+  <!-- The name is a <p>, not an <h1>: the page's own <h1> is the one heading
+       that says where you are. The domain comes from baseUrl, so the chrome
+       carries no instance name of its own. -->
   <header>
     <a href="<%= baseUrl %>" aria-label="Back to your pod home">
-      <span class="brand-mark" role="img" aria-label="Pod">🗄️</span>
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="4"></rect><circle cx="16" cy="16" r="8"></circle><circle cx="16" cy="16" r="2.5"></circle></svg>
     </a>
     <div>
-      <h1>Your pod</h1>
-      <div class="brand-sub">pod.nicolasdb.eu</div>
+      <p class="brand-name">Your pod</p>
+      <div class="brand-sub"><%= new URL(baseUrl).host %></div>
     </div>
   </header>
   <main>
@@ -40,6 +43,13 @@
   </main>
   <footer>
     <p>Your space on the web — you hold the key.</p>
+    <!-- Wired by pod-ui.js. Plain words, no icons: a sun and a moon say nothing
+         about high contrast. -->
+    <div class="theme-switch" role="group" aria-label="Theme">
+      <button type="button" data-theme-set="light" aria-pressed="true">Light</button>
+      <button type="button" data-theme-set="dark" aria-pressed="false">Dark</button>
+      <button type="button" data-theme-set="contrast" aria-pressed="false">High contrast</button>
+    </div>
   </footer>
 
   <!--
@@ -108,16 +118,19 @@
 
     function showManual(detail) {
       render(
-        "<h1>Your sign-in for this app is out of date</h1>" +
-        "<p>Your browser saved a sign-in that this server no longer recognises. " +
-        "<strong>Nothing is wrong with your pod and none of your data is affected</strong> — " +
-        "the saved sign-in just needs to be cleared.</p>" +
+        '<h1 tabindex="-1">Your sign-in for this app is out of date</h1>' +
+        "<p>Your browser kept a sign-in this server no longer recognises. " +
+        "Your pod and your data are fine; only that saved sign-in needs clearing.</p>" +
         '<p class="actions"><button type="button" id="recovery-retry">Reset my sign-in and continue</button></p>' +
-        "<p>If that does not work, clear this site’s cookies in your browser " +
+        '<p style="margin-top: 24px">Still stuck? Clear this site’s cookies in your browser ' +
         "(<em>Settings → Privacy → Cookies and site data</em>), then reload this page.</p>" +
         backLink() +
-        (detail ? "<h2>Technical details</h2><p><code>" + detail + "</code></p>" : "")
+        // Folded away: it is for whoever helps, not for the person reading.
+        (detail ? '<details class="error-technical"><summary>Technical details</summary><pre></pre></details>' : "")
       );
+      // textContent, not markup: the detail can carry an error message.
+      if (detail) main.querySelector(".error-technical pre").textContent = detail;
+      main.querySelector("h1").focus();
       wireBack();
       document.getElementById("recovery-retry").addEventListener("click", function () {
         this.disabled = true;
@@ -132,7 +145,9 @@
       render(
         "<h1>Getting you signed back in</h1>" +
         "<p>Your browser was holding an out-of-date sign-in for this app. " +
-        "Clearing it and sending you back — this takes a moment.</p>"
+        "Clearing it, then sending you back.</p>" +
+        '<div class="pending" role="status"><span class="pending-track" aria-hidden="true">' +
+        '<span class="pending-line"></span></span></div>'
       );
     }
 
