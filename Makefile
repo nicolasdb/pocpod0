@@ -2,15 +2,17 @@
 # Only commands that are long, multi-step, or easy to forget belong here.
 # Simple one-liners (compose up/down/logs, ssh) run directly.
 #
-# Local stack uses distrobox-host-exec podman compose.
+# Local stack runs on host podman. Inside a distrobox (/run/.containerenv
+# exists) podman is reached via distrobox-host-exec; on the host directly.
 # VPS targets run from local via SSH — no make needed on the VPS.
 
-COMPOSE        = distrobox-host-exec podman compose
+PODMAN         = $(if $(wildcard /run/.containerenv),distrobox-host-exec podman,podman)
+COMPOSE        = $(PODMAN) compose
 PIPELINE_VENV  = pipeline/.venv/bin/activate
 VPS_REMOTE     = hetzner
 VPS_PATH       = /home/nicolas/pocpod0
 
-.PHONY: help \
+.PHONY: help vps-css-check vps-welcome \
         pull rebuild sync-workspaces backup \
         pipeline pipeline-dry dashboard troll setup \
         cli-devices \
@@ -38,6 +40,8 @@ help:
 	@echo "  vps-push-apps     rsync backoffice/ + valisette/ → nginx-served /srv on VPS (Story 7.13)"
 	@echo "  vps-build         docker compose build on VPS"
 	@echo "  vps-deploy        push + build + up (full deploy)"
+	@echo "  vps-css-check     CSS overrides still valid upstream and served"
+	@echo "  vps-welcome       Copy infra/css/welcome/index.html to the pod root page (after vps-push)"
 	@echo "  vps-setup         One-time: create pipeline venv on VPS"
 	@echo "  vps-pipeline      Run ingestion pipeline on VPS (in tmux session)"
 	@echo "  vps-devices-list  List pending/paired WebUI devices on VPS"
@@ -59,8 +63,8 @@ rebuild: pull
 sync-workspaces: rebuild
 	$(COMPOSE) up -d --force-recreate openclaw-gateway
 	@echo "Waiting for openclaw-gateway..."
-	@until distrobox-host-exec podman exec openclaw-gateway true 2>/dev/null; do sleep 1; done
-	@distrobox-host-exec podman exec openclaw-gateway sh -c '\
+	@until $(PODMAN) exec openclaw-gateway true 2>/dev/null; do sleep 1; done
+	@$(PODMAN) exec openclaw-gateway sh -c '\
 		for src in $$(find /app/agents-seed -type f); do \
 			rel="$${src#/app/agents-seed/}"; \
 			case "$$rel" in \
@@ -79,10 +83,10 @@ backup:
 	$(eval BACKUP_DIR := backups/openclaw-$(shell date +%Y-%m-%dT%H-%M))
 	@mkdir -p $(BACKUP_DIR)
 	@echo "Backing up to $(BACKUP_DIR)/ ..."
-	@distrobox-host-exec podman cp openclaw-gateway:/home/node/.openclaw/workspaces $(BACKUP_DIR)/workspaces
-	@distrobox-host-exec podman cp openclaw-gateway:/home/node/.openclaw/openclaw.json $(BACKUP_DIR)/openclaw.json
-	@distrobox-host-exec podman cp openclaw-gateway:/home/node/.openclaw/exec-approvals.json $(BACKUP_DIR)/exec-approvals.json 2>/dev/null || true
-	@distrobox-host-exec podman cp openclaw-gateway:/home/node/.openclaw/devices $(BACKUP_DIR)/devices 2>/dev/null || true
+	@$(PODMAN) cp openclaw-gateway:/home/node/.openclaw/workspaces $(BACKUP_DIR)/workspaces
+	@$(PODMAN) cp openclaw-gateway:/home/node/.openclaw/openclaw.json $(BACKUP_DIR)/openclaw.json
+	@$(PODMAN) cp openclaw-gateway:/home/node/.openclaw/exec-approvals.json $(BACKUP_DIR)/exec-approvals.json 2>/dev/null || true
+	@$(PODMAN) cp openclaw-gateway:/home/node/.openclaw/devices $(BACKUP_DIR)/devices 2>/dev/null || true
 	@echo "Done:"; find $(BACKUP_DIR) -type f | sort | sed 's|^|  |'
 
 # ── Local: pipeline & tools ───────────────────────────────────────────────────
@@ -106,7 +110,7 @@ setup:
 
 # Pass ARGS="approve <requestId>" to approve a device
 cli-devices:
-	distrobox-host-exec podman exec openclaw-gateway openclaw devices $(ARGS)
+	$(PODMAN) exec openclaw-gateway openclaw devices $(ARGS)
 
 # ── VPS deploy (run from local) ───────────────────────────────────────────────
 # SSH alias: hetzner  |  Path: /home/nicolas/pocpod0
@@ -184,6 +188,21 @@ vps-build:
 
 vps-deploy: vps-push vps-push-apps vps-build
 	ssh $(VPS_REMOTE) "cd $(VPS_PATH) && docker compose up -d"
+	$(MAKE) vps-css-check
+
+# Our CSS look/copy are bind-mounted copies of stock templates: after any deploy
+# or image bump, check upstream has not moved under them and that they are served.
+vps-css-check:
+	ssh $(VPS_REMOTE) "cd $(VPS_PATH) && until curl -fs -o /dev/null -H 'Accept: text/html' https://pod.nicolasdb.eu/.account/login/password/; do sleep 2; done; scripts/check-css-overrides.sh '' https://pod.nicolasdb.eu"
+
+# The welcome page at pod.nicolasdb.eu/ is not a template: CSS copied its stock
+# intro page into the root container at first setup, and since then it is a
+# plain resource (/data/index.html in the css-data volume). Our source is
+# infra/css/welcome/index.html; this copies it into the running container.
+# Run after vps-push (the file must be on the VPS first).
+vps-welcome:
+	ssh $(VPS_REMOTE) "cd $(VPS_PATH) && docker compose cp infra/css/welcome/index.html community-solid-server:/data/index.html"
+	@echo "welcome page copied; check https://pod.nicolasdb.eu/"
 
 # One-time: bootstrap pipeline venv on VPS after first vps-push
 vps-setup:

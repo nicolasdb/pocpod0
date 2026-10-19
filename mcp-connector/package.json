@@ -18,6 +18,8 @@
     "dotenv": "^16.4.0",
     "express": "^5.2.1",
     "express-rate-limit": "^8.6.1",
+    "n3": "^1.26.0",
+    "sparqljs": "^3.7.4",
     "zod": "^3.23.0"
   },
   "license": "UNLICENSED",

@@ -1,0 +1,72 @@
+  <main>
+    <h1>Welcome to Solid</h1>
+
+    <!-- Story 7.13: backoffice and Valisette moved off this domain onto their
+         own subdomains (origin split, fixes a session-bounce bug). Link them
+         from here since this is the page people land on first. -->
+    <p>
+      <strong>Apps on this pod:</strong>
+      <a href="https://backoffice.nicolasdb.eu/">Pod Backoffice</a>
+      &middot;
+      <a href="https://valisette.nicolasdb.eu/">Valisette</a>
+    </p>
+
+    <p>
+      This server implements
+      the <a href="https://solid.github.io/specification/protocol">Solid protocol</a>
+      so you can create your own <a href="https://solidproject.org/about">Solid Pod</a>
+      and identity.
+    </p>
+
+    <h2 id="users">Getting started as a <em>user</em></h2>
+    <p>
+      <a id="registration-link" href="./.account/login/password/register/">Sign up for an account</a>
+      to get started with your own Pod and WebID.
+    </p>
+    <p>
+      The default configuration stores data only in memory.
+      If you want to keep data permanently,
+      choose a configuration that saves data to disk instead.
+    </p>
+    <p>
+      To learn more about how this server can be used,
+      have a look at the
+      <a href="https://github.com/CommunitySolidServer/tutorials/blob/main/getting-started.md">getting started tutorial</a>.
+    </p>
+
+    <h2 id="developers">Getting started as a <em>developer</em></h2>
+    <p>
+      The default configuration includes
+      the <strong>ready-to-use root Pod</strong> you're currently looking at.
+      <br>
+      You can use any of the configurations in the <code>config</code> folder of the server
+      to set up an instance of this server with different features.
+      Besides the provided configurations,
+      you can also fine-tune your own custom configuration using the
+      <a href="https://communitysolidserver.github.io/configuration-generator/">configuration generator</a>.
+    </p>
+    <p>
+      You can easily choose any folder on your disk
+      to expose as the root Pod with file-based configurations.
+      <br>
+      Use the <code>--help</code> switch to learn more.
+    </p>
+    <p>
+      Due to certain restrictions in the Solid specification it is usually not allowed
+      to both allow data to be written to the root of the server,
+      and to enable the creation of new pods.
+      This configuration does allow both these options to allow a quick exploration of Solid,
+      but other configurations provided will only allow one of those two to be enabled.
+    </p>
+
+    <h2>Have a wonderful Solid experience</h2>
+    <p>
+      <strong>Learn more about Solid
+        at <a href="https://solidproject.org/">solidproject.org</a>.</strong>
+    </p>
+    <p>
+      You are warmly invited
+      to <a href="https://github.com/CommunitySolidServer/CommunitySolidServer/discussions">share your experiences</a>
+      and to <a href="https://github.com/CommunitySolidServer/CommunitySolidServer/issues">report any bugs</a> you encounter.
+    </p>
+  </main>

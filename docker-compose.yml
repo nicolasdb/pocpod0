@@ -1,6 +1,8 @@
 services:
   community-solid-server:
-    image: solidproject/community-server:7
+    # Pinned: an image change is a deliberate step, followed by
+    # scripts/check-css-overrides.sh (our templates are copies of stock ones).
+    image: solidproject/community-server:7.2.0
     container_name: community-solid-server
     restart: unless-stopped
     ports:
@@ -8,19 +10,35 @@ services:
     volumes:
       - css-data:/data
       - ./infra/css/config.json:/config.json:ro${VOLUME_FLAGS:-}
-      # Story 7.13: tokens.css CSS's own identity pages depend on (see config.json
-      # CssTokensAsset comment) — no longer reachable via the backoffice bind-mount.
-      - ./infra/css/tokens.css:/css-tokens.css:ro${VOLUME_FLAGS:-}
+      # Markdown files read the same on their public link as in the backoffice:
+      # doc-view.js re-renders a .md page with solid-kit's renderMarkdown + .prose.
+      # GENERATED from solid-kit (scripts/export-doc-view.sh) — never edit here.
+      - ./infra/css/doc-view:/doc-view:ro${VOLUME_FLAGS:-}
       # Story 7.2: restyle CSS's own identity pages (login/register/consent) to the
       # backoffice design system by overriding the shared stylesheet + page chrome.
       - ./infra/css/main.css:/community-server/templates/styles/main.css:ro${VOLUME_FLAGS:-}
       - ./infra/css/main.html.ejs:/community-server/templates/main.html.ejs:ro${VOLUME_FLAGS:-}
+      # The identity-page overlay from solid-kit templates/css-instance (ADR 009;
+      # infra/css/SOURCE records the kit commit): the skin (colours, fonts), the shared
+      # script (theme stamp + switch, load-failure message) and the fonts, served by
+      # CSS's stock /.well-known/css/{styles,scripts,fonts}/ mappings. fonts/skin is a
+      # subfolder so the stock fonts stay in place.
+      - ./infra/css/skin.css:/community-server/templates/styles/skin.css:ro${VOLUME_FLAGS:-}
+      - ./infra/css/pod-ui.js:/community-server/templates/scripts/pod-ui.js:ro${VOLUME_FLAGS:-}
+      - ./infra/css/fonts:/community-server/templates/fonts/skin:ro${VOLUME_FLAGS:-}
       # Story 7.2 (AC2 copy pass): plain-language gloss on WebID/pod jargon in the two
       # stock page bodies that carry the most jargon (pod creation, OIDC consent).
       # Text-only changes — every id/name/class/script is byte-identical to stock, so
       # CSS's own client-side JS (which drives these forms) keeps working (AC4).
       - ./infra/css/templates/identity/account/create-pod.html.ejs:/community-server/templates/identity/account/create-pod.html.ejs:ro${VOLUME_FLAGS:-}
       - ./infra/css/templates/identity/oidc/consent.html.ejs:/community-server/templates/identity/oidc/consent.html.ejs:ro${VOLUME_FLAGS:-}
+      # Pod skin copy pass: the remaining identity pages. Copy only — ids, names and
+      # scripts are stock; each file's header says what changed.
+      - ./infra/css/templates/identity/account/resource.html.ejs:/community-server/templates/identity/account/resource.html.ejs:ro${VOLUME_FLAGS:-}
+      - ./infra/css/templates/identity/password/login.html.ejs:/community-server/templates/identity/password/login.html.ejs:ro${VOLUME_FLAGS:-}
+      - ./infra/css/templates/identity/password/register.html.ejs:/community-server/templates/identity/password/register.html.ejs:ro${VOLUME_FLAGS:-}
+      - ./infra/css/templates/identity/password/forgot.html.ejs:/community-server/templates/identity/password/forgot.html.ejs:ro${VOLUME_FLAGS:-}
+      - ./infra/css/templates/identity/password/reset.html.ejs:/community-server/templates/identity/password/reset.html.ejs:ro${VOLUME_FLAGS:-}
       # Story 7.10 Task 7: replace the stock jargon-heavy welcome README on every
       # freshly-created pod with our own plain-language voice. Resource name kept as
       # `README` (unchanged) so README.acl.hbs's hardcoded `acl:accessTo <./README>`
@@ -50,7 +68,10 @@ services:
     container_name: oxigraph
     restart: unless-stopped
     ports:
-      - "${OXIGRAPH_PORT:-7878}:7878"
+      # Loopback only: Oxigraph has no access control, and /update writes.
+      # The connector reaches it as http://oxigraph:7878 on the default
+      # network; host-side pipeline scripts through this port.
+      - "127.0.0.1:${OXIGRAPH_PORT:-7878}:7878"
     volumes:
       - oxigraph-data:/data
     command: serve --location /data --bind 0.0.0.0:7878
@@ -91,6 +112,12 @@ services:
       # too, or every /onboard/* request 403s with "Invalid Host" before it
       # reaches onboardRouter.js at all (found live, 2026-08-12).
       - ALLOWED_HOSTS=${MCP_ALLOWED_HOSTS:-solid-mcp.nicolasdb.eu,pod.nicolasdb.eu}
+      # Story 7.14: browser origins allowed to call /onboard/ with credentials.
+      # test.nicolasdb.eu is the backoffice test copy — without it the
+      # connector status reads "Connector unknown" and Connect fails there.
+      - ONBOARD_CORS_ORIGINS=${ONBOARD_CORS_ORIGINS:-https://backoffice.nicolasdb.eu,https://test.nicolasdb.eu}
+      # A collective's graph (src/collectiveGraph.js): graph_query, graph_ingest.
+      - OXIGRAPH_URL=${OXIGRAPH_URL:-http://oxigraph:7878}
     volumes:
       # Secrets stay VPS-side, never baked into the image layer (Task 1.5).
       # rsync --delete-after has no exclusion for these paths by accident;

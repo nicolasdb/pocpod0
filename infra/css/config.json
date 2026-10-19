@@ -85,22 +85,26 @@
     },
     {
       "comment": [
-        "Story 7.13: CSS's own identity pages (main.html.ejs, Story 7.2 restyle) load",
-        "tokens.css from pod.nicolasdb.eu's root. That used to be served for free by the",
-        "backoffice's StaticAssetHandler block (also mapped '/tokens.css'), which was",
-        "removed in Story 7.13's origin split — breaking this page's styling as a side",
-        "effect. tokens.css is CSS's own dependency now, kept as its own copy here",
-        "(infra/css/tokens.css) rather than reaching into backoffice/, which CSS no",
-        "longer has bind-mount access to at all post-7.13."
+        "The public .md page (solid-kit doc-view): /doc-view.js and /doc-view.css, loaded by",
+        "main.html.ejs. The rest of the identity-page overlay (skin.css, pod-ui.js, fonts) is",
+        "served by CSS's stock /.well-known/css/ mappings and needs no entry here (ADR 009 in",
+        "solid-kit). /tokens.css, served from here until the overlay moved to skin.css, is gone:",
+        "the welcome page in the data volume must be re-copied (make vps-welcome)."
       ],
       "@id": "urn:solid-server:default:StaticAssetHandler",
       "@type": "StaticAssetHandler",
       "assets": [
         {
-          "@id": "urn:solid-server:pocpod0:CssTokensAsset",
+          "@id": "urn:solid-server:pocpod0:DocViewScriptAsset",
           "@type": "StaticAssetEntry",
-          "relativeUrl": "/tokens.css",
-          "filePath": "/css-tokens.css"
+          "relativeUrl": "/doc-view.js",
+          "filePath": "/doc-view/doc-view.js"
+        },
+        {
+          "@id": "urn:solid-server:pocpod0:DocViewStyleAsset",
+          "@type": "StaticAssetEntry",
+          "relativeUrl": "/doc-view.css",
+          "filePath": "/doc-view/doc-view.css"
         }
       ]
     }

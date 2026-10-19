@@ -1,0 +1,144 @@
+/*
+ * skin.css — everything that makes this instance look like itself, and nothing
+ * else: colours by solid-kit slot, the three fonts, their files. main.css holds
+ * the structure and reads only these variables, so a new instance changes this
+ * file (and fonts/, and the copy) and never main.css.
+ *
+ * This is the reference skin, "pod": Solid Kit's values (Daylight, Ink, High
+ * contrast) with Lexend, Atkinson Hyperlegible and JetBrains Mono. Copy it to
+ * start another, then `npm run audit -- --skin <this file>` in solid-kit until
+ * it passes: every text slot 4.5:1 (7:1 in High contrast), --border-control
+ * 3:1, the complete slot set in every theme.
+ *
+ * Served at /.well-known/css/styles/skin.css (a bind mount over CSS's stock
+ * styles folder), linked before main.css by main.html.ejs and the welcome page.
+ *
+ * Themes (solid-kit ADR 008): Daylight is the default for everyone and lives on
+ * bare :root. Ink and High contrast exist only behind <html data-theme>,
+ * stamped before first paint by pod-ui.js from the stored choice. Never add a
+ * prefers-color-scheme: dark block. The one OS signal followed is
+ * prefers-contrast: more, and only while no choice is stored. An instance
+ * without a dark look (a paper-only skin) still defines the dark block: give it
+ * the same values as Daylight, so the switch's "Dark" stays honest, or remove
+ * the button in main.html.ejs (INSTANCE: theme switch).
+ */
+
+/* ---- Fonts: self-hosted, Latin subset (fonts/README.md beside this file) ---- */
+@font-face { font-family: "Lexend"; font-style: normal; font-weight: 400; font-display: swap; src: url("../fonts/skin/lexend-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Lexend"; font-style: normal; font-weight: 500; font-display: swap; src: url("../fonts/skin/lexend-latin-500-normal.woff2") format("woff2"); }
+@font-face { font-family: "Lexend"; font-style: normal; font-weight: 600; font-display: swap; src: url("../fonts/skin/lexend-latin-600-normal.woff2") format("woff2"); }
+@font-face { font-family: "Atkinson Hyperlegible"; font-style: normal; font-weight: 400; font-display: swap; src: url("../fonts/skin/atkinson-hyperlegible-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Atkinson Hyperlegible"; font-style: normal; font-weight: 700; font-display: swap; src: url("../fonts/skin/atkinson-hyperlegible-latin-700-normal.woff2") format("woff2"); }
+@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 400; font-display: swap; src: url("../fonts/skin/jetbrains-mono-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 500; font-display: swap; src: url("../fonts/skin/jetbrains-mono-latin-500-normal.woff2") format("woff2"); }
+
+:root {
+  --font-heading: "Lexend", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-body: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+/* ---- Daylight (default) ---- */
+:root {
+  --surface: #f6f4ef;
+  --surface-elevated: #fbfaf7;
+  --surface-recessed: #f0ede4;
+  --text-primary: #26241f;   /* 14.1:1 on surface */
+  --text-secondary: #5c5647; /* 6.6:1 */
+  /* Small mono labels, the domain, the footer. The token most often broken:
+     5.1:1 on surface, 5.4:1 on surface-elevated. Re-check both if replaced. */
+  --text-tertiary: #6d6757;
+  --border: #e7e2d6;         /* decorative, 1.2:1 */
+  --border-subtle: #efece3;
+  /* Pod skin slot, not in solid-kit: control outlines at 3:1 (WCAG 1.4.11).
+     `border` is too faint to find an input by its edge. */
+  --border-control: #8f8977; /* 3.2:1 on surface, 3.4:1 on elevated */
+  --selection: #dfe9e2;
+  --accent: #3d6b52;         /* sage, 5.6:1; links, primary, focus ring */
+  --accent-contrast: #ffffff; /* 6.1:1 on accent */
+  --accent-soft: #eef3ef;
+  --accent-line: #b8ccbf;
+  --warn: #b5722a;           /* 3.5:1: icons and 24px+ only */
+  --warn-soft: #faf3e6;
+  --warn-line: #e3c9a3;
+  --danger: #a33227;         /* 6.0:1 on danger-soft */
+  --danger-soft: #f9ecea;
+  --code-bg: #f0ede4;
+  color-scheme: light;
+}
+
+/* ---- Ink ---- */
+:root[data-theme="dark"] {
+  --surface: #12140f;
+  --surface-elevated: #1b1e17;
+  --surface-recessed: #0d0f0b;
+  --text-primary: #eceadf;
+  --text-secondary: #b8b3a3;
+  --text-tertiary: #9a9585;  /* 6.2:1 on surface, 5.6:1 on elevated */
+  --border: rgba(255, 255, 255, 0.09);
+  --border-subtle: rgba(255, 255, 255, 0.05);
+  --border-control: #706b5c; /* 3.5:1 on surface, 3.2:1 on elevated */
+  --selection: rgba(143, 185, 138, 0.25);
+  --accent: #8fb98a;
+  --accent-contrast: #12140f; /* flips to ink: the accent lightens */
+  --accent-soft: rgba(143, 185, 138, 0.14);
+  --accent-line: rgba(143, 185, 138, 0.4);
+  --warn: #d99a55;
+  --warn-soft: rgba(217, 154, 85, 0.13);
+  --warn-line: rgba(217, 154, 85, 0.35);
+  --danger: #e0827a;
+  --danger-soft: rgba(224, 130, 122, 0.13);
+  --code-bg: #0d0f0b;
+  color-scheme: dark;
+}
+
+/* ---- High contrast: text 7:1 or more, every line 3:1 or more ---- */
+:root[data-theme="contrast"] {
+  --surface: #fbfaf7;
+  --surface-elevated: #ffffff;
+  --surface-recessed: #efece3;
+  --text-primary: #1a1814;
+  --text-secondary: #3a362d;
+  --text-tertiary: #433e33;
+  --border: #7a7466;
+  --border-subtle: #8a8475;
+  --border-control: #7a7466;
+  --selection: #c9dccf;
+  --accent: #28493a;
+  --accent-contrast: #ffffff;
+  --accent-soft: #e3ece6;
+  --accent-line: #4f7a62;
+  --warn: #6e4210;
+  --warn-soft: #faf3e6;
+  --warn-line: #a8691f;
+  --danger: #7a2018;
+  --danger-soft: #f9ecea;
+  --code-bg: #efece3;
+  color-scheme: light;
+}
+
+/* The OS asked for more contrast and no choice is stored: same values. */
+@media (prefers-contrast: more) {
+  :root:not([data-theme]) {
+    --surface: #fbfaf7;
+    --surface-elevated: #ffffff;
+    --surface-recessed: #efece3;
+    --text-primary: #1a1814;
+    --text-secondary: #3a362d;
+    --text-tertiary: #433e33;
+    --border: #7a7466;
+    --border-subtle: #8a8475;
+    --border-control: #7a7466;
+    --selection: #c9dccf;
+    --accent: #28493a;
+    --accent-contrast: #ffffff;
+    --accent-soft: #e3ece6;
+    --accent-line: #4f7a62;
+    --warn: #6e4210;
+    --warn-soft: #faf3e6;
+    --warn-line: #a8691f;
+    --danger: #7a2018;
+    --danger-soft: #f9ecea;
+    --code-bg: #efece3;
+  }
+}

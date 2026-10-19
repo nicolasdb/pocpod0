@@ -46,6 +46,8 @@ const { appendAuditEntry } = require("./journal");
 const { isForeignResource, writeReadReceipt } = require("./receipt");
 const { buildOnboardRouter } = require("./onboardRouter");
 const uploadTickets = require("./uploadTickets");
+const collectiveGraph = require("./collectiveGraph");
+const profile = require("./profile");
 
 // Story 8.10: the ticket handed back by solid_prepare_upload must be an
 // absolute, public URL — the agent runs curl from its own shell, not from
@@ -315,6 +317,10 @@ function safeHandler(toolName, identity, resourceKey, fn) {
 const SERVER_INSTRUCTIONS = [
   "You are connected to a Solid pod through a dedicated agent identity.",
   "",
+  "WHO AM I. solid_whoami gives the WebID this connector acts as, and what its",
+  "profile declares. Call it first when your role depends on who you are (a",
+  "collective's own agent, or a member's agent).",
+  "",
   "WHICH POD. This connector cannot discover which pod to work on: Solid has",
   "no way to ask 'what may this identity reach'. If no pod URL has been given",
   "to you, ask for one — do not guess hostnames or pod names.",
@@ -333,12 +339,33 @@ const SERVER_INSTRUCTIONS = [
   "READS ARE LOGGED. Reading someone else's pod writes a receipt into their",
   "access log. That is intended and visible to them. Read what you were asked",
   "to read; do not crawl a pod to see what is there.",
+  "",
+  "A COLLECTIVE'S GRAPH. graph_query asks what a collective already holds,",
+  "across its members' contributions. Use it when the conversation touches the",
+  "collective's work, then read the documents it points to. Name the author of",
+  "what you draw on.",
 ].join("\n");
 
 function buildMcpServer(identity) {
   const server = new McpServer(
     { name: "solid-pod-agent", version: "0.1.0" },
     { instructions: SERVER_INSTRUCTIONS }
+  );
+
+  server.registerTool(
+    "solid_whoami",
+    {
+      description:
+        "Which identity this connector acts as: its WebID, and what its profile declares " +
+        "(storage, oidcIssuer, name; null when absent or unreadable). Pure: it does not say " +
+        "which collectives this identity belongs to or what role it holds there — read the " +
+        "collective's config.ttl for that. Writes nothing and leaves no read receipt.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    safeHandler("solid_whoami", identity, undefined, async () => ({
+      content: [{ type: "text", text: JSON.stringify(await profile.whoami(identity), null, 2) }],
+    }))
   );
 
   server.registerTool(
@@ -351,7 +378,9 @@ function buildMcpServer(identity) {
         "belongs to a different pod than this identity's own, reading it " +
         "attempts a best-effort receipt write into the owner's access-log/ " +
         "(never blocks or fails the read, but adds a round trip — and a " +
-        "possible reauth retry — before returning).",
+        "possible reauth retry — before returning). Returns two blocks: the file's " +
+        "text, then a metadata block (etag, lastModified, contentType) that is NOT " +
+        "part of the file — never copy it into the content you write elsewhere.",
       inputSchema: { url: z.string().url() },
     },
     safeHandler("solid_read_resource", identity, "url", async ({ url }) => {
@@ -372,8 +401,7 @@ function buildMcpServer(identity) {
         err.statusCode = 400;
         throw err;
       }
-      const file = await podClient.readFile(url, identity.session);
-      const text = await file.text();
+      const { text, etag, lastModified, contentType } = await podClient.readFileWithVersion(url, identity.session);
       let foreign;
       try {
         foreign = isForeignResource(url, identity.webId);
@@ -419,7 +447,17 @@ function buildMcpServer(identity) {
           appendAuditEntry({ label: identity.label, tool: "read_receipt", resource: url, outcome: "error" });
         }
       }
-      return { content: [{ type: "text", text }] };
+      // Version headers go in a SEPARATE block, never appended to the text:
+      // a puller copies the first block verbatim into a snapshot, and a
+      // metadata line glued onto it would silently alter the member's
+      // document (ADR 006 §3: snapshots keep the original bytes).
+      const meta = { etag, lastModified, contentType };
+      return {
+        content: [
+          { type: "text", text },
+          { type: "text", text: `[metadata, not file content] ${JSON.stringify(meta)}` },
+        ],
+      };
     })
   );
 
@@ -559,12 +597,15 @@ function buildMcpServer(identity) {
         "List the resources directly inside a Pod container (folder URL — one " +
         "ending in '/'). This is the ONLY way to read a folder: solid_read_resource " +
         "cannot, and fails on one in a way that looks like a permission problem. " +
-        "Lists one level, not recursively. Takes containerUrl, not url.",
+        "Lists one level, not recursively. Takes containerUrl, not url. Each entry " +
+        "has url, isContainer, modified (ISO time) and size (bytes); modified and " +
+        "size are null when the server does not state them, which means unknown, " +
+        "not unchanged.",
       inputSchema: { containerUrl: z.string().url() },
     },
     safeHandler("solid_list_container", identity, "containerUrl", async ({ containerUrl }) => {
-      const urls = await podClient.listContainer(containerUrl, identity.session);
-      return { content: [{ type: "text", text: JSON.stringify(urls, null, 2) }] };
+      const entries = await podClient.listContainerDetailed(containerUrl, identity.session);
+      return { content: [{ type: "text", text: JSON.stringify(entries, null, 2) }] };
     })
   );
 
@@ -786,6 +827,48 @@ function buildMcpServer(identity) {
         ],
       };
     })
+  );
+
+  server.registerTool(
+    "graph_query",
+    {
+      description:
+        "Ask a collective's knowledge graph (read-only SPARQL 1.1: SELECT, ASK, CONSTRUCT, DESCRIBE). " +
+        "The graph holds what the collective's agent pulled and confronted from its members: one named " +
+        "graph per document, named by that document's pod address, so `GRAPH ?g { … }` tells you where " +
+        "each fact came from. Answers only for the collective's own agent, a member, or a member's declared agent, " +
+        "and only over folders this identity can read on the collective's pod. The graph is a catalogue: " +
+        "for a document's full text, read ?g with solid_read_resource. SERVICE and updates are refused; " +
+        `a SELECT returns at most ${collectiveGraph.MAX_ROWS} rows.`,
+      inputSchema: {
+        collective: z.string().url().describe("The collective's address: its config.ttl, or its IRI (…/config.ttl#name)."),
+        query: z.string().min(1).describe("A SPARQL 1.1 query."),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    safeHandler("graph_query", identity, "collective", async (args) => ({
+      content: [{ type: "text", text: await collectiveGraph.queryGraph(args, identity) }],
+    }))
+  );
+
+  server.registerTool(
+    "graph_ingest",
+    {
+      description:
+        "Load Turtle from a collective's pod into its knowledge graph. Only the collective's own agent may " +
+        "do this, and only for documents under the collective's depots/ or confrontations/. Give one .ttl " +
+        "document, or a folder to load every .ttl under it. Each document replaces its own named graph, so " +
+        "ingesting again after a change is safe. Markdown and other files are not loaded: their Turtle " +
+        "sidecar is what enters the graph.",
+      inputSchema: {
+        collective: z.string().url().describe("The collective's address: its config.ttl, or its IRI (…/config.ttl#name)."),
+        url: z.string().url().describe("A .ttl document, or a folder ending in /, under depots/ or confrontations/."),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    },
+    safeHandler("graph_ingest", identity, "url", async (args) => ({
+      content: [{ type: "text", text: await collectiveGraph.ingest(args, identity) }],
+    }))
   );
 
   return server;
