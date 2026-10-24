@@ -14,6 +14,10 @@ services:
       # doc-view.js re-renders a .md page with solid-kit's renderMarkdown + .prose.
       # GENERATED from solid-kit (scripts/export-doc-view.sh) — never edit here.
       - ./infra/css/doc-view:/doc-view:ro${VOLUME_FLAGS:-}
+      # What this server offers apps (solid-kit ADR 010): a fixed copy of what
+      # solid-css-overlay writes at start, until pocpod0 runs that image. The
+      # backoffice offers agents only to servers that publish it.
+      - ./infra/css/provider.json:/provider.json:ro${VOLUME_FLAGS:-}
       # Story 7.2: restyle CSS's own identity pages (login/register/consent) to the
       # backoffice design system by overriding the shared stylesheet + page chrome.
       - ./infra/css/main.css:/community-server/templates/styles/main.css:ro${VOLUME_FLAGS:-}
