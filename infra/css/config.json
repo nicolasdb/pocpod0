@@ -105,6 +105,12 @@
           "@type": "StaticAssetEntry",
           "relativeUrl": "/doc-view.css",
           "filePath": "/doc-view/doc-view.css"
+        },
+        {
+          "@id": "urn:solid-server:pocpod0:ProviderDescriptorAsset",
+          "@type": "StaticAssetEntry",
+          "relativeUrl": "/.well-known/css/provider.json",
+          "filePath": "/provider.json"
         }
       ]
     }

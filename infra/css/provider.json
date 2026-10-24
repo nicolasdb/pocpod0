@@ -1,0 +1,10 @@
+{
+  "software": "pocpod0",
+  "version": "css-7.2.0",
+  "layout": "suffix",
+  "capabilities": {
+    "account": { "path": "/.account/" },
+    "onboard": { "path": "/onboard/" },
+    "connector": { "url": "https://solid-mcp.nicolasdb.eu/" }
+  }
+}
