@@ -1,18 +1,40 @@
 #!/bin/sh
 # Nightly backup of pocpod0's named Docker volumes on the VPS.
-# Installed via `make vps-backup-schedule` (cron: 03:00 daily).
+# Installed via `make vps-backup-schedule` (cron: 03:00 daily) as
+# /usr/local/sbin/pocpod0-backup, root-owned.
 # Mirrors the Makefile's `vps-backup` target; kept in sync manually if that changes.
-set -e
+#
+# Until 2026-10-25 the cron ran a copy in $VPS_PATH/backups/. That copy
+# vanished the day after it was installed (2026-07-22) and the cron logged
+# "not found" every night for three months, unnoticed: no nightly backup ever
+# ran. The copy now lives outside the synced tree, and every run says how it
+# went in the journal (journalctl -t pocpod0-backup).
+set -eu
+# The archives hold every pod's data: readable by root only. Until 2026-10-25
+# they were 644 in a directory any local user can list.
+umask 077
 
 VPS_PATH=/home/nicolas/pocpod0
 cd "$VPS_PATH"
 mkdir -p backups
 DATE=$(date +%F)
 
+fail() { logger -t pocpod0-backup -p user.err "FAILED: $*"; echo "FAILED: $*" >&2; exit 1; }
+
 for VOL in pocpod0_css-data pocpod0_openclaw-data-default pocpod0_oxigraph-data pocpod0_qdrant-data; do
   NAME=${VOL#pocpod0_}
-  docker run --rm -v "$VOL":/data alpine tar czf - /data > "backups/$NAME-$DATE.tar.gz"
+  OUT="backups/$NAME-$DATE.tar.gz"
+  # Written to a temp name and checked before it counts: a half-written
+  # archive must never look like a backup, nor let the retention below
+  # delete the last good one.
+  docker run --rm -v "$VOL":/data:ro alpine tar czf - /data > "$OUT.part" || fail "tar $VOL"
+  gzip -t "$OUT.part" || fail "gzip check $OUT"
+  mv "$OUT.part" "$OUT"
 done
 
-# 7-day retention
-find backups -name '*.tar.gz' -mtime +7 -delete
+# 7-day retention, only after every volume above succeeded (set -e), and only
+# for the nightly archives at the top of backups/ (older manual sets live in
+# subfolders and are kept).
+find backups -maxdepth 1 -name '*.tar.gz' -mtime +7 -delete
+
+logger -t pocpod0-backup "ok: $(du -ch backups/*-"$DATE".tar.gz | tail -1 | cut -f1) for $DATE"

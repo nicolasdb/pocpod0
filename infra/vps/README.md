@@ -135,7 +135,14 @@ A nightly cron (03:00, 7-day retention) also runs automatically — installed vi
 make vps-backup-schedule    # one-time: installs infra/vps/nightly-backup.sh + cron entry
 ```
 
-Verify it's active: `ssh hetzner crontab -l`. Backups land in `/home/nicolas/pocpod0/backups/`.
+Verify it's active: `ssh hetzner crontab -l` (runs `/usr/local/sbin/pocpod0-backup`),
+and that it worked: `ssh hetzner journalctl -t pocpod0-backup -n 5`. Backups land in
+`/home/nicolas/pocpod0/backups/`; sets made before 2026-10-25 are in
+`backups/before-2026-10-25/`, kept out of the 7-day retention.
+
+> Until 2026-10-25 the cron pointed at a copy in `backups/` that disappeared the
+> day after install: the log said "not found" every night and no nightly backup
+> ever ran. Check the journal, not just the crontab.
 
 > Installed 2026-07-22 after a code-review live test touched the root `.acl` with
 > no backup to restore from (Story 7.1). Always run `make vps-backup` before any
