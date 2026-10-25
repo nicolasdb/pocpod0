@@ -232,9 +232,12 @@ vps-backup:
 # manual-only command — nobody had ever run it, so no css-data backup existed
 # before a code-review incident touched the live root .acl with none to
 # restore from (Story 7.1, 2026-07-22). This closes that gap going forward.
+# The script is installed root-owned in /usr/local/sbin, outside the synced
+# tree: the first install copied it into backups/, it vanished the next day,
+# and the cron logged "not found" nightly until 2026-10-25 (nothing ran).
 vps-backup-schedule:
 	ssh $(VPS_REMOTE) "mkdir -p $(VPS_PATH)/backups"
-	scp infra/vps/nightly-backup.sh $(VPS_REMOTE):$(VPS_PATH)/backups/nightly-backup.sh
-	ssh $(VPS_REMOTE) "chmod +x $(VPS_PATH)/backups/nightly-backup.sh"
-	ssh $(VPS_REMOTE) '(crontab -l 2>/dev/null | grep -v nightly-backup.sh; echo "0 3 * * * $(VPS_PATH)/backups/nightly-backup.sh >> $(VPS_PATH)/backups/nightly-backup.log 2>&1") | crontab -'
-	@echo "Nightly backup cron installed (03:00 daily, 7-day retention). Verify: ssh $(VPS_REMOTE) crontab -l"
+	scp infra/vps/nightly-backup.sh $(VPS_REMOTE):/tmp/pocpod0-backup
+	ssh $(VPS_REMOTE) "install -o root -g root -m 755 /tmp/pocpod0-backup /usr/local/sbin/pocpod0-backup && rm /tmp/pocpod0-backup"
+	ssh $(VPS_REMOTE) '(crontab -l 2>/dev/null | grep -v -e nightly-backup.sh -e pocpod0-backup; echo "0 3 * * * /usr/local/sbin/pocpod0-backup >> $(VPS_PATH)/backups/nightly-backup.log 2>&1") | crontab -'
+	@echo "Nightly backup cron installed (03:00 daily, 7-day retention). Verify: ssh $(VPS_REMOTE) crontab -l; results: journalctl -t pocpod0-backup"
