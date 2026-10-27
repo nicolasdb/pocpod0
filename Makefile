@@ -12,7 +12,7 @@ PIPELINE_VENV  = pipeline/.venv/bin/activate
 VPS_REMOTE     = hetzner
 VPS_PATH       = /home/nicolas/pocpod0
 
-.PHONY: help vps-css-check vps-welcome \
+.PHONY: help vps-css-check \
         pull rebuild sync-workspaces backup \
         pipeline pipeline-dry dashboard troll setup \
         cli-devices \
@@ -23,7 +23,7 @@ VPS_PATH       = /home/nicolas/pocpod0
 
 help:
 	@echo "Local:"
-	@echo "  pull              Pull latest upstream images (CSS, Oxigraph, Qdrant, Nginx)"
+	@echo "  pull              Pull latest upstream images (Oxigraph)"
 	@echo "  rebuild           Pull upstream + rebuild openclaw image"
 	@echo "  sync-workspaces   Hot-patch agent files (no volume wipe, ~30s)"
 	@echo "  backup            Extract workspaces + config → backups/openclaw-<ts>/"
@@ -40,8 +40,7 @@ help:
 	@echo "  vps-push-apps     rsync backoffice/ + valisette/ → nginx-served /srv on VPS (Story 7.13)"
 	@echo "  vps-build         docker compose build on VPS"
 	@echo "  vps-deploy        push + build + up (full deploy)"
-	@echo "  vps-css-check     CSS overrides still valid upstream and served"
-	@echo "  vps-welcome       Copy infra/css/welcome/index.html to the pod root page (after vps-push)"
+	@echo "  vps-css-check     pod.nicolasdb.eu serves the image's pages (from its checkout, /srv/nicolasdb-pods)"
 	@echo "  vps-setup         One-time: create pipeline venv on VPS"
 	@echo "  vps-pipeline      Run ingestion pipeline on VPS (in tmux session)"
 	@echo "  vps-devices-list  List pending/paired WebUI devices on VPS"
@@ -52,7 +51,7 @@ help:
 # ── Local: image management ───────────────────────────────────────────────────
 
 pull:
-	$(COMPOSE) pull community-solid-server oxigraph qdrant nginx
+	$(COMPOSE) pull oxigraph
 
 rebuild: pull
 	$(COMPOSE) build openclaw-gateway
@@ -188,21 +187,14 @@ vps-build:
 
 vps-deploy: vps-push vps-push-apps vps-build
 	ssh $(VPS_REMOTE) "cd $(VPS_PATH) && docker compose up -d"
-	$(MAKE) vps-css-check
 
-# Our CSS look/copy are bind-mounted copies of stock templates: after any deploy
-# or image bump, check upstream has not moved under them and that they are served.
+# pod.nicolasdb.eu runs solid-css-overlay's image from its own checkout,
+# /srv/nicolasdb-pods; this runs that version's check against the live server.
+# Its look and welcome page are in nicolasdb/design-system, not here: the
+# vps-welcome target went with infra/css/ (the image puts the page in place
+# at every start).
 vps-css-check:
-	ssh $(VPS_REMOTE) "cd $(VPS_PATH) && until curl -fs -o /dev/null -H 'Accept: text/html' https://pod.nicolasdb.eu/.account/login/password/; do sleep 2; done; scripts/check-css-overrides.sh '' https://pod.nicolasdb.eu"
-
-# The welcome page at pod.nicolasdb.eu/ is not a template: CSS copied its stock
-# intro page into the root container at first setup, and since then it is a
-# plain resource (/data/index.html in the css-data volume). Our source is
-# infra/css/welcome/index.html; this copies it into the running container.
-# Run after vps-push (the file must be on the VPS first).
-vps-welcome:
-	ssh $(VPS_REMOTE) "cd $(VPS_PATH) && docker compose cp infra/css/welcome/index.html community-solid-server:/data/index.html"
-	@echo "welcome page copied; check https://pod.nicolasdb.eu/"
+	ssh $(VPS_REMOTE) "cd /srv/nicolasdb-pods && scripts/check-overrides.sh '' https://pod.nicolasdb.eu"
 
 # One-time: bootstrap pipeline venv on VPS after first vps-push
 vps-setup:
@@ -222,10 +214,10 @@ vps-devices-approve:
 # Backup all named volumes to VPS backups/ directory (manual, run now)
 vps-backup:
 	ssh $(VPS_REMOTE) "mkdir -p $(VPS_PATH)/backups"
-	ssh $(VPS_REMOTE) "docker run --rm -v pocpod0_css-data:/data alpine tar czf - /data > $(VPS_PATH)/backups/css-data-$$(date +%F).tar.gz && echo 'css-data backed up'"
+	ssh $(VPS_REMOTE) "docker run --rm -v nicolasdb-pods_css-data:/data alpine tar czf - /data > $(VPS_PATH)/backups/css-data-$$(date +%F).tar.gz && echo 'css-data backed up'"
+	ssh $(VPS_REMOTE) "docker run --rm -v nicolasdb-pods_mcp-audit:/data alpine tar czf - /data > $(VPS_PATH)/backups/mcp-audit-$$(date +%F).tar.gz && echo 'mcp-audit backed up'"
 	ssh $(VPS_REMOTE) "docker run --rm -v pocpod0_openclaw-data-default:/data alpine tar czf - /data > $(VPS_PATH)/backups/openclaw-data-$$(date +%F).tar.gz && echo 'openclaw-data backed up'"
 	ssh $(VPS_REMOTE) "docker run --rm -v pocpod0_oxigraph-data:/data alpine tar czf - /data > $(VPS_PATH)/backups/oxigraph-data-$$(date +%F).tar.gz && echo 'oxigraph-data backed up'"
-	ssh $(VPS_REMOTE) "docker run --rm -v pocpod0_qdrant-data:/data alpine tar czf - /data > $(VPS_PATH)/backups/qdrant-data-$$(date +%F).tar.gz && echo 'qdrant-data backed up'"
 
 # Install a nightly cron on the VPS that runs the same backups as `vps-backup`
 # and trims anything older than 7 days. vps-backup itself was previously a

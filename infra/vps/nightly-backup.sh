@@ -21,8 +21,14 @@ DATE=$(date +%F)
 
 fail() { logger -t pocpod0-backup -p user.err "FAILED: $*"; echo "FAILED: $*" >&2; exit 1; }
 
-for VOL in pocpod0_css-data pocpod0_openclaw-data-default pocpod0_oxigraph-data pocpod0_qdrant-data; do
-  NAME=${VOL#pocpod0_}
+# pod.nicolasdb.eu's data lives in the instance's volumes (nicolasdb-pods_*,
+# /srv/nicolasdb-pods) since the cutover to solid-css-overlay's image; the
+# archive names stay css-data-<date> so the series continues. Qdrant is retired.
+for VOL in nicolasdb-pods_css-data nicolasdb-pods_mcp-audit pocpod0_openclaw-data-default pocpod0_oxigraph-data; do
+  # The volume must exist: `docker run -v` would create an empty one and
+  # archive nothing, which then reads as a backup.
+  docker volume inspect "$VOL" >/dev/null 2>&1 || fail "no volume $VOL"
+  NAME=${VOL#*_}
   OUT="backups/$NAME-$DATE.tar.gz"
   # Written to a temp name and checked before it counts: a half-written
   # archive must never look like a backup, nor let the retention below
