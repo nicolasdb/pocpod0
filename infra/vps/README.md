@@ -5,6 +5,21 @@
 **DNS:** `pod.nicolasdb.eu` (OpenClaw WebUI), `claw.nicolasdb.eu` (OpenClaw lab)  
 **User:** root (VPS runs as root; `/home/nicolas/` is a directory, not a system user home)
 
+> **pod.nicolasdb.eu is no longer run from here.** Since the cutover to
+> solid-css-overlay's image (its `docs/handoff-pocpod0.md`), the Solid server
+> and its MCP connector run from `/srv/nicolasdb-pods` (a checkout of
+> solid-css-overlay at a tag: containers `nicolasdb-pods-css` and
+> `nicolasdb-pods-mcp-connector`, volumes `nicolasdb-pods_css-data` and
+> `nicolasdb-pods_mcp-audit`). Their look and welcome page are in
+> nicolasdb/design-system, at `/srv/nicolasdb-design-system`. Updates follow
+> solid-css-overlay's README ("Updating an instance"): this server tries each
+> new version first, as a pre-release tag. Qdrant is retired. What stays here:
+> oxigraph (the connector's graph), the pipeline, the backups.
+>
+> The pipeline, the troll and the sparql-query skill authenticate with
+> `Authorization: WebID <uri>`, which the image does not accept: they no longer
+> write to pod.nicolasdb.eu until they use client credentials.
+
 ---
 
 ## Common Operations
@@ -79,8 +94,7 @@ cd /home/nicolas/pocpod0 && . pipeline/.venv/bin/activate && python pipeline/run
 
 ```bash
 ssh hetzner
-curl http://localhost:3000/            # CSS → 200
-curl http://localhost:6333/healthz     # Qdrant → "healthz check passed"
+curl -s https://pod.nicolasdb.eu/.well-known/css/provider.json   # CSS: version, layout, offers
 curl http://localhost:7878/            # Oxigraph → 200
 curl http://localhost:18790/           # OpenClaw gateway → 200
 ```
@@ -119,14 +133,14 @@ make vps-up
 ssh hetzner "cd /home/nicolas/pocpod0 && docker compose down -v"
 ```
 
-This deletes: `pocpod0_css-data`, `pocpod0_openclaw-data-default`, `pocpod0_oxigraph-data`, `pocpod0_qdrant-data`.
+This deletes pocpod0's own volumes (`pocpod0_oxigraph-data`, ...), not pod.nicolasdb.eu's: those belong to the instance in `/srv/nicolasdb-pods`.
 
 After a factory reset you must re-run Stage 0 provision.
 
 ### Backup named volumes before reset (or any risky live test)
 
 ```bash
-make vps-backup             # manual, run now — includes css-data
+make vps-backup             # manual, run now — includes the instance's css-data
 ```
 
 A nightly cron (03:00, 7-day retention) also runs automatically — installed via:

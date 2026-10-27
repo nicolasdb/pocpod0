@@ -1,71 +1,10 @@
 services:
-  community-solid-server:
-    # Pinned: an image change is a deliberate step, followed by
-    # scripts/check-css-overrides.sh (our templates are copies of stock ones).
-    image: solidproject/community-server:7.2.0
-    container_name: community-solid-server
-    restart: unless-stopped
-    ports:
-      - "${CSS_PORT:-3000}:3000"
-    volumes:
-      - css-data:/data
-      - ./infra/css/config.json:/config.json:ro${VOLUME_FLAGS:-}
-      # Markdown files read the same on their public link as in the backoffice:
-      # doc-view.js re-renders a .md page with solid-kit's renderMarkdown + .prose.
-      # GENERATED from solid-kit (scripts/export-doc-view.sh) — never edit here.
-      - ./infra/css/doc-view:/doc-view:ro${VOLUME_FLAGS:-}
-      # What this server offers apps (solid-kit ADR 010): a fixed copy of what
-      # solid-css-overlay writes at start, until pocpod0 runs that image. The
-      # backoffice offers agents only to servers that publish it.
-      - ./infra/css/provider.json:/provider.json:ro${VOLUME_FLAGS:-}
-      # Story 7.2: restyle CSS's own identity pages (login/register/consent) to the
-      # backoffice design system by overriding the shared stylesheet + page chrome.
-      - ./infra/css/main.css:/community-server/templates/styles/main.css:ro${VOLUME_FLAGS:-}
-      - ./infra/css/main.html.ejs:/community-server/templates/main.html.ejs:ro${VOLUME_FLAGS:-}
-      # The identity-page overlay from solid-kit templates/css-instance (ADR 009;
-      # infra/css/SOURCE records the kit commit): the skin (colours, fonts), the shared
-      # script (theme stamp + switch, load-failure message) and the fonts, served by
-      # CSS's stock /.well-known/css/{styles,scripts,fonts}/ mappings. fonts/skin is a
-      # subfolder so the stock fonts stay in place.
-      - ./infra/css/skin.css:/community-server/templates/styles/skin.css:ro${VOLUME_FLAGS:-}
-      - ./infra/css/pod-ui.js:/community-server/templates/scripts/pod-ui.js:ro${VOLUME_FLAGS:-}
-      - ./infra/css/fonts:/community-server/templates/fonts/skin:ro${VOLUME_FLAGS:-}
-      # Story 7.2 (AC2 copy pass): plain-language gloss on WebID/pod jargon in the two
-      # stock page bodies that carry the most jargon (pod creation, OIDC consent).
-      # Text-only changes — every id/name/class/script is byte-identical to stock, so
-      # CSS's own client-side JS (which drives these forms) keeps working (AC4).
-      - ./infra/css/templates/identity/account/create-pod.html.ejs:/community-server/templates/identity/account/create-pod.html.ejs:ro${VOLUME_FLAGS:-}
-      - ./infra/css/templates/identity/oidc/consent.html.ejs:/community-server/templates/identity/oidc/consent.html.ejs:ro${VOLUME_FLAGS:-}
-      # Pod skin copy pass: the remaining identity pages. Copy only — ids, names and
-      # scripts are stock; each file's header says what changed.
-      - ./infra/css/templates/identity/account/resource.html.ejs:/community-server/templates/identity/account/resource.html.ejs:ro${VOLUME_FLAGS:-}
-      - ./infra/css/templates/identity/password/login.html.ejs:/community-server/templates/identity/password/login.html.ejs:ro${VOLUME_FLAGS:-}
-      - ./infra/css/templates/identity/password/register.html.ejs:/community-server/templates/identity/password/register.html.ejs:ro${VOLUME_FLAGS:-}
-      - ./infra/css/templates/identity/password/forgot.html.ejs:/community-server/templates/identity/password/forgot.html.ejs:ro${VOLUME_FLAGS:-}
-      - ./infra/css/templates/identity/password/reset.html.ejs:/community-server/templates/identity/password/reset.html.ejs:ro${VOLUME_FLAGS:-}
-      # Story 7.10 Task 7: replace the stock jargon-heavy welcome README on every
-      # freshly-created pod with our own plain-language voice. Resource name kept as
-      # `README` (unchanged) so README.acl.hbs's hardcoded `acl:accessTo <./README>`
-      # still applies — no ACL template override needed.
-      - "./infra/css/templates/pod/base/README$$.md.hbs:/community-server/templates/pod/base/README$$.md.hbs:ro${VOLUME_FLAGS:-}"
-    command:
-      - "-p"
-      - "3000"
-      - "-f"
-      - "/data"
-      - "-c"
-      - "/config.json"
-      - "--baseUrl"
-      - "${CSS_BASE_URL:-http://localhost:3000}/"
-    healthcheck:
-      test: ["CMD-SHELL", "node -e \"const n=require('net');const c=n.createConnection(3000,'localhost');c.on('connect',()=>{c.end();process.exit(0)});c.on('error',()=>process.exit(1))\""]
-      interval: 10s
-      timeout: 10s
-      retries: 10
-      start_period: 30s
-    networks:
-      - default
-      - gateway
+  # pod.nicolasdb.eu (CSS) and its MCP connector left this compose on the
+  # cutover to solid-css-overlay's image (docs/handoff-pocpod0.md there): they
+  # run from /srv/nicolasdb-pods (containers nicolasdb-pods-css and
+  # nicolasdb-pods-mcp-connector, volumes nicolasdb-pods_*), with their look in
+  # nicolasdb/design-system. Qdrant was retired at the same time. What stays
+  # here is pocpod0's own: oxigraph, which the connector still queries.
 
   oxigraph:
     image: ghcr.io/oxigraph/oxigraph:0.5.6
@@ -73,7 +12,7 @@ services:
     restart: unless-stopped
     ports:
       # Loopback only: Oxigraph has no access control, and /update writes.
-      # The connector reaches it as http://oxigraph:7878 on the default
+      # The connector reaches it as http://oxigraph:7878 on the gateway
       # network; host-side pipeline scripts through this port.
       - "127.0.0.1:${OXIGRAPH_PORT:-7878}:7878"
     volumes:
@@ -81,83 +20,9 @@ services:
     command: serve --location /data --bind 0.0.0.0:7878
     healthcheck:
       test: ["NONE"]
-
-  qdrant:
-    image: qdrant/qdrant:v1.17.0
-    container_name: qdrant
-    restart: unless-stopped
-    ports:
-      - "${QDRANT_REST_PORT:-6333}:6333"
-      - "${QDRANT_GRPC_PORT:-6334}:6334"
-    volumes:
-      - qdrant-data:/qdrant/storage
-    healthcheck:
-      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/6333"]
-      interval: 5s
-      timeout: 5s
-      retries: 12
-      start_period: 10s
-
-  mcp-connector:
-    build:
-      context: ./mcp-connector
-    container_name: mcp-connector
-    restart: unless-stopped
-    # No `ports:` — nginx (hetzner-gateway repo) reaches this by container
-    # name over the external `gateway` network (story 8.4 AC1). Publishing a
-    # host port here would give the container a second, unauthenticated path
-    # in besides the nginx vhost's TLS/rate-limit/allowlist stack.
-    environment:
-      - PORT=3939
-      - HOST=0.0.0.0
-      # Story 7.9: /onboard/ is reached via the pod.nicolasdb.eu vhost (nginx
-      # proxy_pass, hetzner-gateway repo), NOT solid-mcp.nicolasdb.eu — so
-      # the SDK's DNS-rebinding Host check needs that hostname allowlisted
-      # too, or every /onboard/* request 403s with "Invalid Host" before it
-      # reaches onboardRouter.js at all (found live, 2026-08-12).
-      - ALLOWED_HOSTS=${MCP_ALLOWED_HOSTS:-solid-mcp.nicolasdb.eu,pod.nicolasdb.eu}
-      # Story 7.14: browser origins allowed to call /onboard/ with credentials.
-      # test.nicolasdb.eu is the backoffice test copy — without it the
-      # connector status reads "Connector unknown" and Connect fails there.
-      - ONBOARD_CORS_ORIGINS=${ONBOARD_CORS_ORIGINS:-https://backoffice.nicolasdb.eu,https://test.nicolasdb.eu}
-      # A collective's graph (src/collectiveGraph.js): graph_query, graph_ingest.
-      - OXIGRAPH_URL=${OXIGRAPH_URL:-http://oxigraph:7878}
-    volumes:
-      # Secrets stay VPS-side, never baked into the image layer (Task 1.5).
-      # rsync --delete-after has no exclusion for these paths by accident;
-      # the Makefile guard (Task 1.4) is the actual protection.
-      #
-      # identities.json is now READ-WRITE (Story 7.9): the /onboard/ mint and
-      # revoke endpoints write this file in place via identityRegistry.js's
-      # atomic temp+rename path. It was read-only through Story 8.6.1 because
-      # nothing but a human editor ever touched it; that invariant ends here.
-      # .env stays read-only — nothing in this story writes it.
-      - ./mcp-connector/identities.json:/app/identities.json${VOLUME_FLAGS:-}
-      - ./mcp-connector/.env:/app/.env:ro${VOLUME_FLAGS:-}
-      - mcp-audit:/app/audit
-    healthcheck:
-      # DNS-rebinding protection (auto-enabled by ALLOWED_HOSTS being set,
-      # story 8.4 AC10) rejects a request whose Host header doesn't match —
-      # `curl localhost` from inside the container would send `Host:
-      # localhost` and falsely report unhealthy. Send the real Host header
-      # explicitly instead of widening ALLOWED_HOSTS for the healthcheck.
-      test:
-        - "CMD-SHELL"
-        - >-
-          node -e "const h=require('http');
-          const host=(process.env.ALLOWED_HOSTS||'localhost').split(',')[0];
-          const r=h.request({host:'127.0.0.1',port:process.env.PORT||3939,path:'/healthz',headers:{Host:host}},
-          res=>process.exit(res.statusCode===200?0:1));
-          r.on('error',()=>process.exit(1));r.end();"
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 15s
-    # Measured 2026-07-31: 45 concurrent verify-http.js runs (3 rounds x 15)
-    # against a real identity peaked at 82MB RSS (podman stats, local build).
-    # 256m gives >3x margin. A cgroup limit protects the rest of the box from
-    # a leak; it does not relieve overall memory pressure (Task 1.3).
-    mem_limit: 256m
+    # The connector (nicolasdb-pods-mcp-connector, another compose project)
+    # reaches it as http://oxigraph:7878 over the gateway network. It has no
+    # access control: never give it a vhost.
     networks:
       - default
       - gateway
@@ -168,11 +33,5 @@ networks:
     external: true  # shared with nginx-gateway (hetzner-gateway repo)
 
 volumes:
-  css-data:
-    driver: local
   oxigraph-data:
-    driver: local
-  qdrant-data:
-    driver: local
-  mcp-audit:
     driver: local
